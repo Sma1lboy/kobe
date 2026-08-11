@@ -60,9 +60,9 @@ describe("hosted session helpers", () => {
         {
           key: "task-a::tab-1",
           cwd: "/worktree",
+          // No cols/rows: a size-less open must never resize a live
+          // session away from its attached TUI (issue #18).
           command: ["engine", "--resume", "session-1"],
-          cols: 80,
-          rows: 24,
         },
       ],
       ["pty.detach", { key: "task-a::tab-1" }],

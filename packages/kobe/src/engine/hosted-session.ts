@@ -1,7 +1,7 @@
 import { KobeDaemonClient } from "@sma1lboy/kobe-daemon/client"
 import { ensurePtyHostReachable } from "@sma1lboy/kobe-daemon/client/pty-process"
 import { defaultPtyHostSocketPath } from "@sma1lboy/kobe-daemon/daemon/paths"
-import type { PtyOpenResult } from "@sma1lboy/kobe-daemon/daemon/protocol"
+import type { PtyOpenResult, PtyPeekResult } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import type { PtySessionInfo } from "@sma1lboy/kobe-daemon/daemon/pty-host"
 import type { EngineSessionLaunch } from "./session-launch.ts"
 
@@ -93,22 +93,25 @@ export async function writeHostedPrompt(rpc: HostedSessionRpc, key: string, prom
 
 /**
  * Deliver `prompt` into an existing hosted engine session and submit it.
- * `pty.open` REATTACHES (spec ignored for a live key — never spawns).
  * Returns whether the session was alive to receive it.
+ *
+ * `pty.peek`, NOT `pty.open`: an open from this headless client would
+ * last-attach-wins resize a live session out from under the attached TUI
+ * (the engine repaints at the delivery client's size and the pane garbles
+ * — issue #18), and an open for a key that just died would spawn a bare
+ * shell and paste the prompt into it. Peek never attaches, spawns, or
+ * resizes — delivery is pure `pty.write`, exactly like keyboard input.
  */
-export async function deliverToHostedKey(
-  rpc: HostedSessionRpc,
-  key: string,
-  cwd: string,
-  prompt: string,
-): Promise<boolean> {
-  const open = await rpc.request<PtyOpenResult>("pty.open", { key, cwd, cols: 80, rows: 24 })
-  if (!open.alive) return false
+export async function deliverToHostedKey(rpc: HostedSessionRpc, key: string, prompt: string): Promise<boolean> {
+  const peek = await rpc.request<PtyPeekResult>("pty.peek", { key })
+  if (!peek.alive) return false
   await writeHostedPrompt(rpc, key, prompt)
   return true
 }
 
-/** Open or reattach one engine session and immediately release this client. */
+/** Open or reattach one engine session and immediately release this client.
+ *  No cols/rows: a size-less open never resizes a live session away from
+ *  its attached TUI (the host only sizes the spawn, defaulting 80×24). */
 export async function ensureHostedEngine(
   rpc: HostedSessionRpc,
   cwd: string,
@@ -118,8 +121,6 @@ export async function ensureHostedEngine(
     key: launch.key,
     cwd,
     command: launch.command,
-    cols: 80,
-    rows: 24,
   })
   await rpc.request("pty.detach", { key: launch.key }).catch(() => {})
   return result

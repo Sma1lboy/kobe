@@ -89,19 +89,22 @@ describe("deliverToKey", () => {
     const rpc = {
       request: async <T>(name: string, payload?: unknown): Promise<T> => {
         calls.push({ name, payload })
-        if (name === "pty.open") return { replay: "", alive: true } as T
+        if (name === "pty.peek") return { exists: true, alive: true } as T
         return {} as T
       },
     }
     return { rpc, calls }
   }
 
-  it("reattaches then writes bracketed prompt + deferred CR", async () => {
+  it("peeks (never attaches/resizes) then writes bracketed prompt + deferred CR", async () => {
     const { rpc, calls } = recorder()
-    const ok = await deliverToKey(rpc, "t1::tab-1", "/wt/t1", "do the thing")
+    const ok = await deliverToKey(rpc, "t1::tab-1", "do the thing")
     expect(ok).toBe(true)
-    expect(calls.map((c) => c.name)).toEqual(["pty.open", "pty.write", "pty.write"])
-    expect(calls[0].payload).toMatchObject({ key: "t1::tab-1", cwd: "/wt/t1" })
+    // pty.peek, NOT pty.open: an open would last-attach-wins resize the
+    // live session away from its attached TUI (issue #18) — delivery must
+    // be indistinguishable from keyboard input (pure pty.write).
+    expect(calls.map((c) => c.name)).toEqual(["pty.peek", "pty.write", "pty.write"])
+    expect(calls[0].payload).toEqual({ key: "t1::tab-1" })
     // Bracketed paste markers wrap the prompt; the CR is a SEPARATE write.
     expect(calls[1].payload).toEqual({ key: "t1::tab-1", data: "\x1b[200~do the thing\x1b[201~" })
     expect(calls[2].payload).toEqual({ key: "t1::tab-1", data: "\r" })
@@ -112,12 +115,12 @@ describe("deliverToKey", () => {
     const rpc = {
       request: async <T>(name: string): Promise<T> => {
         calls.push({ name })
-        if (name === "pty.open") return { replay: "", alive: false } as T
+        if (name === "pty.peek") return { exists: true, alive: false } as T
         return {} as T
       },
     }
-    expect(await deliverToKey(rpc, "t1::tab-1", "/wt/t1", "x")).toBe(false)
-    expect(calls.map((c) => c.name)).toEqual(["pty.open"]) // no write into a dead pty
+    expect(await deliverToKey(rpc, "t1::tab-1", "x")).toBe(false)
+    expect(calls.map((c) => c.name)).toEqual(["pty.peek"]) // no write into a dead pty
   })
 })
 
@@ -179,7 +182,7 @@ describe("deliverHostedPrompt", () => {
       request: async <T>(name: string): Promise<T> => {
         calls.push(name)
         if (name === "pty.list") return { sessions: [session("t1::tab-1", ["claude"])] } as T
-        if (name === "pty.open") return { replay: "", alive: true } as T
+        if (name === "pty.peek") return { exists: true, alive: true } as T
         return {} as T
       },
     }
@@ -225,7 +228,7 @@ describe("deliverToExactTab", () => {
       request: async <T>(name: string): Promise<T> => {
         calls.push(name)
         if (name === "pty.list") return { sessions } as T
-        if (name === "pty.open") return { replay: "", alive: true } as T
+        if (name === "pty.peek") return { exists: true, alive: true } as T
         return {} as T
       },
     }

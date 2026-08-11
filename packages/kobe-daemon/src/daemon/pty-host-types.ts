@@ -12,8 +12,12 @@ export interface PtySpawnSpec {
   readonly command?: readonly string[]
   /** Shell override; defaults to `resolveLoginShell()`. */
   readonly shell?: string
-  readonly cols: number
-  readonly rows: number
+  /** Absent = size-agnostic open (headless clients): a fresh spawn gets
+   *  80×24 and a reattach NEVER resizes the session away from whatever
+   *  client is attached to it. Only size-carrying opens (the TUI, which
+   *  always sends its real pane size) take last-attach-wins. */
+  readonly cols?: number
+  readonly rows?: number
 }
 
 /** Attach result — mirrors the wire `PtyOpenResult`. */

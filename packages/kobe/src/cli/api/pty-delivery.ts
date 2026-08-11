@@ -139,29 +139,29 @@ export async function deliverHostedPrompt(
         },
       )
     }
-    try {
-      const delivered = await deliverToKey(rpc, existingKey, cwd, prompt)
-      return {
-        session: existingKey,
-        pane: existingKey,
-        started: false,
-        engineReady: delivered,
-        delivered,
-      }
-    } finally {
-      await rpc.request("pty.detach", { key: existingKey }).catch(() => {})
+    // No pty.detach: delivery peeks + writes without ever attaching, and a
+    // detach from a never-attached client would clear a parked TUI's
+    // exact-delta restore state as a side effect.
+    const delivered = await deliverToKey(rpc, existingKey, prompt)
+    return {
+      session: existingKey,
+      pane: existingKey,
+      started: false,
+      engineReady: delivered,
+      delivered,
     }
   }
 
   const staleCanonical = sessions.find((session) => session.key === launch.key && !session.alive)
   if (staleCanonical) await rpc.request("pty.kill", { key: launch.key })
 
+  // No cols/rows: the host sizes the fresh spawn itself (80×24 default);
+  // on the lost-create-race reattach below, a size-less open never resizes
+  // the winner's session away from whatever client is attached to it.
   const open = await rpc.request<PtyOpenResult>("pty.open", {
     key: launch.key,
     cwd,
     command: launch.command,
-    cols: 80,
-    rows: 24,
   })
   try {
     if (!open.alive) {
@@ -225,12 +225,9 @@ export async function deliverToExactTab(
       },
     )
   }
-  try {
-    const delivered = await deliverToKey(rpc, key, cwd, prompt)
-    return { session: key, pane: key, started: false, engineReady: delivered, delivered }
-  } finally {
-    await rpc.request("pty.detach", { key }).catch(() => {})
-  }
+  // No pty.detach — see deliverHostedPrompt's existing-key path.
+  const delivered = await deliverToKey(rpc, key, prompt)
+  return { session: key, pane: key, started: false, engineReady: delivered, delivered }
 }
 
 /** Kill every hosted session for a task (its engine + any tabs). */
