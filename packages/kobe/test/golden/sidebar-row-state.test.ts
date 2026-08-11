@@ -22,10 +22,13 @@
  * then read the diff — every moved line should be one you meant to move.
  */
 
+import { engineEntry } from "@/engine/registry"
+import { DEFAULT_SPINNER_FRAMES } from "@/engine/spinner-frames"
 import { currentLang, setLocaleLang } from "@/tui/i18n"
 import { buildSidebarRowView } from "@/tui/panes/sidebar/row-view"
 import { truncateBranchLabel } from "@/tui/panes/sidebar/view-core"
 import { type Task, toTaskId } from "@/types/task"
+import { BUILTIN_VENDORS } from "@/types/vendor"
 import { afterAll, beforeAll, expect, test } from "vitest"
 import { goldenDocument, goldenPath, matchGolden } from "./golden-file"
 import {
@@ -44,6 +47,10 @@ import {
 
 const GOLDEN = goldenPath(import.meta.url, "sidebar-row-state.golden.txt")
 
+/** Built once and shared: the golden document and the structural floor below
+ *  assert over the SAME enumeration, and it is a pure function either way. */
+const CROSS_PRODUCT = activityCrossProduct()
+
 let restoreLang = "en"
 beforeAll(() => {
   restoreLang = currentLang()
@@ -57,7 +64,7 @@ test("sidebar row state matrix matches the committed golden", () => {
   const document = goldenDocument("sidebar row state — buildSidebarRowView over its full input space", [
     {
       title: "activity x completionSeen x job x deletion x vendor x transcript (full cross product)",
-      lines: activityCrossProduct(),
+      lines: CROSS_PRODUCT,
     },
     { title: "project (main) rows — branch resolved from the repo checkout", lines: mainRowBlock() },
     { title: "engine-owned spinner frame sets + withSpinnerFrame overlay", lines: spinnerBlock() },
@@ -84,6 +91,11 @@ test("no spinner frame collides with a settled-state badge glyph", () => {
   // why the reduced-motion pulse was removed, and the collision would
   // otherwise be invisible in a golden full of correct-looking glyphs.
   //
+  // Iterates the engine registry's FRAME ARRAYS, not the golden's rendered
+  // `frames(0..25)` column. Parsing that column silently bounded the guard at
+  // 26 frames, so a set longer than that went unchecked past index 25 — and
+  // the whole point is that a single bad frame anywhere in a set is enough.
+  //
   // `·` is deliberately NOT in this set. Claude's brand frames open and close
   // on it (lifted from claude-code's own spinner), and the two other places
   // `·` appears — the untracked-custom-engine rest glyph and the non-agent tab
@@ -92,12 +104,18 @@ test("no spinner frame collides with a settled-state badge glyph", () => {
   // agent row. The ambiguity this guard exists to prevent is within ONE row's
   // own vocabulary.
   const settled = new Set(["●", "○", "◌", "✓", "?", "◷", "✕"])
-  const spinnerLines = spinnerBlock().filter((line) => line.includes("frames(0..25)="))
-  expect(spinnerLines.length).toBeGreaterThan(0)
-  for (const line of spinnerLines) {
-    const frames = line.split("frames(0..25)=")[1] ?? ""
+  const sets: Array<[string, readonly string[]]> = [
+    ...BUILTIN_VENDORS.map((vendor): [string, readonly string[]] => [
+      vendor,
+      engineEntry(vendor).spinnerFrames ?? DEFAULT_SPINNER_FRAMES,
+    ]),
+    ["<fallback>", DEFAULT_SPINNER_FRAMES],
+  ]
+  expect(sets.length).toBeGreaterThan(1)
+  for (const [vendor, frames] of sets) {
+    expect({ vendor, empty: frames.length === 0 }).toEqual({ vendor, empty: false })
     for (const glyph of frames) {
-      expect({ line, glyph, collides: settled.has(glyph) }).toEqual({ line, glyph, collides: false })
+      expect({ vendor, glyph, collides: settled.has(glyph) }).toEqual({ vendor, glyph, collides: false })
     }
   }
 })
@@ -105,7 +123,7 @@ test("no spinner frame collides with a settled-state badge glyph", () => {
 test("every row the matrix produces has a non-empty glyph and subtitle", () => {
   // A blank cell renders as a hole in the rail rather than a state, and the
   // golden would happily record the hole. Cheap structural floor under it.
-  for (const line of activityCrossProduct()) {
+  for (const line of CROSS_PRODUCT) {
     expect(line).toMatch(/ glyph=\S/)
     expect(line).toMatch(/ title=\S/)
     expect(line).toMatch(/ sub=\S/)

@@ -28,8 +28,39 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { dirname } from "node:path"
 import { fileURLToPath } from "node:url"
 
-/** Rewrite goldens from the current behavior instead of comparing against them. */
-export const UPDATE_GOLDEN = process.env.KOBE_UPDATE_GOLDEN === "1"
+/** The exact commands the golden headers tell a reader to run. Exported so the
+ *  instruction printed INTO each file is the real thing rather than a
+ *  placeholder someone has to translate. */
+export const REGENERATE_FAST = "KOBE_UPDATE_GOLDEN=1 bun run test:fast"
+export const REGENERATE_RENDER = "KOBE_UPDATE_GOLDEN=1 bun run test:render"
+
+/**
+ * Rewrite goldens from the current behavior instead of comparing against them.
+ *
+ * Refused under CI on purpose. The flag turns every comparison in the process
+ * into an unconditional pass, so an inherited `KOBE_UPDATE_GOLDEN=1` — left
+ * exported in a shell, carried by a re-used job env — would rewrite all 19
+ * committed fixtures from whatever the tree currently does and report the whole
+ * golden suite green. On a developer machine `git status` is the signal that
+ * happened; in CI there is no one reading it, so the mode simply does not
+ * exist there.
+ */
+const UPDATE_REQUESTED = process.env.KOBE_UPDATE_GOLDEN === "1"
+const IN_CI = process.env.CI === "true" || process.env.CI === "1" || process.env.GITHUB_ACTIONS === "true"
+export const UPDATE_GOLDEN = UPDATE_REQUESTED && !IN_CI
+
+if (UPDATE_REQUESTED && IN_CI) {
+  throw new Error(
+    "KOBE_UPDATE_GOLDEN=1 is set in CI. Golden update mode passes every comparison unconditionally, so honouring " +
+      "it here would turn the golden gate into a no-op that rewrites its own fixtures. Unset it.",
+  )
+}
+if (UPDATE_GOLDEN) {
+  // Loud, once per process: update mode is a green run that proves nothing.
+  console.warn(
+    "[golden] KOBE_UPDATE_GOLDEN=1 — REWRITING goldens; every golden test passes by construction. Review `git diff`.",
+  )
+}
 
 /** Resolve a golden path relative to the calling test file's own directory. */
 export function goldenPath(importMetaUrl: string, name: string): string {
@@ -80,7 +111,7 @@ export function matchGolden(absPath: string, actual: string): string | null {
       `    + ${actualLines[i] ?? "<missing>"}`,
     )
   }
-  report.push("  if this change is intended: KOBE_UPDATE_GOLDEN=1 <the same test command>, then review the diff")
+  report.push(`  if this change is intended: ${REGENERATE_FAST} (or ${REGENERATE_RENDER}), then review the diff`)
   return report.join("\n")
 }
 
@@ -94,11 +125,9 @@ export function matchGolden(absPath: string, actual: string): string | null {
 export function goldenDocument(
   header: string,
   blocks: ReadonlyArray<{ title: string; lines: readonly string[] }>,
+  regenerateCommand: string = REGENERATE_FAST,
 ): string {
-  const out: string[] = [
-    `# ${header}`,
-    "# GENERATED — do not hand-edit. Regenerate: KOBE_UPDATE_GOLDEN=1 <test command>",
-  ]
+  const out: string[] = [`# ${header}`, `# GENERATED — do not hand-edit. Regenerate: ${regenerateCommand}`]
   for (const block of blocks) {
     out.push("", `## ${block.title}`, ...block.lines)
   }

@@ -1,5 +1,5 @@
 # sidebar row state — buildSidebarRowView over its full input space
-# GENERATED — do not hand-edit. Regenerate: KOBE_UPDATE_GOLDEN=1 <test command>
+# GENERATED — do not hand-edit. Regenerate: KOBE_UPDATE_GOLDEN=1 bun run test:fast
 
 ## activity x completionSeen x job x deletion x vendor x transcript (full cross product)
 act=-                  seen=0 job=0 del=-        vendor=claude     tx=- | main=0 title=fix the sidebar  glyph=○   tone=textMuted   load=0 matz=0 sub=feat/sidebar

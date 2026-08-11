@@ -1,7 +1,7 @@
 # sidebar frame: tab-running
-# a live turn — the glyph cell animates, so it is masked; everything AROUND it is still locked
-# 30x22, spinner glyphs masked as ~
-# GENERATED — do not hand-edit. Regenerate: KOBE_UPDATE_GOLDEN=1 bun run test:render
+# 30x22, spinner cell masked as ~
+# GENERATED — do not hand-edit. Why this scene exists: see sidebar-scenes.tsx.
+# Regenerate: KOBE_UPDATE_GOLDEN=1 bun run test:render
 |                              |
 | KOBE                         |
 |                              |

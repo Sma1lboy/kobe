@@ -1,7 +1,7 @@
 # sidebar frame: worktree-pin-and-pr
-# worktree-level facts share one right-edge cluster: pin, PR check chip, jump digit
 # 30x22
-# GENERATED — do not hand-edit. Regenerate: KOBE_UPDATE_GOLDEN=1 bun run test:render
+# GENERATED — do not hand-edit. Why this scene exists: see sidebar-scenes.tsx.
+# Regenerate: KOBE_UPDATE_GOLDEN=1 bun run test:render
 |                              |
 | KOBE                         |
 |                              |

@@ -136,6 +136,24 @@ function row(inputs: readonly string[], view: SidebarRowView): string {
   return `${inputs.join(" ")} | ${cells.join(" ")}`
 }
 
+/**
+ * Whole-object equality for two row views, `spinnerFrames` array included.
+ * `RECORDED_FIELDS` is what the golden PRINTS; this is what it must be equal
+ * ON, and the two are deliberately not the same list.
+ */
+function sameView(a: SidebarRowView, b: SidebarRowView): boolean {
+  const keys = Object.keys(a) as Array<keyof SidebarRowView>
+  if (keys.length !== Object.keys(b).length) return false
+  return keys.every((key) => {
+    const left = a[key]
+    const right = b[key]
+    if (Array.isArray(left) && Array.isArray(right)) {
+      return left.length === right.length && left.every((item, i) => item === right[i])
+    }
+    return left === right
+  })
+}
+
 function build(opts: {
   task: Task
   activity?: TaskEngineState
@@ -274,7 +292,12 @@ export function spinnerBlock(): string[] {
         return frame
       })
       const direct = build({ task: task(), activity: activityOf(state), spinnerFrame: frame })
-      const sameAsDirect = RECORDED_FIELDS.every((field) => overlaid[field] === direct[field])
+      // EVERY key, not RECORDED_FIELDS — `spinnerFrames` is omitted from the
+      // row columns but is still part of the object, and an overlay that
+      // rebuilt it (rather than spreading) would hand a claude row the braille
+      // default while every recorded column still matched. The deleted
+      // `expect(out).toEqual(direct)` covered exactly this.
+      const sameAsDirect = sameView(overlaid, direct)
       lines.push(
         `${pad(`act=${state ?? "-"}`, 22)} ${pad(`frame=${frame}`, 10)} overlay: base=${base.stateGlyph} after=${
           overlaid.stateGlyph

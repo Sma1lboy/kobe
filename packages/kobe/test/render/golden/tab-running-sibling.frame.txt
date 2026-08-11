@@ -1,7 +1,7 @@
 # sidebar frame: tab-running-sibling
-# work in a NON-active tab must light THAT row and leave the active one alone (the borrowed-spinner bug)
-# 30x22, spinner glyphs masked as ~
-# GENERATED — do not hand-edit. Regenerate: KOBE_UPDATE_GOLDEN=1 bun run test:render
+# 30x22, spinner cell masked as ~
+# GENERATED — do not hand-edit. Why this scene exists: see sidebar-scenes.tsx.
+# Regenerate: KOBE_UPDATE_GOLDEN=1 bun run test:render
 |                              |
 | KOBE                         |
 |                              |

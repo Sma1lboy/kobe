@@ -1,7 +1,7 @@
 # sidebar frame: move-mode
-# project reorder mode — the chip says so and j/k drag instead of walking
 # 30x22
-# GENERATED — do not hand-edit. Regenerate: KOBE_UPDATE_GOLDEN=1 bun run test:render
+# GENERATED — do not hand-edit. Why this scene exists: see sidebar-scenes.tsx.
+# Regenerate: KOBE_UPDATE_GOLDEN=1 bun run test:render
 |                              |
 | KOBE                         |
 |                              |

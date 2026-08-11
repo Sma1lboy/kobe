@@ -1,7 +1,7 @@
 # sidebar frame: search-tab-title
-# the query reaches a live TAB title and drags its worktree along — the tree's own increment
 # 30x22, keys: / review
-# GENERATED — do not hand-edit. Regenerate: KOBE_UPDATE_GOLDEN=1 bun run test:render
+# GENERATED — do not hand-edit. Why this scene exists: see sidebar-scenes.tsx.
+# Regenerate: KOBE_UPDATE_GOLDEN=1 bun run test:render
 |                              |
 | KOBE                         |
 |                              |
