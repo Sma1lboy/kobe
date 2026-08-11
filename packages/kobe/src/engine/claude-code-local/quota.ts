@@ -16,7 +16,7 @@
  */
 
 import { readFile } from "node:fs/promises"
-import { homedir } from "node:os"
+import { homedir, userInfo } from "node:os"
 import path from "node:path"
 import { spawnCapture } from "../../lib/poll-scheduling.ts"
 import type { EngineQuotaUsage, EngineQuotaWindow } from "../../types/engine.ts"
@@ -135,10 +135,21 @@ async function readKeychainCredentials(): Promise<OAuthCredentials | null> {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 3000)
   try {
-    const result = await spawnCapture("security", ["find-generic-password", "-s", KEYCHAIN_SERVICE, "-w"], {
-      cwd: homedir(),
-      signal: controller.signal,
-    })
+    // `-a` is load-bearing, not decoration: a machine can carry SEVERAL
+    // items under this one service name (a stale `acct=unknown` row from an
+    // older CLI alongside today's login). Querying by service alone returns
+    // whichever `security` scans first — for the owner that was a token
+    // expired two weeks earlier, so the usage dashboard stayed empty through
+    // repeated re-logins. The CLI itself always pairs `-a $USER` with `-s`
+    // (refs/claude-code `macOsKeychainStorage.ts`); mirror it exactly.
+    const result = await spawnCapture(
+      "security",
+      ["find-generic-password", "-a", userInfo().username, "-w", "-s", KEYCHAIN_SERVICE],
+      {
+        cwd: homedir(),
+        signal: controller.signal,
+      },
+    )
     return result.status === 0 ? parseCredentials(result.stdout.trim()) : null
   } finally {
     clearTimeout(timeout)

@@ -1,5 +1,12 @@
-import { describe, expect, it } from "vitest"
+import { userInfo } from "node:os"
+import { describe, expect, it, vi } from "vitest"
 import { parseResetsAtMs, usageFromClaudePayload } from "../../src/engine/claude-code-local/quota.ts"
+
+const spawnCapture = vi.hoisted(() => vi.fn())
+vi.mock("../../src/lib/poll-scheduling.ts", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../src/lib/poll-scheduling.ts")>()),
+  spawnCapture,
+}))
 
 const NOW = Date.parse("2026-07-27T12:00:00.000Z")
 const IN_1H = NOW + 60 * 60 * 1000
@@ -66,5 +73,23 @@ describe("usageFromClaudePayload", () => {
 
   it("returns an empty window list for an empty payload", () => {
     expect(usageFromClaudePayload({}, NOW).windows).toEqual([])
+  })
+})
+
+describe("fetchClaudeQuotaUsage keychain lookup", () => {
+  // The owner's machine carried TWO items under this service name: a stale
+  // `acct=unknown` row and today's login. Looking the item up by service
+  // alone returned the stale one, so the dashboard stayed empty through
+  // repeated re-logins. Pin the account flag the CLI itself passes.
+  it("queries the keychain by account as well as service", async () => {
+    spawnCapture.mockResolvedValue({ status: 1, stdout: "", stderr: "" })
+    const { fetchClaudeQuotaUsage } = await import("../../src/engine/claude-code-local/quota.ts")
+
+    expect(await fetchClaudeQuotaUsage()).toBeNull()
+
+    const args = spawnCapture.mock.calls[0]?.[1] as string[]
+    expect(args).toContain("-a")
+    expect(args[args.indexOf("-a") + 1]).toBe(userInfo().username)
+    expect(args[args.indexOf("-s") + 1]).toBe("Claude Code-credentials")
   })
 })
