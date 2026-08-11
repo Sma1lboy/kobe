@@ -9,7 +9,7 @@ import { DEFAULT_SPINNER_FRAMES } from "../../engine/spinner-frames"
 import { relativeAgeMs } from "../../tui/history/message-core"
 import { spinnerFrameSnapshot, subscribeSpinnerFrame } from "../../tui/lib/spinner-frame-store"
 import { sidebarProjectLabel } from "../../tui/panes/sidebar/groups"
-import { tabTitle } from "../../tui/workspace/terminal-tabs-core"
+import { tabTitleStable } from "../../tui/workspace/terminal-tabs-core"
 import type { Task } from "../../types/task"
 import { DEFAULT_TASK_VENDOR } from "../../types/task"
 import { bindByIds } from "../context/keybindings"
@@ -57,10 +57,20 @@ function itemStateKey(state: AttentionInboxItem["state"]): string {
   return "workspace.inbox.state.error"
 }
 
-/** Engine-registry tab title for a (task, tab) pair — "" when unknown. */
+/**
+ * Engine-registry tab title for a (task, tab) pair — "" when unknown.
+ *
+ * `tabTitleStable`, NOT `tabTitle`: the Inbox renders tabs it does not host,
+ * so raw `tabTitle` falls back to `lastTitle` — a FROZEN status line from
+ * whenever a status-owning engine last reported ("✳ Claude Code", a stale
+ * turn summary), which matches nothing the sidebar or tab strip shows. Same
+ * rule (and rationale) as the sidebar tree's rows. A recorded tab that no
+ * longer exists yields "" so the card falls back to task-level identity
+ * instead of a raw `tab-N` id.
+ */
 function taskTabLabel(taskId: string, tabId: string | null, task: Task | undefined, kv: KVContext): string {
   const tab = tabId ? knownTaskTab(kv, taskId, tabId) : undefined
-  return tab ? tabTitle(tab, task?.vendor ?? DEFAULT_TASK_VENDOR) : (tabId ?? "")
+  return tab ? tabTitleStable(tab, task?.vendor ?? DEFAULT_TASK_VENDOR) : ""
 }
 
 function tabLabel(
