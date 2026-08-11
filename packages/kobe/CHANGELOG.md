@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.69
+
+### Patch Changes
+
+- 2ddfca9: Keep the footer hint row (`⌃ A commands · F1 help · [settings]`) on screen while a dialog is open. Opening help with F1 used to blank the whole row, because reachability is computed against a stack that a modal barrier cuts short. The row now freezes its last non-modal captions and goes inert (clicks do nothing) until the dialog closes.
+- 9ae8fba: Color the workspace footer's quota percentages by tone, matching the Settings usage dashboard: green under 75%, yellow from 75%, red from 95%. Window labels and reset times stay muted so the number is the only thing that draws the eye.
+- d8923ad: `kobe api notify` is now discoverable: listed in the agent skill (SKILL v12) and grouped under `drive` in the schema index instead of falling through to `other` — agents can find the toast channel without spelunking the full spec.
+- 7f4ed74: Document tab addressing in the kobe agent skill (v13): `send --tab tab-N`/`--tab new` existed in the API but the skill never mentioned it, and `kobe api inspect` is now called out as the way to enumerate a task's chat tabs before targeting one.
+
 ## 0.8.68
 
 ### Patch Changes
