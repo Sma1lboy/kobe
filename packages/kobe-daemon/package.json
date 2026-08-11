@@ -42,6 +42,7 @@
     "./daemon/pty-driver": "./src/daemon/pty-driver.ts",
     "./daemon/pty-env": "./src/daemon/pty-env.js",
     "./daemon/pty-host": "./src/daemon/pty-host.ts",
+    "./daemon/pty-live-hold": "./src/daemon/pty-live-hold.ts",
     "./daemon/pty-observability": "./src/daemon/pty-observability.ts",
     "./daemon/pty-server": "./src/daemon/pty-server.ts",
     "./daemon/pty-termination": "./src/daemon/pty-termination.ts",

@@ -205,3 +205,23 @@ export async function sweepPtyHostSessions(liveTaskIds: readonly string[], homeD
     client.close()
   }
 }
+
+/**
+ * Does the pty host still own a live (child not yet exited) session? The
+ * daemon's `PtyLiveHold` keep-alive probe. NEVER spawns a host and never
+ * throws: unreachable means no sessions worth staying up for. Same homeDir
+ * contract as `sweepPtyHostSessions` above — a temp-home daemon must probe
+ * its own pty host, not the real user's.
+ */
+export async function ptyHostHasLiveSessions(homeDir?: string): Promise<boolean> {
+  const client = new KobeDaemonClient(defaultPtyHostSocketPath(homeDir))
+  try {
+    await client.connect()
+    const result = await client.request<{ sessions?: Array<{ alive?: boolean }> }>("pty.list")
+    return result.sessions?.some((s) => s.alive === true) ?? false
+  } catch {
+    return false
+  } finally {
+    client.close()
+  }
+}

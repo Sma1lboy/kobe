@@ -16,7 +16,8 @@ import { mkdir, readFile, unlink, writeFile } from "node:fs/promises"
 import { type Server, createServer } from "node:net"
 import { dirname } from "node:path"
 import { StringDecoder } from "node:string_decoder"
-import { sweepPtyHostSessions } from "../client/pty-process.ts"
+import { probeDaemonSocket } from "../client/daemon-process.ts"
+import { ptyHostHasLiveSessions, sweepPtyHostSessions } from "../client/pty-process.ts"
 import { maybeStartPluginHost } from "../plugins/runtime.ts"
 import { readActivityLiveness } from "./activity-liveness.ts"
 import { type ActivityLivenessProbe, DaemonActivityRegistry } from "./activity-registry.ts"
@@ -48,6 +49,7 @@ import { NotesStore, defaultNotesStorePath } from "./notes-store.ts"
 import { defaultDaemonPidPath, defaultDaemonSocketPath } from "./paths.ts"
 import { PromptBroker } from "./prompt-broker.ts"
 import { type DaemonFrame, normalizeChannelFilter, serializeTask } from "./protocol.ts"
+import { PtyLiveHold } from "./pty-live-hold.ts"
 import { QuotaUsageCache } from "./quota-usage-cache.ts"
 import type { DaemonRuntimeAdapter } from "./runtime.ts"
 import { handleSubscribe } from "./subscribe.ts"
@@ -150,13 +152,19 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
     // Autospawned daemons (connectOrStartDaemon's spawn stamps the env
     // flag) reap themselves if no gui EVER attaches — the zombie hole.
     ...(process.env.KOBE_DAEMON_AUTOSPAWNED === "1" ? { firstGuiGraceMs: FIRST_GUI_GRACE_MS } : {}),
-    // An enabled schedule keeps the daemon alive with no gui attached — a
-    // schedule that only fires while someone is watching is not a schedule.
-    // Read lazily: the store is constructed below, and this is polled at
-    // shutdown time rather than captured now.
-    keepAlive: () => automations.hasEnabled(),
+    // Non-gui reasons to stay alive, both read lazily (constructed below,
+    // polled at shutdown-decision time): an enabled schedule — one that only
+    // fires while someone is watching is not a schedule — and a live hosted
+    // PTY session (see pty-live-hold.ts: idle-stopping while engines run
+    // drops their hook events and blanks the activity dots).
+    keepAlive: () => automations.hasEnabled() || ptyHold.isHeld(),
     onIdleStop: () => void stopSoon().catch((err) => logDaemonError("daemon-idle-shutdown", err)),
   })
+  const ptyHold = new PtyLiveHold({
+    probe: () => ptyHostHasLiveSessions(options.homeDir),
+    onRelease: () => lifetime.reevaluateIdle(),
+  })
+  ptyHold.start()
 
   // Channel event bus: the single hub the daemon publishes push
   // events to. One sink fans each publish out to subscribed sockets; the
@@ -199,6 +207,15 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
 
   await mkdir(dirname(socketPath), { recursive: true })
   await mkdir(dirname(pidPath), { recursive: true })
+  // Never steal a live daemon's socket: an unconditional unlink here let an
+  // autospawned daemon usurp the path while the incumbent kept serving its
+  // attached clients — hooks and TUI split across two daemons, activity
+  // badges gone (prod 2026-08-10). Only a dead ("absent") or hung ("wedged",
+  // connects but won't answer hello — replaceable, same recoverability the
+  // unconditional unlink provided) socket may be cleared.
+  if ((await probeDaemonSocket(socketPath)) === "alive") {
+    throw new Error(`kobe daemon: another daemon is already serving ${socketPath} — refusing to replace it`)
+  }
   await unlink(socketPath).catch(() => {})
 
   const server: Server = createServer((socket) => {
@@ -235,7 +252,9 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
       // Last GUI gone → start the grace timer toward self-stop. Only a
       // `holdsLifetime` (role "gui") client arms it: a helper pane or a
       // transient CLI poke leaves the gui count unchanged, so neither trips
-      // shutdown when it disconnects.
+      // shutdown when it disconnects. Refresh the pty hold first so the
+      // grace recheck reads live-session truth, not a poll-stale cache.
+      if (client.holdsLifetime) void ptyHold.probeSoon()
       lifetime.clientDisconnected(client.holdsLifetime)
     })
   })
@@ -319,6 +338,7 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
       webServer?.close()
       webServer = null
       stopCollectors()
+      ptyHold.stop()
       pluginHost?.stop()
       prompts.clear()
       activity.close()
@@ -431,6 +451,7 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
               "conn",
               `web client disconnected — ${clients.size + webClients.size} client(s), ${lifetime.guiCount()} gui left`,
             )
+            void ptyHold.probeSoon()
             lifetime.clientDisconnected(true)
           }
         },

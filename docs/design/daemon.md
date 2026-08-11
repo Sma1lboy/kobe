@@ -177,7 +177,11 @@ TUI may show any task at any time.
 > launch and **refcounted-lazily self-stops** once the last attached GUI
 > disconnects (grace `KOBE_DAEMON_IDLE_GRACE_MS`, default 3s). Shutdown
 > never tears down Hosted PTY sessions: their child processes belong to the
-> standalone PTY Host, which survives daemon restarts. This is the live behavior
+> standalone PTY Host, which survives daemon restarts. Two non-gui holds defer
+> the idle-stop: an enabled scheduled automation, and a **live Hosted PTY
+> session** (`pty-live-hold.ts`) — the daemon is the sole collector of engine
+> hook events, and hooks never spawn a daemon, so idle-stopping while engines
+> run would drop their events and blank the activity dots. This is the live behavior
 > — there is no separate AGENTS.md section for it; CLAUDE.md's own "Daemon" bullet
 > summarizes it and points back to this doc.
 
