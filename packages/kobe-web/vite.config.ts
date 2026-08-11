@@ -8,7 +8,7 @@ import { configDefaults } from "vitest/config"
 
 // The daemon binds browser-facing HTTP/SSE routes on a sibling port. Vite
 // proxies those routes so the browser sees one origin during development.
-const daemonWebPort = process.env.KOBE_DAEMON_WEB_PORT ?? "5174"
+const daemonWebPort = process.env.KOBE_DAEMON_WEB_PORT ?? "45174"
 const daemonWebTarget = `http://localhost:${daemonWebPort}`
 // The PTY terminal lives in a separate node process (node-pty doesn't work
 // under bun). Proxy its WebSocket here so the browser stays single-origin.

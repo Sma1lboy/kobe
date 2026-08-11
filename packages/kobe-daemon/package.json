@@ -11,6 +11,7 @@
     "./client/daemon-process": "./src/client/daemon-process.ts",
     "./client/pty-process": "./src/client/pty-process.ts",
     "./client/rpc": "./src/client/rpc.ts",
+    "./daemon/activity-liveness": "./src/daemon/activity-liveness.ts",
     "./daemon/activity-registry": "./src/daemon/activity-registry.ts",
     "./daemon/attention-inbox": "./src/daemon/attention-inbox.ts",
     "./daemon/automations-store": "./src/daemon/automations-store.ts",

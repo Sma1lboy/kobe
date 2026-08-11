@@ -6,7 +6,7 @@
  * directly; this command only ensures the daemon is reachable and starts the
  * PTY sidecar.
  *
- *   kobe web                 serve the built SPA on :5174
+ *   kobe web                 serve the built SPA on the default web port
  *   kobe web --port 5180     bind a different port
  *   kobe web --routes-only   start only the daemon web routes
  *   kobe web --no-takeover   fail instead of replacing a prior kobe-web
@@ -18,6 +18,7 @@ import { resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { errorMessage } from "@/lib/error-message"
 import { ensureDaemonReachable } from "@sma1lboy/kobe-daemon/client/daemon-process"
+import { DEFAULT_DAEMON_WEB_PORT } from "@sma1lboy/kobe-daemon/daemon/paths"
 
 const DAEMON_WEB_HEALTH_MARKER = "kobe-web"
 const DAEMON_WEB_HEALTH_PATH = "/__kobe_web"
@@ -37,7 +38,7 @@ const USAGE = `Usage: kobe web [options]
 Launch the kobe web UI through daemon web transport on http://localhost:<port>.
 
 Options:
-  --port <n>        Daemon web transport port (default 5174).
+  --port <n>        Daemon web transport port (default ${DEFAULT_DAEMON_WEB_PORT}).
   --routes-only     Routes only; Vite serves the SPA separately.
   --no-takeover     Reserved for compatibility; daemon owns the web port.
   -h, --help        Show this help.
@@ -176,7 +177,7 @@ export async function runWebSubcommand(args: readonly string[]): Promise<void> {
   const { enforceResetGate } = await import("./reset-gate.ts")
   enforceResetGate()
 
-  let port = 5174
+  let port = DEFAULT_DAEMON_WEB_PORT
   const portIdx = args.indexOf("--port")
   if (portIdx !== -1) {
     const value = Number.parseInt(args[portIdx + 1] ?? "", 10)

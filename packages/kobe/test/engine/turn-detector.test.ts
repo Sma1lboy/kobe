@@ -121,6 +121,33 @@ describe("ClaudeTurnDetector mtime gating", () => {
   })
 })
 
+describe("ClaudeTurnDetector latestActivityInFile", () => {
+  const record = (ts: string) =>
+    JSON.stringify({ type: "assistant", timestamp: ts, message: { role: "assistant", content: [] } })
+
+  test("reads ONLY the given transcript — never the worktree listing", async () => {
+    const detector = new ClaudeTurnDetector({
+      listSessionFiles: async () => {
+        throw new Error("worktree scan must not run for a session-scoped probe")
+      },
+      readFile: async () => record("2026-05-29T01:00:04.000Z"),
+      statMtimeMs: async () => 1234,
+    })
+    const scan = await detector.latestActivityInFile("/p/own.jsonl")
+    expect(scan?.mtimeMs).toBe(1234)
+    expect(scan?.marker?.id).toContain("/p/own.jsonl")
+  })
+
+  test("null (fall back to the worktree scan) when the transcript is gone", async () => {
+    const detector = new ClaudeTurnDetector({
+      listSessionFiles: async () => [],
+      readFile: async () => "",
+      statMtimeMs: async () => 0,
+    })
+    expect(await detector.latestActivityInFile("/p/gone.jsonl")).toBeNull()
+  })
+})
+
 describe("CodexTurnDetector mtime gating", () => {
   test("skips re-reading the matched rollout when its mtime is unchanged", async () => {
     const reads: string[] = []

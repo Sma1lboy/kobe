@@ -18,7 +18,7 @@ sidecar stays as a Node adapter.
 flowchart LR
   Browser["Browser SPA<br/>(React + TanStack Router)<br/>:5173"]
   Vite["Vite dev server<br/>:5173 (dev only)"]
-  Web["Daemon web transport<br/>packages/kobe-daemon/src/daemon/web-server.ts<br/>:5174"]
+  Web["Daemon web transport<br/>packages/kobe-daemon/src/daemon/web-server.ts<br/>:45174"]
   PTY["PTY sidecar (node)<br/>pty-server.mjs<br/>:5175"]
   Daemon["kobe daemon<br/>(task index + event bus)"]
   Engine["claude / codex<br/>(in the worktree)"]

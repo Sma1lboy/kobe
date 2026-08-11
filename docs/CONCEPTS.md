@@ -138,7 +138,7 @@ on that machine, so closing your laptop kills nothing. SSH back in, run
 connection back to your local terminal.
 
 **The web dashboard as a second screen.** `kobe web` serves a local dashboard
-(default `http://localhost:5174`) backed by the same daemon, so the TUI and
+(default `http://localhost:45174`) backed by the same daemon, so the TUI and
 the browser always agree.
 
 ## Glossary

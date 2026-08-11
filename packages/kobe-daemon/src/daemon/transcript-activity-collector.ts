@@ -307,6 +307,7 @@ export class TranscriptActivityCollector {
     return (
       this.options.createDetector?.(vendor) ?? {
         latestActivity: async () => ({ marker: null, mtimeMs: 0 }),
+        latestActivityInFile: async () => null,
         supportsCompletionMarkers: () => false,
       }
     )

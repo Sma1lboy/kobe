@@ -1,3 +1,4 @@
+import { readActivityLiveness } from "@sma1lboy/kobe-daemon/daemon/activity-liveness"
 import {
   type ActivityLivenessProbe,
   DaemonActivityRegistry,
@@ -98,6 +99,21 @@ describe("activity registry liveness watchdog", () => {
     expect(states.t).toEqual(["running"])
   })
 
+  it("probes with the policed entry's OWN session transcript (not just task+vendor)", async () => {
+    // Several tabs share one worktree; a worktree-scoped probe read a
+    // sibling's Stop as "this turn ended". The registry must hand the probe
+    // the entry's own transcript so it can scope to THIS session.
+    const probe: ActivityLivenessProbe = vi.fn(() => Promise.resolve({ mtimeMs: Date.now() }))
+    registry = new DaemonActivityRegistry(bus, TTL, () => Date.now(), probe)
+
+    registry.report("t", "turn-start", undefined, "tab-1", { id: "s1", transcriptPath: "/tp/s1.jsonl" }, "claude")
+    await vi.advanceTimersByTimeAsync(TTL)
+
+    // Both watchdogs (task-level and tab-level) probe with the same lineage.
+    expect(probe).toHaveBeenCalledWith("t", "claude", "/tp/s1.jsonl")
+    expect(vi.mocked(probe).mock.calls.every((call) => call[2] === "/tp/s1.jsonl")).toBe(true)
+  })
+
   it("lapses to idle when the transcript has not advanced within the window", async () => {
     // Probe reports an mtime stuck at the report instant (epoch 0) — outside
     // the trailing window once the timer fires at TTL.
@@ -160,11 +176,11 @@ describe("activity registry liveness watchdog", () => {
     registry.report("t", "turn-start", undefined, "tab-1", undefined, "claude")
     await vi.advanceTimersByTimeAsync(TTL)
 
-    expect(probe).toHaveBeenCalledWith("t", "claude")
+    expect(probe).toHaveBeenCalledWith("t", "claude", undefined)
     // Carried forward: a later event without the tag keeps the known vendor.
     registry.report("t", "turn-start")
     await vi.advanceTimersByTimeAsync(TTL)
-    expect(probe).toHaveBeenLastCalledWith("t", "claude")
+    expect(probe).toHaveBeenLastCalledWith("t", "claude", undefined)
   })
 
   it("falls back to lapsing when the probe throws (no crash)", async () => {
@@ -251,5 +267,55 @@ describe("activity registry liveness watchdog", () => {
 
     // clearTask published idle; the resolved probe must NOT publish a second.
     expect(states.t).toEqual(["running", "idle"])
+  })
+})
+
+/**
+ * `readActivityLiveness` session scoping: several tabs share one worktree
+ * (the kobe main task runs many tabs in one checkout), so the worktree-wide
+ * completion scan read a SIBLING's Stop as "this turn ended" and idled a
+ * genuinely mid-turn engine at the TTL. With the hook-piped transcript path
+ * the probe must ask that one session; a vanished file falls back to the
+ * worktree scan.
+ */
+describe("readActivityLiveness session scoping", () => {
+  const orch = { getTask: () => ({ worktreePath: "/wt" }) }
+  const runtimeWith = (detector: Record<string, unknown>) =>
+    ({
+      defaultTaskVendor: "claude",
+      latestTranscriptMtime: async () => 0,
+      createEngineTurnDetector: () => ({ supportsCompletionMarkers: () => true, ...detector }),
+    }) as unknown as Parameters<typeof readActivityLiveness>[1]
+
+  it("prefers the reporting session's own transcript over the worktree scan", async () => {
+    const runtime = runtimeWith({
+      latestActivity: async () => ({ marker: { id: "sibling", timestampMs: 999 }, mtimeMs: 999 }),
+      latestActivityInFile: async () => ({ marker: { id: "own", timestampMs: 5 }, mtimeMs: 7 }),
+    })
+    await expect(readActivityLiveness(orch, runtime, "t", "claude", "/tp/s1.jsonl")).resolves.toEqual({
+      mtimeMs: 7,
+      completedAt: 5,
+    })
+  })
+
+  it("falls back to the worktree scan when the session transcript is gone", async () => {
+    const runtime = runtimeWith({
+      latestActivity: async () => ({ marker: { id: "wide", timestampMs: 999 }, mtimeMs: 1000 }),
+      latestActivityInFile: async () => null,
+    })
+    await expect(readActivityLiveness(orch, runtime, "t", "claude", "/tp/gone.jsonl")).resolves.toEqual({
+      mtimeMs: 1000,
+      completedAt: 999,
+    })
+  })
+
+  it("scans the worktree when no transcript path was reported", async () => {
+    const latestActivityInFile = vi.fn()
+    const runtime = runtimeWith({
+      latestActivity: async () => ({ marker: null, mtimeMs: 42 }),
+      latestActivityInFile,
+    })
+    await expect(readActivityLiveness(orch, runtime, "t", "claude")).resolves.toEqual({ mtimeMs: 42 })
+    expect(latestActivityInFile).not.toHaveBeenCalled()
   })
 })

@@ -97,13 +97,13 @@ describe("runWebSubcommand", () => {
   it("fails with exit 1 when the daemon web transport does not answer the health probe", async () => {
     fetchMock.mockRejectedValue(new Error("connect ECONNREFUSED"))
     await expect(runWebSubcommand(["--routes-only"])).rejects.toThrow("exit 1")
-    expect(err()).toContain("daemon web transport is not reachable on :5174")
+    expect(err()).toContain("daemon web transport is not reachable on :45174")
     expect(err()).toContain("kobe daemon restart")
   })
 
   it("fails with exit 1 on an unexpected health marker (non-kobe service on the port)", async () => {
     fetchMock.mockResolvedValue({ ok: true, text: () => Promise.resolve("something-else") })
     await expect(runWebSubcommand(["--routes-only"])).rejects.toThrow("exit 1")
-    expect(err()).toContain("unexpected daemon web health marker on :5174: something-else")
+    expect(err()).toContain("unexpected daemon web health marker on :45174: something-else")
   })
 })

@@ -124,6 +124,16 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
   const socketPath = options.socketPath ?? defaultDaemonSocketPath(options.homeDir)
   const pidPath = options.pidPath ?? defaultDaemonPidPath(options.homeDir)
   const startedAt = options.startedAt ?? new Date()
+  // Never steal a live daemon's socket: an unconditional pre-bind unlink let
+  // an autospawned daemon usurp the path while the incumbent kept serving its
+  // attached clients — hooks and TUI split across two daemons, activity
+  // badges gone (prod 2026-08-10). Probed FIRST so a refused boot constructs
+  // nothing. A dead ("absent") or hung ("wedged", connects but won't answer
+  // hello — replaceable, same recoverability the unconditional unlink
+  // provided) socket may still be cleared below.
+  if ((await probeDaemonSocket(socketPath)) === "alive") {
+    throw new Error(`kobe daemon: another daemon is already serving ${socketPath} — refusing to replace it`)
+  }
   const clients = new Set<ClientState>()
   const webClients = new Set<{ subscribed: boolean; holdsLifetime: boolean }>()
   let nextClientId = 1
@@ -178,7 +188,8 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
 
   // Liveness probe for the activity lapse watchdog — see activity-liveness.ts
   // for why it reads a completion marker and not just the transcript mtime.
-  const livenessAt: ActivityLivenessProbe = (taskId, vendor) => readActivityLiveness(orch, runtime, taskId, vendor)
+  const livenessAt: ActivityLivenessProbe = (taskId, vendor, transcriptPath) =>
+    readActivityLiveness(orch, runtime, taskId, vendor, transcriptPath)
   const activity = new DaemonActivityRegistry(bus, undefined, undefined, livenessAt)
   const inbox = new AttentionInboxStore(defaultAttentionInboxPath(options.homeDir), bus)
   await inbox.init().catch((err) => logDaemonError("attention-inbox-init", err))
@@ -207,15 +218,7 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
 
   await mkdir(dirname(socketPath), { recursive: true })
   await mkdir(dirname(pidPath), { recursive: true })
-  // Never steal a live daemon's socket: an unconditional unlink here let an
-  // autospawned daemon usurp the path while the incumbent kept serving its
-  // attached clients — hooks and TUI split across two daemons, activity
-  // badges gone (prod 2026-08-10). Only a dead ("absent") or hung ("wedged",
-  // connects but won't answer hello — replaceable, same recoverability the
-  // unconditional unlink provided) socket may be cleared.
-  if ((await probeDaemonSocket(socketPath)) === "alive") {
-    throw new Error(`kobe daemon: another daemon is already serving ${socketPath} — refusing to replace it`)
-  }
+  // Stale leftover only — a live owner was refused at the top of this boot.
   await unlink(socketPath).catch(() => {})
 
   const server: Server = createServer((socket) => {

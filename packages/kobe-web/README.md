@@ -12,7 +12,7 @@ daemon down — so the dashboard is split into three cooperating processes:
 
 - **SPA** — React + TanStack Router, served by Vite in dev (`:5173`).
 - **Daemon web transport** — loopback HTTP/SSE routes hosted by the kobe daemon
-  (`:5174` by default for `kobe web`).
+  (`:45174` by default for `kobe web`).
 - **PTY sidecar** (`pty-server.mjs`) — a node process (`:5175`) running each
   engine/terminal tab's PTY.
 
@@ -48,7 +48,7 @@ installed packages can run `kobe web`, which serves the built SPA through the
 daemon web transport and spawns the PTY sidecar on `port + 2`:
 
 ```bash
-kobe web                 # http://localhost:5174
+kobe web                 # http://localhost:45174
 kobe web --port 5180
 ```
 

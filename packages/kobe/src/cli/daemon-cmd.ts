@@ -12,7 +12,12 @@ import { connectOrStartDaemon } from "@sma1lboy/kobe-daemon/client/daemon-proces
 import { installDaemonCrashHandlers } from "@sma1lboy/kobe-daemon/daemon/crash-log"
 import { stopDaemonProcess } from "@sma1lboy/kobe-daemon/daemon/lifecycle"
 import { rotateLogIfNeeded } from "@sma1lboy/kobe-daemon/daemon/log-rotate"
-import { defaultDaemonLogPath, defaultDaemonPidPath, defaultDaemonSocketPath } from "@sma1lboy/kobe-daemon/daemon/paths"
+import {
+  DEFAULT_DAEMON_WEB_PORT,
+  defaultDaemonLogPath,
+  defaultDaemonPidPath,
+  defaultDaemonSocketPath,
+} from "@sma1lboy/kobe-daemon/daemon/paths"
 import { readPidFile, startDaemonServer } from "@sma1lboy/kobe-daemon/daemon/server"
 import { daemonRuntime } from "../core/daemon-runtime.ts"
 import { createKobeCore } from "../core/index.ts"
@@ -35,8 +40,8 @@ function printDaemonUsage(out: Pick<typeof process.stderr, "write">): void {
 function resolveDaemonWebPort(): number | undefined {
   const raw = process.env.KOBE_DAEMON_WEB_PORT?.trim()
   if (raw === "0" || raw === "off" || raw === "false") return undefined
-  const value = raw ? Number.parseInt(raw, 10) : 5174
-  return Number.isFinite(value) && value > 0 ? value : 5174
+  const value = raw ? Number.parseInt(raw, 10) : DEFAULT_DAEMON_WEB_PORT
+  return Number.isFinite(value) && value > 0 ? value : DEFAULT_DAEMON_WEB_PORT
 }
 
 export async function runDaemonSubcommand(argv: readonly string[]): Promise<void> {

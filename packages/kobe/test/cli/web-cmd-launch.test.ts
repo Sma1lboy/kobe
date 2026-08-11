@@ -175,13 +175,13 @@ describe("runWebSubcommand full launch", () => {
   it("prints the production home label when KOBE_HOME_DIR is unset", async () => {
     Reflect.deleteProperty(process.env, "KOBE_HOME_DIR")
     routeFetch({
-      "127.0.0.1:5174/__kobe_web": { body: "kobe-web" },
-      "127.0.0.1:5174/": { ok: true },
-      "localhost:5176/__kobe_web": new Error("ECONNREFUSED"), // free PTY port → takeover no-ops
+      "127.0.0.1:45174/__kobe_web": { body: "kobe-web" },
+      "127.0.0.1:45174/": { ok: true },
+      "localhost:45176/__kobe_web": new Error("ECONNREFUSED"), // free PTY port → takeover no-ops
     })
     void runWebSubcommand([])
     await vi.waitFor(() => {
-      expect(out()).toContain("kobe web → http://localhost:5174")
+      expect(out()).toContain("kobe web → http://localhost:45174")
     })
     expect(out()).toContain(".kobe (production)")
     // Nothing listening on the PTY port → no lsof scan, no kills.
@@ -191,30 +191,30 @@ describe("runWebSubcommand full launch", () => {
 
   it("refuses to replace a non-kobe service on the PTY port (exit 1)", async () => {
     routeFetch({
-      "127.0.0.1:5174/__kobe_web": { body: "kobe-web" },
-      "127.0.0.1:5174/": { ok: true },
-      "localhost:5176/__kobe_web": { body: "totally-not-kobe" },
+      "127.0.0.1:45174/__kobe_web": { body: "kobe-web" },
+      "127.0.0.1:45174/": { ok: true },
+      "localhost:45176/__kobe_web": { body: "totally-not-kobe" },
     })
     await expect(runWebSubcommand([])).rejects.toThrow("exit 1")
-    expect(err()).toContain("PTY port 5176 is in use by a non-kobe service")
+    expect(err()).toContain("PTY port 45176 is in use by a non-kobe service")
   })
 
   it("--no-takeover never probes the PTY port", async () => {
     routeFetch({
-      "127.0.0.1:5174/__kobe_web": { body: "kobe-web" },
-      "127.0.0.1:5174/": { ok: true },
+      "127.0.0.1:45174/__kobe_web": { body: "kobe-web" },
+      "127.0.0.1:45174/": { ok: true },
     })
     void runWebSubcommand(["--no-takeover"])
     await vi.waitFor(() => {
-      expect(out()).toContain("kobe web → http://localhost:5174")
+      expect(out()).toContain("kobe web → http://localhost:45174")
     })
-    expect(fetchMock.mock.calls.map((c) => String(c[0]))).not.toContain("http://localhost:5176/__kobe_web")
+    expect(fetchMock.mock.calls.map((c) => String(c[0]))).not.toContain("http://localhost:45176/__kobe_web")
   })
 
   it("fails with exit 1 when the daemon is up but not serving web assets", async () => {
     routeFetch({
-      "127.0.0.1:5174/__kobe_web": { body: "kobe-web" },
-      "127.0.0.1:5174/": { ok: false },
+      "127.0.0.1:45174/__kobe_web": { body: "kobe-web" },
+      "127.0.0.1:45174/": { ok: false },
     })
     await expect(runWebSubcommand([])).rejects.toThrow("exit 1")
     expect(err()).toContain("not serving web assets")
@@ -224,22 +224,22 @@ describe("runWebSubcommand full launch", () => {
     // SPA dist exists, pty-server.mjs does not.
     mocks.existsSync.mockImplementation((p: string) => !p.endsWith("pty-server.mjs"))
     routeFetch({
-      "127.0.0.1:5174/__kobe_web": { body: "kobe-web" },
-      "127.0.0.1:5174/": { ok: true },
+      "127.0.0.1:45174/__kobe_web": { body: "kobe-web" },
+      "127.0.0.1:45174/": { ok: true },
     })
     void runWebSubcommand([])
     await vi.waitFor(() => {
       expect(err()).toContain("PTY server not found; terminal tabs will be unavailable")
     })
-    expect(out()).toContain("kobe web → http://localhost:5174")
+    expect(out()).toContain("kobe web → http://localhost:45174")
     expect(spawnCalls.find((c) => c.cmd[0] === "node")).toBeUndefined()
   })
 
   it("still launches when the lsof port scan itself fails (no pids → nothing to kill)", async () => {
     routeFetch({
-      "127.0.0.1:5174/__kobe_web": { body: "kobe-web" },
-      "127.0.0.1:5174/": { ok: true },
-      "localhost:5176/__kobe_web": { body: "kobe-web" }, // a stale kobe-web answers…
+      "127.0.0.1:45174/__kobe_web": { body: "kobe-web" },
+      "127.0.0.1:45174/": { ok: true },
+      "localhost:45176/__kobe_web": { body: "kobe-web" }, // a stale kobe-web answers…
     })
     // …but lsof is unavailable — pidsOnPort degrades to [] instead of crashing.
     const bunSpawn = (globalThis as unknown as { Bun: { spawn: ReturnType<typeof vi.fn> } }).Bun.spawn
@@ -250,23 +250,23 @@ describe("runWebSubcommand full launch", () => {
     })
     void runWebSubcommand([])
     await vi.waitFor(() => {
-      expect(out()).toContain("kobe web → http://localhost:5174")
+      expect(out()).toContain("kobe web → http://localhost:45174")
     })
     expect(killSpy).not.toHaveBeenCalled()
   })
 
   it("an unexpected PTY sidecar exit tears the command down with exit 1", async () => {
     routeFetch({
-      "127.0.0.1:5174/__kobe_web": { body: "kobe-web" },
-      "127.0.0.1:5174/": { ok: true },
-      "localhost:5176/__kobe_web": new Error("ECONNREFUSED"),
+      "127.0.0.1:45174/__kobe_web": { body: "kobe-web" },
+      "127.0.0.1:45174/": { ok: true },
+      "localhost:45176/__kobe_web": new Error("ECONNREFUSED"),
     })
     // The exit-watcher's process.exit(1) runs inside a detached .then — a
     // throwing stub would surface as an unhandled rejection, so record only.
     exitSpy.mockImplementation((() => undefined) as never)
     void runWebSubcommand([])
     await vi.waitFor(() => {
-      expect(out()).toContain("kobe web → http://localhost:5174")
+      expect(out()).toContain("kobe web → http://localhost:45174")
     })
     resolvePtyExited(1)
     await vi.waitFor(() => {

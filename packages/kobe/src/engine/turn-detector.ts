@@ -9,7 +9,7 @@
  * abstraction and combines it with pane quiescence.
  */
 
-import { readFile } from "node:fs/promises"
+import { readFile, stat } from "node:fs/promises"
 import * as claudeHistory from "@/engine/claude-code-local/history"
 import * as codexHistory from "@/engine/codex-local/history"
 import type { VendorId } from "@/types/vendor"
@@ -70,6 +70,19 @@ export abstract class EngineTurnDetector {
   async latestCompletion(worktree: string): Promise<TurnCompletionMarker | null> {
     return (await this.latestActivity(worktree)).marker
   }
+
+  /**
+   * {@link latestActivity} scoped to ONE session transcript. The worktree
+   * scan answers "did ANY session here complete a turn" — wrong question for
+   * the activity lapse watchdog when several sessions share a worktree (the
+   * kobe main task runs many tabs in one checkout): a sibling's Stop read as
+   * "this turn ended" and idled a genuinely mid-turn engine at the TTL.
+   * `null` = this vendor can't read a single transcript (or the file is
+   * gone) — the caller falls back to the worktree scan.
+   */
+  async latestActivityInFile(_transcriptPath: string): Promise<TranscriptScan | null> {
+    return null
+  }
 }
 
 /**
@@ -90,11 +103,22 @@ export function createEngineTurnDetector(vendor: VendorId): EngineTurnDetector {
 export interface ClaudeTurnDetectorDeps {
   listSessionFiles(worktree: string): Promise<claudeHistory.WorktreeSessionFile[]>
   readFile(path: string): Promise<string>
+  /** mtime of one transcript file (epoch ms), or 0 when it can't be read.
+   *  Optional so existing two-field test deps keep compiling; the real fs
+   *  stat is the default. */
+  statMtimeMs?(path: string): Promise<number>
 }
+
+const statMtimeMs = (path: string) =>
+  stat(path).then(
+    (s) => s.mtimeMs,
+    () => 0,
+  )
 
 const defaultClaudeDeps: ClaudeTurnDetectorDeps = {
   listSessionFiles: (worktree) => claudeHistory.listSessionFilesForWorktree(worktree),
   readFile: (path) => readFile(path, "utf8"),
+  statMtimeMs,
 }
 
 export class ClaudeTurnDetector extends EngineTurnDetector {
@@ -141,6 +165,13 @@ export class ClaudeTurnDetector extends EngineTurnDetector {
     }
     this.cache = next
     return { marker: latest, mtimeMs }
+  }
+
+  override async latestActivityInFile(transcriptPath: string): Promise<TranscriptScan | null> {
+    const mtimeMs = await (this.deps.statMtimeMs ?? statMtimeMs)(transcriptPath)
+    if (mtimeMs === 0) return null // gone/rotated — caller falls back to the worktree scan
+    const raw = await this.deps.readFile(transcriptPath).catch(() => "")
+    return { marker: latestClaudeCompletionMarkerFromJsonl(raw, transcriptPath, mtimeMs), mtimeMs }
   }
 }
 

@@ -99,7 +99,13 @@ export interface ActivityLiveness {
  * every long turn lapsed to idle at the TTL while the engine was mid-turn.
  * The hook knows what actually runs; the probe must ask about THAT.
  */
-export type ActivityLivenessProbe = (taskId: string, vendor?: string) => Promise<ActivityLiveness | undefined>
+export type ActivityLivenessProbe = (
+  taskId: string,
+  vendor?: string,
+  /** The policed entry's own session transcript, when the hook piped one —
+   *  lets the probe scope to THIS session instead of the whole worktree. */
+  transcriptPath?: string,
+) => Promise<ActivityLiveness | undefined>
 
 /** The reporting engine's own session identity (from its hook payload). */
 export interface EngineSessionInfo {
@@ -221,9 +227,9 @@ export class DaemonActivityRegistry {
    */
   /** Probe wrapper: a best-effort filesystem read must never crash the daemon,
    *  and a failure reads as "silent" ⇒ lapse. */
-  private async probe(taskId: string, vendor?: string): Promise<ActivityLiveness | undefined> {
+  private async probe(taskId: string, vendor?: string, transcriptPath?: string): Promise<ActivityLiveness | undefined> {
     try {
-      return await this.livenessAt(taskId, vendor)
+      return await this.livenessAt(taskId, vendor, transcriptPath)
     } catch {
       return undefined
     }
@@ -277,7 +283,7 @@ export class DaemonActivityRegistry {
     const before = this.tabActivity.get(taskId)?.get(tabId)
     if (!before || before.at !== at) return
 
-    const live = await this.probe(taskId, before.vendor)
+    const live = await this.probe(taskId, before.vendor, before.session?.transcriptPath)
 
     const tabs = this.tabActivity.get(taskId)
     const cur = tabs?.get(tabId)
@@ -305,7 +311,7 @@ export class DaemonActivityRegistry {
     const before = this.activity.get(taskId)
     if (!before || before.at !== at) return
 
-    const live = await this.probe(taskId, before.vendor)
+    const live = await this.probe(taskId, before.vendor, before.session?.transcriptPath)
 
     // Re-read after the await: the entry may have been replaced or cleared
     // while the probe was in flight. Acting on a stale `at` would clobber a

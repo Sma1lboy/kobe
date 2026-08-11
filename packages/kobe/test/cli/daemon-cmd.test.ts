@@ -164,18 +164,18 @@ describe("kobe daemon start", () => {
     Reflect.deleteProperty(process.env, "KOBE_DAEMON_WEB_PORT")
     const core = { orchestrator: { tag: "orch" }, homeDir: home, close: vi.fn() }
     mocks.createKobeCore.mockResolvedValue(core)
-    mocks.startDaemonServer.mockResolvedValue({ socketPath: "/tmp/x.sock", webPort: 5174, close: vi.fn() })
+    mocks.startDaemonServer.mockResolvedValue({ socketPath: "/tmp/x.sock", webPort: 45174, close: vi.fn() })
 
     await runDaemonSubcommand(["start"])
 
     expect(mocks.installDaemonCrashHandlers).toHaveBeenCalledTimes(1)
     expect(mocks.startDaemonServer).toHaveBeenCalledWith(
       core.orchestrator,
-      expect.objectContaining({ homeDir: home, webPort: 5174 }),
+      expect.objectContaining({ homeDir: home, webPort: 45174 }),
     )
     const out = output()
     expect(out).toContain("listening on /tmp/x.sock")
-    expect(out).toContain("web transport listening on http://127.0.0.1:5174")
+    expect(out).toContain("web transport listening on http://127.0.0.1:45174")
   })
 
   it("KOBE_DAEMON_WEB_PORT=off disables the web transport", async () => {

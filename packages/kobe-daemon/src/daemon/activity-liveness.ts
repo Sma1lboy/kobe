@@ -40,6 +40,7 @@ export async function readActivityLiveness(
   runtime: LivenessRuntime,
   taskId: string,
   reportedVendor?: string,
+  transcriptPath?: string,
 ): Promise<ActivityLiveness | undefined> {
   const task = orch.getTask(taskId)
   if (!task?.worktreePath) return undefined
@@ -53,7 +54,13 @@ export async function readActivityLiveness(
     const mtimeMs = await runtime.latestTranscriptMtime(vendor, task.worktreePath)
     return mtimeMs > 0 ? { mtimeMs } : {}
   }
-  const { marker, mtimeMs } = await detector.latestActivity(task.worktreePath)
+  // Prefer the reporting session's OWN transcript (piped by the hook). The
+  // worktree-wide scan reads the newest completion across EVERY session in
+  // the dir — with several tabs sharing one worktree, a sibling's Stop
+  // landed `completedAt >= at` and idled a genuinely mid-turn engine at the
+  // TTL. A vanished file (session rotated) falls back to the wide scan.
+  const scoped = transcriptPath ? await detector.latestActivityInFile(transcriptPath) : null
+  const { marker, mtimeMs } = scoped ?? (await detector.latestActivity(task.worktreePath))
   return {
     ...(mtimeMs > 0 ? { mtimeMs } : {}),
     ...(marker ? { completedAt: marker.timestampMs } : {}),

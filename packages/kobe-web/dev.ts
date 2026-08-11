@@ -1,6 +1,6 @@
 /**
  * Dev launcher — one `bun run dev` brings up the whole web UI:
- *   - the daemon-hosted web transport on KOBE_DAEMON_WEB_PORT (5174)
+ *   - the daemon-hosted web transport on KOBE_DAEMON_WEB_PORT (45174)
  *   - the PTY sidecar (node, node-pty) on KOBE_PTY_PORT (5175)
  *   - the Vite dev server (node) on 5173, proxying /api + /events to it
  *
@@ -22,7 +22,7 @@ import { homedir } from "node:os"
 import { resolve } from "node:path"
 import { ensureDaemonReachable } from "@sma1lboy/kobe-daemon/client/daemon-process"
 
-const DAEMON_WEB_PORT = process.env.KOBE_DAEMON_WEB_PORT ?? "5174"
+const DAEMON_WEB_PORT = process.env.KOBE_DAEMON_WEB_PORT ?? "45174"
 const WEB_PORT = process.env.KOBE_WEB_PORT ?? "5173"
 const PTY_PORT = process.env.KOBE_PTY_PORT ?? "5175"
 

@@ -14,6 +14,12 @@ export interface EngineTurnDetectorAdapter {
     marker: { id: string; timestampMs: number } | null
     mtimeMs: number
   }>
+  /** {@link latestActivity} scoped to one session transcript; `null` = not
+   *  supported by this vendor (or file gone) — fall back to the worktree scan. */
+  latestActivityInFile(transcriptPath: string): Promise<{
+    marker: { id: string; timestampMs: number } | null
+    mtimeMs: number
+  } | null>
   supportsCompletionMarkers(): boolean
 }
 

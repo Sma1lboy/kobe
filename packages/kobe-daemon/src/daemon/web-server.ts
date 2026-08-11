@@ -373,7 +373,7 @@ export function createDirectWebLink(args: {
  *     since ADR 0003 the port-holder IS a live daemon process, so SIGTERM-ing
  *     it would kill every parallel session — the 2026-07-07 sweep failure
  *     shape). The already-listening daemon serves the browser fine.
- *   - held by a non-kobe svc   → SKIP (a stray `vite preview` on 5174 must
+ *   - held by a non-kobe svc   → SKIP (a stray `vite preview` on the port must
  *     not make kobe unbootable).
  * A skip degrades the daemon to socket-only; it never throws.
  */

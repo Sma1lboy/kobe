@@ -36,7 +36,7 @@ touched.
 ```bash
 kobe            # the TUI (first run: onboarding wizard)
 kobe .          # open a directory as a task — the `code .` gesture
-kobe web        # the browser dashboard on http://localhost:5174
+kobe web        # the browser dashboard on http://localhost:45174
 ```
 
 A typo never silently opens the TUI: an unknown subcommand prints usage and
@@ -103,7 +103,7 @@ which is prompted and stored in your OS keychain — never in `state.json`.
 kobe web [--port <n>]
 ```
 
-Serves the dashboard on `:5174`, plus a sidecar for browser terminal tabs.
+Serves the dashboard on `:45174`, plus a sidecar for browser terminal tabs.
 `KOBE_DAEMON_WEB_PORT` sets the port globally (`0`/`off`/`false` disables it).
 
 ## completions
@@ -279,7 +279,7 @@ without a daemon, use `kobe export --json`.
 |---|---|
 | `KOBE_HOME_DIR` | Move everything kobe persists somewhere else |
 | `KOBE_OPEN_EDITOR` | Command that opens a worktree in a GUI editor (`code`, `cursor`, …) |
-| `KOBE_DAEMON_WEB_PORT` | Web dashboard port (default 5174; `0`/`off` disables) |
+| `KOBE_DAEMON_WEB_PORT` | Web dashboard port (default 45174; `0`/`off` disables) |
 | `KOBE_DEV=1` | Mark a developer checkout — hides the update chip |
 | `KOBE_DEBUG=1` | Print full startup errors instead of one line |
 | `KOBE_TASK_ID` / `KOBE_TAB_ID` | Set inside engine tabs; how `kobe api report` finds its task |
