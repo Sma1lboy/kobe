@@ -158,6 +158,16 @@ export interface EngineRegistryEntry {
      * a name, not a status).
      */
     readonly statusPrefixes?: readonly string[]
+    /**
+     * The subset of {@link statusPrefixes} the engine ONLY writes while a
+     * turn is running (its animated frames). A title that stops starting
+     * with one of these is the engine's own "I stopped working" signal —
+     * the one observable event an ESC interrupt leaves behind (claude-code
+     * runs no Stop hook on its abort path; issue #15). Consumed by
+     * {@link engineTitleTurnHint}. Omit when the engine's resting title is
+     * indistinguishable from its working one.
+     */
+    readonly workingPrefixes?: readonly string[]
   }
   /**
    * Subscription-quota probe: snapshot of the account's usage windows, or
@@ -248,6 +258,7 @@ const BUILTIN_ENGINES: Record<"claude" | "codex" | "copilot" | "kimi", EngineReg
       // `${prefix} ${title}` where prefix is ✳ at rest and cycles ⠂/⠐ every
       // 960ms while a turn runs (claude-code `AnimatedTerminalTitle`).
       statusPrefixes: ["✳", "⠂", "⠐"],
+      workingPrefixes: ["⠂", "⠐"],
     },
     quotaUsage: () => fetchClaudeQuotaUsage(),
   },
@@ -275,8 +286,10 @@ const BUILTIN_ENGINES: Record<"claude" | "codex" | "copilot" | "kimi", EngineReg
       // The `activity` segment is a braille spinner frame joined to the next
       // segment by a space (codex `TERMINAL_TITLE_SPINNER_FRAMES` +
       // `separator_from_previous`). It only appears while a turn runs, so a
-      // resting title has no prefix to strip.
+      // resting title has no prefix to strip — every status prefix is a
+      // working prefix.
       statusPrefixes: ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"],
+      workingPrefixes: ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"],
     },
     quotaUsage: () => fetchCodexQuotaUsage(),
   },
@@ -411,6 +424,33 @@ export function stripEngineStatusPrefix(title: string, vendor: VendorId | null |
     return rest
   }
   return title
+}
+
+/**
+ * What the engine's live OSC title says about its turn state, or `null`
+ * when the title carries no verdict.
+ *
+ * A status-owning engine writes its animated frames (`workingPrefixes`)
+ * into the title exactly while a turn runs and rewrites the title the
+ * moment it stops — including on an ESC interrupt, which fires no Stop
+ * hook at all (claude-code's abort path returns before its stop hooks;
+ * issue #15). That rewrite is therefore the one event-grade "the turn
+ * ended" signal an interrupt produces, and this hint is how consumers
+ * (the TUI's interrupt observer, the daemon's activity reconciler) read
+ * it without hard-coding any vendor's glyphs.
+ *
+ * Strict on purpose: `"rest"` is only claimed for a vendor that declares
+ * `workingPrefixes` AND wrote a non-empty title without one — an engine
+ * that never decorates its title (copilot, custom wrappers) or a session
+ * that never set a title answers `null`, never `"rest"`.
+ */
+export function engineTitleTurnHint(vendor: VendorId, title: string): "working" | "rest" | null {
+  const terminalTitle = engineEntry(vendor).terminalTitle
+  const working = terminalTitle?.workingPrefixes
+  if (terminalTitle?.ownsStatus !== true || !working || working.length === 0) return null
+  const trimmed = title.trim()
+  if (trimmed.length === 0) return null
+  return working.some((prefix) => trimmed.startsWith(prefix)) ? "working" : "rest"
 }
 
 /**

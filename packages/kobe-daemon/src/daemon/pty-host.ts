@@ -290,6 +290,7 @@ export class PtyHost {
       pid: s.proc?.pid ?? null,
       command: s.command,
       title: s.title,
+      totalBytes: s.totalBytes,
       parked: s.parked,
       parkedScreenBytes: s.parkedScreenBytes,
       exit: s.exit,

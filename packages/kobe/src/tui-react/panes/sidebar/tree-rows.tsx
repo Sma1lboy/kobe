@@ -219,9 +219,16 @@ export function TabTreeRow(props: {
   })
   const frame = useSpinnerFrame(carriesState && baseView.loading)
   const rowView = withSpinnerFrame(baseView, () => frame)
-  // buildSidebarRowView already rests at `○` with no activity, so an agent
-  // row can take its glyph unconditionally.
-  const glyph = isAgent ? rowView.stateGlyph : "·"
+  // Glyph precedence for an agent row: with any daemon signal (running /
+  // sticky badge / a KNOWN-idle tombstone) the row wears the shared state
+  // vocabulary — buildSidebarRowView rests at `○` for known-idle. With NO
+  // signal at all the daemon genuinely does not know (fresh daemon before
+  // its first observer pass, dead daemon lineage — issue #11), and claiming
+  // `○ idle` was the lie this distinguishes: a dotted ◌ says "unknown",
+  // muted like the rest state, until a hook event or the activity observer
+  // supplies the fact.
+  const UNKNOWN_GLYPH = "◌"
+  const glyph = isAgent ? (carriesState ? rowView.stateGlyph : UNKNOWN_GLYPH) : "·"
   return (
     <RowShell rowId={props.rowId} flatIndex={props.flatIndex} depth={2} shared={props.shared}>
       <text

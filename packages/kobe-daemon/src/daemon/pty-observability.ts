@@ -12,6 +12,9 @@ export interface PtySessionInfo {
   readonly command: readonly string[]
   /** Last OSC 0/2 window title the child set ("" until it sets one). */
   readonly title: string
+  /** Total bytes the child has EVER written (monotonic, never reduced by
+   *  ring trimming) — the daemon activity observer's output heartbeat. */
+  readonly totalBytes?: number
   /** A local TUI parked this session and retained a serialized xterm screen. */
   readonly parked?: boolean
   /** Byte size of that local parked screen; zero when no parked screen exists. */

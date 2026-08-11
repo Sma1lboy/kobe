@@ -149,20 +149,28 @@ export function handleOrchestratorEvent(name: string, payload: unknown, signals:
       )
       return
     }
+    const tabId = typeof p.tabId === "string" && p.tabId ? p.tabId : undefined
     const entry: TaskEngineState = {
       state: p.state,
       detail: p.detail,
       ...(typeof p.sessionId === "string" && p.sessionId ? { sessionId: p.sessionId } : {}),
       ...(typeof p.transcriptPath === "string" && p.transcriptPath ? { transcriptPath: p.transcriptPath } : {}),
+      ...(tabId ? { tabId } : {}),
       at: typeof p.at === "number" ? p.at : 0,
     }
     // Accumulate per-task into a fresh Map (new ref → re-render). A tabId-
     // carrying event updates BOTH levels: the daemon publishes one event per
-    // report, and the task entry is its last-event-wins rollup.
-    const prevTaskState = signals.engineStateAcc().get(p.taskId)?.state
+    // report, and the task entry is its last-event-wins rollup — EXCEPT that
+    // a tab-scoped idle only clears a rollup the SAME tab wrote (issue #11:
+    // the activity observer publishes per-tab idles for quiet sessions, and
+    // letting any tab's idle delete the rollup blanked a task whose live
+    // work — another tab, or an untagged external session — was still going).
+    const prevTask = signals.engineStateAcc().get(p.taskId)
+    const prevTaskState = prevTask?.state
     const next = new Map(signals.engineStateAcc())
-    if (p.state === "idle") next.delete(p.taskId)
-    else next.set(p.taskId, entry)
+    if (p.state === "idle") {
+      if (!tabId || prevTask?.tabId === tabId) next.delete(p.taskId)
+    } else next.set(p.taskId, entry)
     signals.setEngineStateSig(next)
     // Transient lifecycle marks (subagent counts) must never outlive
     // the evidence: a turn ending clears them, and so does a FRESH running
@@ -181,13 +189,16 @@ export function handleOrchestratorEvent(name: string, payload: unknown, signals:
       lifecycle.delete(p.taskId)
       signals.setEngineLifecycleSig(lifecycle)
     }
-    if (typeof p.tabId === "string" && p.tabId) {
+    if (tabId) {
+      // An idle entry is KEPT as a tombstone, not deleted (issue #11): the
+      // sidebar renders absence as UNKNOWN (no signal — a dotted ◌), so
+      // "the daemon said this tab is idle" must stay distinguishable from
+      // "the daemon never said anything". Bounded by tabs-per-task; the
+      // task.snapshot prune drops deleted tasks' maps wholesale.
       const nextTabs = new Map(signals.engineTabStateAcc())
       const tabs = new Map(nextTabs.get(p.taskId) ?? [])
-      if (p.state === "idle") tabs.delete(p.tabId)
-      else tabs.set(p.tabId, entry)
-      if (tabs.size > 0) nextTabs.set(p.taskId, tabs)
-      else nextTabs.delete(p.taskId)
+      tabs.set(tabId, entry)
+      nextTabs.set(p.taskId, tabs)
       signals.setEngineTabStateSig(nextTabs)
     }
     return

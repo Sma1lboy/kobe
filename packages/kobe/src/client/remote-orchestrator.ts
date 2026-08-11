@@ -31,7 +31,7 @@ import type { Orchestrator, Unsubscribe } from "../orchestrator/core.ts"
 import type { Task, TaskId, TaskStatus, VendorId } from "../types/task.ts"
 import type { AdoptableWorktree, WorktreeProject } from "../types/worktree.ts"
 import { CURRENT_VERSION, type UpdateInfo } from "../version.ts"
-import { performInit } from "./remote-orchestrator-connect.ts"
+import { performInit, runReconnectLoop } from "./remote-orchestrator-connect.ts"
 import { handleOrchestratorEvent } from "./remote-orchestrator-events.ts"
 import {
   type AttentionInboxItem,
@@ -92,6 +92,7 @@ import {
   moveTaskOp,
   mutateIssueOp,
   removeWorktreeOp,
+  reportEngineInterruptOp,
   runAutomationNowOp,
   setActiveTaskOp,
   setArchivedOp,
@@ -254,42 +255,26 @@ export class RemoteOrchestrator {
   }
 
   /**
-   * Start or join the role-appropriate reconnect loop. A GUI may spawn the
-   * daemon; a pane only retries the existing socket so helper panes never
-   * defeat daemon lazy-shutdown. On success subscribe replay rehydrates every
-   * signal, including the current task snapshot.
+   * Start or join the role-appropriate reconnect loop (body in
+   * `remote-orchestrator-connect.ts` `runReconnectLoop` — file-size cap).
+   * On success subscribe replay rehydrates every signal, including the
+   * current task snapshot.
    */
   private reconnectLoop(spawnDaemon: boolean): Promise<void> {
     if (this.reconnectTask) return this.reconnectTask
-    const task = this.runReconnectLoop(spawnDaemon)
+    const task = runReconnectLoop({
+      isDisposed: () => this.client.isDisposed,
+      spawnDaemon,
+      ensureReachable: this.ensureReachable,
+      init: () => this.init(),
+      shouldLogAttempt: shouldLogReconnectAttempt,
+    })
     this.reconnectTask = task
     const clear = (): void => {
       if (this.reconnectTask === task) this.reconnectTask = null
     }
     task.then(clear, clear)
     return task
-  }
-
-  private async runReconnectLoop(spawnDaemon: boolean): Promise<void> {
-    let delayMs = spawnDaemon ? 0 : 500
-    let attempt = 0
-    while (!this.client.isDisposed) {
-      if (delayMs > 0) await new Promise((r) => setTimeout(r, delayMs))
-      if (this.client.isDisposed) break
-      attempt++
-      try {
-        if (spawnDaemon) await this.ensureReachable()
-        await this.init()
-        logClient("orch", `reconnected and re-subscribed after ${attempt} attempt(s) — task list re-synced`)
-        return
-      } catch (err) {
-        // Pane failures are expected while no GUI owns a daemon; GUI failures
-        // mean ensure/start itself is temporarily failing. Both stay silent in
-        // the UI and use the same bounded forensic logging policy.
-        if (shouldLogReconnectAttempt(attempt)) logClientError("orch-reconnect", err)
-        delayMs = delayMs === 0 ? 500 : Math.min(delayMs * 2, 3000)
-      }
-    }
   }
 
   /** Open the daemon socket, hello, subscribe to the task snapshot stream. */
@@ -317,35 +302,22 @@ export class RemoteOrchestrator {
 
   // --- read --- (each a thin delegate; bodies + docs moved to remote-orchestrator-reads.ts)
 
-  tasksSignal(): ReadableState<Task[]> {
-    return tasksSignalOp(this.reads)
-  }
+  readonly tasksSignal = (): ReadableState<Task[]> => tasksSignalOp(this.reads)
 
-  activeTaskSignal(): ReadableState<string | null> {
-    return activeTaskSignalOp(this.reads)
-  }
+  readonly activeTaskSignal = (): ReadableState<string | null> => activeTaskSignalOp(this.reads)
 
-  updateSignal(): ReadableState<UpdateInfo | null> {
-    return updateSignalOp(this.reads)
-  }
+  readonly updateSignal = (): ReadableState<UpdateInfo | null> => updateSignalOp(this.reads)
 
-  daemonVersionSignal(): ReadableState<string | null> {
-    return daemonVersionSignalOp(this.reads)
-  }
+  readonly daemonVersionSignal = (): ReadableState<string | null> => daemonVersionSignalOp(this.reads)
 
-  daemonStaleSignal(): ReadableState<boolean> {
-    return daemonStaleSignalOp(this.reads)
-  }
+  readonly daemonStaleSignal = (): ReadableState<boolean> => daemonStaleSignalOp(this.reads)
 
-  engineStateSignal(): ReadableState<ReadonlyMap<string, TaskEngineState>> {
-    return engineStateSignalOp(this.reads)
-  }
+  readonly engineStateSignal = (): ReadableState<ReadonlyMap<string, TaskEngineState>> =>
+    engineStateSignalOp(this.reads)
 
   /** Per-TAB engine activity (taskId → tabId → state) — the F7 attention
    *  jump's tab-precise read. Sparse; see {@link EngineTabStateMap}. */
-  engineTabStatesSignal(): ReadableState<EngineTabStateMap> {
-    return engineTabStatesSignalOp(this.reads)
-  }
+  readonly engineTabStatesSignal = (): ReadableState<EngineTabStateMap> => engineTabStatesSignalOp(this.reads)
 
   readonly attentionInboxSignal = (): ReadableState<readonly AttentionInboxItem[]> => attentionInboxSignalOp(this.reads)
 
@@ -391,6 +363,11 @@ export class RemoteOrchestrator {
       .request("ui.reportEvent", { kind, ...(taskId ? { taskId } : {}), ...(detail ? { detail } : {}) })
       .catch(() => {})
 
+  /** Confirmed ESC interrupt on a hook-running tab (issue #15) — see
+   *  {@link reportEngineInterruptOp}. */
+  readonly reportEngineInterrupt = (taskId: TaskId | string, tabId: string): void =>
+    reportEngineInterruptOp(this.client, String(taskId), tabId)
+
   readonly uiPrefsSignal = (): ReadableState<UiPrefsPayload | null> => uiPrefsSignalOp(this.reads)
 
   readonly uiPrefsStore = (): ExternalStore<UiPrefsPayload | null> => uiPrefsStoreOp(this.reads)
@@ -408,62 +385,24 @@ export class RemoteOrchestrator {
   }
 
   // --- write --- (each a thin delegate; bodies moved to remote-orchestrator-writes.ts)
+  // Terse one-liners on purpose: pure forwarding, and this file is at the cap.
 
-  createTask(input: Parameters<typeof createTaskOp>[1]): Promise<Task> {
-    return createTaskOp(this.client, input)
-  }
-
-  ensureMainTask(repo: string): Promise<Task> {
-    return ensureMainTaskOp(this.client, repo)
-  }
-
-  ensureWorktree(id: TaskId | string): Promise<string> {
-    return ensureWorktreeOp(this.client, id)
-  }
-
-  forgetProject(repo: string): Promise<void> {
-    return forgetProjectOp(this.client, repo)
-  }
-
-  setTitle(id: TaskId | string, title: string): Promise<void> {
-    return setTitleOp(this.client, id, title)
-  }
-
-  setBranch(id: TaskId | string, branch: string): Promise<void> {
-    return setBranchOp(this.client, id, branch)
-  }
-
-  setVendor(id: TaskId | string, vendor: VendorId): Promise<void> {
-    return setVendorOp(this.client, id, vendor)
-  }
-
-  setPinned(id: TaskId | string, pinned?: boolean): Promise<void> {
-    return setPinnedOp(this.client, id, pinned)
-  }
-
-  moveTask(id: TaskId | string, delta: -1 | 1): Promise<void> {
-    return moveTaskOp(this.client, id, delta)
-  }
-
-  setArchived(id: TaskId | string, archived?: boolean): Promise<void> {
-    return setArchivedOp(this.client, id, archived)
-  }
-
-  setStatus(id: TaskId | string, status: TaskStatus): Promise<void> {
-    return setStatusOp(this.client, id, status)
-  }
-
-  deleteTask(id: TaskId | string, opts?: { force?: boolean }): Promise<void> {
-    return deleteTaskOp(this.client, id, opts)
-  }
-
-  dismissAttention(taskId: TaskId | string, tabId: string | null, at: number): Promise<boolean> {
-    return dismissAttentionOp(this.client, taskId, tabId, at)
-  }
-
-  markAttentionRead(taskId: TaskId | string, tabId: string | null, at: number): Promise<boolean> {
-    return markAttentionReadOp(this.client, taskId, tabId, at)
-  }
+  createTask = (input: Parameters<typeof createTaskOp>[1]): Promise<Task> => createTaskOp(this.client, input)
+  ensureMainTask = (repo: string): Promise<Task> => ensureMainTaskOp(this.client, repo)
+  ensureWorktree = (id: TaskId | string): Promise<string> => ensureWorktreeOp(this.client, id)
+  forgetProject = (repo: string): Promise<void> => forgetProjectOp(this.client, repo)
+  setTitle = (id: TaskId | string, title: string): Promise<void> => setTitleOp(this.client, id, title)
+  setBranch = (id: TaskId | string, branch: string): Promise<void> => setBranchOp(this.client, id, branch)
+  setVendor = (id: TaskId | string, vendor: VendorId): Promise<void> => setVendorOp(this.client, id, vendor)
+  setPinned = (id: TaskId | string, pinned?: boolean): Promise<void> => setPinnedOp(this.client, id, pinned)
+  moveTask = (id: TaskId | string, delta: -1 | 1): Promise<void> => moveTaskOp(this.client, id, delta)
+  setArchived = (id: TaskId | string, archived?: boolean): Promise<void> => setArchivedOp(this.client, id, archived)
+  setStatus = (id: TaskId | string, status: TaskStatus): Promise<void> => setStatusOp(this.client, id, status)
+  deleteTask = (id: TaskId | string, opts?: { force?: boolean }): Promise<void> => deleteTaskOp(this.client, id, opts)
+  dismissAttention = (taskId: TaskId | string, tabId: string | null, at: number): Promise<boolean> =>
+    dismissAttentionOp(this.client, taskId, tabId, at)
+  markAttentionRead = (taskId: TaskId | string, tabId: string | null, at: number): Promise<boolean> =>
+    markAttentionReadOp(this.client, taskId, tabId, at)
 
   /** Land a task's branch back into its base repo (`task.land`). Throws with a
    *  `LAND_CONFLICT` / `MAIN_CHECKOUT_DIRTY` sentinel in the message on the

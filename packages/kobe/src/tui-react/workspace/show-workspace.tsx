@@ -86,6 +86,13 @@ export function ShowWorkspace(props: {
         const taskId = props.task?.id
         if (taskId) props.onTabVisited?.(taskId, tabId)
       }}
+      // A confirmed ESC interrupt (hook still claims running, live title
+      // says the engine rested — issue #15) is reported as the
+      // `turn-interrupted` the engine's abort path never fires itself.
+      onEngineInterrupt={(tabId) => {
+        const taskId = props.task?.id
+        if (taskId) props.orchestrator.reportEngineInterrupt(taskId, tabId)
+      }}
     />
   )
 }

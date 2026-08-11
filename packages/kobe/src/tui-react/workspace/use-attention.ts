@@ -65,8 +65,14 @@ export function notifyTargetStates(
   const targets = new Map<string, NotifyTarget>()
   for (const [taskId, es] of engineState) {
     const tabs = engineTabState?.get(taskId)
-    if (tabs && tabs.size > 0) {
-      for (const [tabId, tabEs] of tabs) {
+    // Idle entries are KNOWN-idle tombstones (issue #11 — the accumulator
+    // keeps them so the sidebar can tell idle from unknown). They carry no
+    // attention and must not make a task look "tab-covered": a task whose
+    // only tab entries are tombstones still notifies from its rollup (an
+    // untagged external session reports task-level only).
+    const liveTabs = tabs ? [...tabs].filter(([, tabEs]) => tabEs.state !== "idle") : []
+    if (liveTabs.length > 0) {
+      for (const [tabId, tabEs] of liveTabs) {
         const key = notifyTargetKey(taskId, tabId)
         states.set(key, tabEs.state)
         targets.set(key, { taskId, tabId })

@@ -142,6 +142,9 @@ export interface TerminalTabsProps {
   /** The user landed on a tab (switch or mount) — the host resolves any
    *  pending Inbox episode targeting it. */
   onTabVisited?: (tabId: string) => void
+  /** Confirmed ESC interrupt on a hook-running tab (issue #15) — the host
+   *  reports `turn-interrupted` to the daemon. */
+  onEngineInterrupt?: (tabId: string) => void
   focused: boolean
   /** Ask the host to focus the workspace pane (terminal click). */
   onRequestFocus?: () => void
@@ -320,6 +323,7 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
     taskTitle: props.taskTitle,
     notif,
     update,
+    onEngineInterrupt: props.onEngineInterrupt,
   })
 
   // Visiting a tab clears its unread mark (toast already auto-dismisses)
