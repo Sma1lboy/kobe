@@ -141,6 +141,15 @@ describe("kobe skill command", () => {
   })
 })
 
+describe("kobe skill print", () => {
+  it("prints the bundled SKILL.md verbatim (the `kobe --skill` body)", async () => {
+    await runSkillSubcommand(["print"])
+    expect(out()).toContain("# kobe shell control")
+    expect(out()).toContain("kobe-skill-version")
+    expect(mocks.bunSpawn).not.toHaveBeenCalled()
+  })
+})
+
 describe("kobe skill install", () => {
   it("spawns npx against the BUNDLED skill path, naming no agent", async () => {
     await runSkillSubcommand(["install"])

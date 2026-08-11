@@ -11,8 +11,11 @@
  *   install [--agent NAME]…  run the npx skills flow (no flag = it asks)
  *   status                   report whether the skill is installed
  *   command [--agent NAME]…  print the underlying npx command (don't run it)
+ *   print                    print the bundled SKILL.md (herdr-style `kobe --skill`)
  */
 
+import { existsSync, readFileSync } from "node:fs"
+import { join } from "node:path"
 import {
   bundledSkillDir,
   kobeSkillPaths,
@@ -21,7 +24,7 @@ import {
   runNpxSkillsInstall,
 } from "../lib/skill-install.ts"
 
-const SKILL_VERBS = ["install", "status", "command"] as const
+const SKILL_VERBS = ["install", "status", "command", "print"] as const
 
 function skillUsage(): string {
   return [
@@ -31,6 +34,7 @@ function skillUsage(): string {
     "  install [--agent NAME]…  Install the kobe agent skill (wraps `npx skills add`)",
     "  status                   Show whether the skill is installed",
     "  command [--agent NAME]…  Print the underlying npx command without running it",
+    "  print                    Print the bundled SKILL.md (also: `kobe --skill`)",
     "",
     "The skill teaches a coding agent how to drive `kobe api`. With no --agent,",
     "the agent-skills CLI detects your installed agents and asks which to use;",
@@ -88,6 +92,19 @@ export async function runSkillSubcommand(argv: readonly string[]): Promise<void>
   if (!SKILL_VERBS.includes(verb as (typeof SKILL_VERBS)[number])) {
     process.stderr.write(`kobe skill: unknown verb "${verb}"\n\n${skillUsage()}\n`)
     process.exit(2)
+  }
+
+  if (verb === "print") {
+    // The bundled copy always matches this binary; an installed copy is the
+    // fallback so `kobe --skill` still answers on an unbuilt environment.
+    const bundled = bundledSkillDir()
+    const path = bundled ? join(bundled, "SKILL.md") : kobeSkillPaths().find((p) => existsSync(p))
+    if (!path) {
+      process.stderr.write("kobe skill: no SKILL.md found (not bundled, not installed) — run `kobe skill install`\n")
+      process.exit(1)
+    }
+    process.stdout.write(readFileSync(path, "utf8"))
+    return
   }
 
   if (verb === "status") {
