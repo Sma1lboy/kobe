@@ -142,6 +142,15 @@ paths against `$PWD` (`~` expanded). Engine vendors: `claude`, `codex`,
   first. Returns `{ notes }`.
 - `set-active [--task-id ID] [--none]`: set (or clear) the shared active
   task every Tasks pane highlights.
+- `pane-open [--task-id ID] [--command CMD] [--direction right|down]
+  [--placement split|tab] [--title TEXT]`: open a terminal pane in a task's
+  workspace — split the focused tab (default, tmux-style beside/below the
+  active pane) or open a separate command tab. `--command` runs via
+  `sh -lc` and the pane closes when it exits; omit it for an interactive
+  shell. Broadcast over the daemon's `tab.open` channel, so an attached TUI
+  showing the task performs the split (headless, nothing happens). Task
+  defaults to `$KOBE_TASK_ID`, then the active task. Splits nest at most 4
+  levels deep; a split that can't nest further falls back to a tab.
 
 ## supervise
 

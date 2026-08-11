@@ -212,7 +212,9 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
       // Plugin panes (`tab.open`): split the focused chattab (default) or
       // open a separate command tab — pane-split.ts owns the policy.
       const open = takeTabOpen(propsRef.current.taskId)
-      if (open) updateRef.current(openPluginPane(stateRef.current, open.argv, open.title, open.placement))
+      if (open) {
+        updateRef.current(openPluginPane(stateRef.current, open.argv, open.title, open.placement, open.direction))
+      }
       // Close-from-elsewhere (the sidebar tree's menu): claiming it here is
       // what keeps `closeTaskTab` from ALSO writing the background state —
       // this component owns the state while it is mounted.

@@ -97,6 +97,7 @@ let pendingTabOpen: {
   argv: readonly string[]
   title: string
   placement?: "split" | "tab"
+  direction?: "right" | "down"
 } | null = null
 
 export function requestTabOpen(
@@ -104,8 +105,9 @@ export function requestTabOpen(
   argv: readonly string[],
   title: string,
   placement?: "split" | "tab",
+  direction?: "right" | "down",
 ): void {
-  pendingTabOpen = { taskId, argv, title, placement }
+  pendingTabOpen = { taskId, argv, title, placement, direction }
   for (const listener of tabActivationListeners) listener()
 }
 
@@ -145,7 +147,7 @@ export function takeUnclaimedTabClose(): { taskId: string; tabId: string } | nul
 /** Consume a pending tab-open for this task, or null. */
 export function takeTabOpen(
   taskId: string,
-): { argv: readonly string[]; title: string; placement?: "split" | "tab" } | null {
+): { argv: readonly string[]; title: string; placement?: "split" | "tab"; direction?: "right" | "down" } | null {
   if (pendingTabOpen?.taskId !== taskId) return null
   const request = pendingTabOpen
   pendingTabOpen = null

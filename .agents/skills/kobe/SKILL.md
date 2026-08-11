@@ -3,7 +3,7 @@ name: kobe
 description: Use when controlling kobe tasks, parallel coding attempts, hosted agent sessions, task lifecycle, or the daemon-owned issue tracker from a shell.
 ---
 
-<!-- kobe-skill-version: 8 — bump in lockstep with KOBE_SKILL_VERSION (src/lib/skill-install.ts). -->
+<!-- kobe-skill-version: 9 — bump in lockstep with KOBE_SKILL_VERSION (src/lib/skill-install.ts). -->
 
 # kobe shell control
 
@@ -90,6 +90,26 @@ kobe api list --pretty
 
 `.running` means the task's canonical Hosted PTY engine session is alive.
 `send` reuses it or auto-starts it when absent.
+
+## Terminal panes
+
+Split the workspace terminal the user is watching (tmux-style) or open a
+separate command tab — the attached TUI performs it, so this is a no-op
+headless:
+
+```bash
+# Split the focused tab; the pane runs the command via `sh -lc` and
+# closes when it exits. Omit --command for an interactive shell.
+kobe api pane-open --command "btop"
+kobe api pane-open --direction down --command "watch -n1 git status -sb"
+kobe api pane-open --placement tab --title logs --command "tail -f app.log"
+```
+
+Defaults: the caller's own task (`$KOBE_TASK_ID`, then the active task),
+`--placement split`, `--direction right`. Alternate right/down to build a
+grid; splits nest at most 4 levels deep and fall back to a tab past that.
+Panes land in the USER'S live workspace — open them when asked (monitors,
+logs, dashboards), don't scatter panes for work `add`/`fan-out` should own.
 
 ## Lifecycle
 

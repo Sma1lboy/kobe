@@ -11,19 +11,21 @@ import { initialSplit, renameLeaf, splitActive } from "./split-core"
 import { type TabsState, openCommandTab, setTabSplit } from "./terminal-tabs-core"
 
 export type PanePlacement = "split" | "tab"
+export type PaneDirection = "right" | "down"
 
 export function openPluginPane(
   state: TabsState,
   argv: readonly string[],
   title: string,
   placement: PanePlacement = "split",
+  direction: PaneDirection = "right",
 ): TabsState {
   if (placement === "tab") return openCommandTab(state, argv, title)
   const active = state.tabs.find((tab) => tab.id === state.activeId)
   if (!active || active.kind === "content") return openCommandTab(state, argv, title)
   // `null` content = the tab's own engine leaf (terminal-tab-split.ts).
   const base = active.splitTree ?? initialSplit<readonly string[] | null>(null)
-  const split = splitActive(base, "row", argv)
+  const split = splitActive(base, direction === "down" ? "column" : "row", argv)
   if (split === base) return openCommandTab(state, argv, title)
   return setTabSplit(state, active.id, renameLeaf(split, split.activeLeafId, title))
 }

@@ -20,6 +20,14 @@ describe("openPluginPane", () => {
     expect(ls[1]).toMatchObject({ content: ARGV, title: "lazygit" })
   })
 
+  it("direction down: stacks the new pane below (column group)", () => {
+    const state = initialTabs()
+    const next = openPluginPane(state, ARGV, "lazygit", "split", "down")
+    const active = next.tabs.find((t) => t.id === next.activeId)
+    const tree = active?.kind === "engine" || active?.kind === "command" ? active.splitTree : null
+    expect(tree?.root).toMatchObject({ kind: "group", orientation: "column" })
+  })
+
   it("placement tab: opens a separate command tab instead", () => {
     const state = initialTabs()
     const next = openPluginPane(state, ARGV, "lazygit", "tab")

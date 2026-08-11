@@ -303,6 +303,9 @@ export interface TabOpenPayload {
   readonly title: string
   /** `split` (default) joins the focused chattab's split group; `tab` opens a separate tab. */
   readonly placement?: "split" | "tab"
+  /** Split orientation: `right` (default) lays the new pane beside the
+   *  active leaf, `down` stacks it below. Ignored for `placement: "tab"`. */
+  readonly direction?: "right" | "down"
   /** Publish time (ms epoch) — the consumer-side dedupe key. */
   readonly at: number
 }

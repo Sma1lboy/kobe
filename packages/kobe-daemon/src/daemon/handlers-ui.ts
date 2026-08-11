@@ -118,11 +118,13 @@ export const UI_HANDLERS: readonly DaemonRequestHandler[] = [
       }
       if (!ctx.orch.getTask(taskId)) throw new Error(`task not found: ${taskId}`)
       const placement = optionalString(payload, "placement")
+      const direction = optionalString(payload, "direction")
       ctx.bus.publish("tab.open", {
         taskId,
         argv,
         title,
         ...(placement === "tab" || placement === "split" ? { placement } : {}),
+        ...(direction === "right" || direction === "down" ? { direction } : {}),
         at: Date.now(),
       })
       return { ok: true }

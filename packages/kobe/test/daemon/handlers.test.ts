@@ -176,6 +176,15 @@ describe("daemon handler registry", () => {
       const { ctx: ctx2 } = fakeCtx({ getTask: () => TASK })
       await expect(dispatch("tab.open", { taskId: "t1", argv: [], title: "t" }, ctx2)).rejects.toThrow(/argv/)
     })
+
+    it("carries a valid direction and drops an unknown one", async () => {
+      const { ctx, rec } = fakeCtx({ getTask: () => TASK })
+      await dispatch("tab.open", { taskId: "t1", argv: ["x"], title: "t", direction: "down" }, ctx)
+      await dispatch("tab.open", { taskId: "t1", argv: ["x"], title: "t", direction: "sideways" }, ctx)
+      const [down, bogus] = rec.published as { payload: Record<string, unknown> }[]
+      expect(down.payload.direction).toBe("down")
+      expect(bogus.payload.direction).toBeUndefined()
+    })
   })
 
   describe("notice.send", () => {
