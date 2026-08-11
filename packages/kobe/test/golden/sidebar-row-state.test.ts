@@ -23,14 +23,20 @@
  */
 
 import { currentLang, setLocaleLang } from "@/tui/i18n"
+import { buildSidebarRowView } from "@/tui/panes/sidebar/row-view"
+import { truncateBranchLabel } from "@/tui/panes/sidebar/view-core"
+import { type Task, toTaskId } from "@/types/task"
 import { afterAll, beforeAll, expect, test } from "vitest"
 import { goldenDocument, goldenPath, matchGolden } from "./golden-file"
 import {
+  OMITTED_FIELDS,
+  RECORDED_FIELDS,
   activityCrossProduct,
   completionGraceBlock,
   mainRowBlock,
   prChipBlock,
   spinnerBlock,
+  statusVsActivityBlock,
   subagentBlock,
   subtitleBudgetBlock,
   tabActivityBlock,
@@ -58,6 +64,10 @@ test("sidebar row state matrix matches the committed golden", () => {
     { title: "turn-complete vs transcript growth — the still-working grace window", lines: completionGraceBlock() },
     { title: "subagent marks ride the animation only", lines: subagentBlock() },
     { title: "subtitle truncation budget", lines: subtitleBudgetBlock() },
+    {
+      title: "persisted TaskStatus x runtime activity — status must not reach the row",
+      lines: statusVsActivityBlock(),
+    },
     { title: "PR check chip", lines: prChipBlock() },
     { title: "tabRowActivity — which entry a TAB row may read", lines: tabActivityBlock() },
   ])
@@ -96,7 +106,39 @@ test("every row the matrix produces has a non-empty glyph and subtitle", () => {
   // A blank cell renders as a hole in the rail rather than a state, and the
   // golden would happily record the hole. Cheap structural floor under it.
   for (const line of activityCrossProduct()) {
-    expect(line).toMatch(/\| glyph=\S/)
-    expect(line).toMatch(/sub=\S/)
+    expect(line).toMatch(/ glyph=\S/)
+    expect(line).toMatch(/ title=\S/)
+    expect(line).toMatch(/ sub=\S/)
   }
+})
+
+/**
+ * The golden records a chosen SUBSET of `SidebarRowView`'s fields, and the
+ * first cut of this suite chose it wrong — `isMain`, `titleText` and
+ * `materializing` were all absent, so those could regress without moving a
+ * line. This makes the subset a decision the type system enforces: a field
+ * added to the interface belongs in RECORDED_FIELDS or in the documented
+ * omission list, and until someone says which, this fails.
+ */
+test("every field of SidebarRowView is either recorded in the golden or explicitly omitted", () => {
+  const sample = buildSidebarRowView({
+    task: {
+      id: toTaskId("01JCTASKTASKTASKTASKTASK"),
+      title: "t",
+      repo: "/repos/kobe",
+      branch: "feat/x",
+      worktreePath: "/wt/x",
+      kind: "task",
+      status: "in_progress",
+      archived: false,
+      pinned: false,
+      vendor: "claude",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    } as Task,
+    spinnerFrame: 0,
+    subtitleBudget: 32,
+    truncateBranch: truncateBranchLabel,
+  })
+  expect(Object.keys(sample).sort()).toEqual([...RECORDED_FIELDS, ...OMITTED_FIELDS].sort())
 })

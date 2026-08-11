@@ -105,8 +105,9 @@ export function goldenDocument(
   return `${out.join("\n")}\n`
 }
 
-/** Pad to `width` for the fixed-column golden rows (never truncates — a value
- *  that outgrows its column widens the row rather than losing information). */
+/** Pad to `width` for the fixed-column golden rows. Never truncates — a value
+ *  that outgrows its column widens the row rather than losing information,
+ *  which is `padEnd`'s own behaviour. */
 export function pad(value: string, width: number): string {
-  return value.length >= width ? value : value + " ".repeat(width - value.length)
+  return value.padEnd(width)
 }

@@ -17,6 +17,7 @@ import type { TaskEngineState } from "@/client/remote-orchestrator"
 import type { TaskActivityState } from "@/engine/hook-events"
 import { SidebarTree } from "@/tui-react/panes/sidebar/SidebarTree"
 import { tabsByTask } from "@/tui-react/workspace/terminal-tabs-shared"
+import type { TabsState } from "@/tui/workspace/terminal-tabs-core"
 import { type Task, toTaskId } from "@/types/task"
 import type { ReactNode } from "react"
 
@@ -62,11 +63,11 @@ function seedTabs(
         id: tab.id,
         title: tab.title,
         ordinal: i + 1,
-        ...(tab.kind === "command" ? { command: "bash" } : {}),
+        ...(tab.kind === "command" ? { command: ["bash"] } : {}),
       })),
       activeId: entry.tabs[0]?.id ?? "tab-1",
       nextOrdinal: entry.tabs.length + 1,
-    } as never)
+    } as TabsState)
   }
 }
 

@@ -23,10 +23,11 @@ import type { TaskEngineState, TaskJobState } from "@/client/remote-orchestrator
 import type { TaskActivityState } from "@/engine/hook-events"
 import { TASK_ACTIVITY_STATES } from "@/engine/hook-events"
 import { DEFAULT_SPINNER_FRAMES } from "@/engine/spinner-frames"
+import type { SidebarRowView } from "@/tui/panes/sidebar/row-view"
 import { buildSidebarRowView, prCheckChip, rowIsLoading, withSpinnerFrame } from "@/tui/panes/sidebar/row-view"
 import { tabRowActivity } from "@/tui/panes/sidebar/tree-core"
 import { truncateBranchLabel } from "@/tui/panes/sidebar/view-core"
-import { type Task, toTaskId } from "@/types/task"
+import { type Task, type TaskDeletionPhase, type TaskStatus, toTaskId } from "@/types/task"
 import { BUILTIN_VENDORS } from "@/types/vendor"
 import { pad } from "./golden-file"
 
@@ -52,6 +53,23 @@ const ACTIVITY_STATES: ReadonlyArray<TaskActivityState | undefined> = [undefined
 
 const DELETION_PHASES = [undefined, "queued", "running", "error"] as const
 
+// `TaskDeletionPhase` is a bare type union with no runtime array to spread, so
+// the list above is hand-maintained. This makes that safe: adding a member
+// upstream without extending DELETION_PHASES stops compiling here.
+type _DeletionPhasesExhaustive = Exclude<TaskDeletionPhase, (typeof DELETION_PHASES)[number]> extends never
+  ? true
+  : ["DELETION_PHASES is missing a TaskDeletionPhase member"]
+const _deletionPhasesExhaustive: _DeletionPhasesExhaustive = true
+void _deletionPhasesExhaustive
+
+/**
+ * Every vendor, not a sample. `BUILTIN_VENDORS` is spread rather than listed:
+ * each engine owns its own `spinnerFrames`, so a vendor added upstream changes
+ * what these rows render — and a hand-written list would silently keep the new
+ * one out of the "full cross product" this file claims to emit.
+ */
+const VENDORS: readonly string[] = [...BUILTIN_VENDORS, CUSTOM_VENDOR]
+
 function task(over: Partial<Task> = {}): Task {
   return {
     id: toTaskId("01JCTASKTASKTASKTASKTASK"),
@@ -76,15 +94,46 @@ function activityOf(state: TaskActivityState | undefined, at = NOW): TaskEngineS
 
 const JOB: TaskJobState = { kind: "ensureWorktree" }
 
+/**
+ * Every scalar field of `SidebarRowView`, in the order the golden prints them.
+ *
+ * Hand-picking a subset is how a golden quietly reintroduces the sampling
+ * problem it exists to remove: the first cut of this file recorded only
+ * glyph/tone/loading/subtitle, so `isMain`, `titleText` and `materializing`
+ * (which selects the sweep bar over the shimmer) could all have regressed
+ * without moving a single line. {@link RECORDED_FIELDS} is therefore checked
+ * against the real object's keys by the test — adding a field to the interface
+ * fails loudly until someone decides where it belongs.
+ *
+ * `spinnerFrames` is the one deliberate omission: it is constant per vendor and
+ * printed in full by {@link spinnerBlock}, so repeating it on all 1120 rows
+ * would be noise, not coverage.
+ */
+export const RECORDED_FIELDS = [
+  "isMain",
+  "titleText",
+  "stateGlyph",
+  "tone",
+  "loading",
+  "materializing",
+  "subtitleText",
+] as const
+
+export const OMITTED_FIELDS = ["spinnerFrames"] as const
+
 /** One row of the golden, in fixed columns so a diff points at the field that
  *  moved rather than reflowing the whole line. */
-function row(
-  inputs: readonly string[],
-  view: { stateGlyph: string; tone: string; loading: boolean; subtitleText: string },
-): string {
-  return `${inputs.join(" ")} | ${pad(`glyph=${view.stateGlyph}`, 9)} ${pad(`tone=${view.tone}`, 16)} load=${
-    view.loading ? 1 : 0
-  } sub=${view.subtitleText}`
+function row(inputs: readonly string[], view: SidebarRowView): string {
+  const cells = [
+    `main=${view.isMain ? 1 : 0}`,
+    pad(`title=${view.titleText}`, 22),
+    pad(`glyph=${view.stateGlyph}`, 9),
+    pad(`tone=${view.tone}`, 16),
+    `load=${view.loading ? 1 : 0}`,
+    `matz=${view.materializing ? 1 : 0}`,
+    `sub=${view.subtitleText}`,
+  ]
+  return `${inputs.join(" ")} | ${cells.join(" ")}`
 }
 
 function build(opts: {
@@ -125,7 +174,7 @@ export function activityCrossProduct(): string[] {
     for (const seen of [false, true]) {
       for (const job of [false, true]) {
         for (const deletion of DELETION_PHASES) {
-          for (const vendor of ["claude", "codex", CUSTOM_VENDOR]) {
+          for (const vendor of VENDORS) {
             for (const tx of [false, true]) {
               const subject = task({
                 vendor: vendor as Task["vendor"],
@@ -190,7 +239,7 @@ export function mainRowBlock(): string[] {
  */
 export function spinnerBlock(): string[] {
   const lines: string[] = []
-  for (const vendor of [...BUILTIN_VENDORS, CUSTOM_VENDOR]) {
+  for (const vendor of VENDORS) {
     const frames: string[] = []
     // Two full cycles plus an out-of-range index: the modulo wrap is the part
     // that silently breaks when a frame set changes length.
@@ -207,6 +256,12 @@ export function spinnerBlock(): string[] {
   // `withSpinnerFrame` overlays the live frame onto a view built at frame 0.
   // Its identity contract (an idle view is returned UNCHANGED, and the frame
   // accessor is never even read) is what keeps an idle row off the 10Hz tick.
+  //
+  // `sameAsDirect` is the part a glyph column alone would miss: the overlay
+  // must reproduce EXACTLY what `buildSidebarRowView` would have returned with
+  // that frame — every field, not just the one it rewrites. A divergence in
+  // tone or subtitle between the two paths means an animating row and a
+  // freshly-built one disagree about the same state.
   for (const state of ACTIVITY_STATES) {
     // Frame 0 reproduces the view it was built with (identity must survive);
     // 3 is an ordinary live frame; a frame past the set's length must wrap
@@ -218,14 +273,40 @@ export function spinnerBlock(): string[] {
         reads++
         return frame
       })
+      const direct = build({ task: task(), activity: activityOf(state), spinnerFrame: frame })
+      const sameAsDirect = RECORDED_FIELDS.every((field) => overlaid[field] === direct[field])
       lines.push(
         `${pad(`act=${state ?? "-"}`, 22)} ${pad(`frame=${frame}`, 10)} overlay: base=${base.stateGlyph} after=${
           overlaid.stateGlyph
-        } frameReads=${reads} sameObject=${overlaid === base ? 1 : 0}`,
+        } ${pad(`tone=${overlaid.tone}`, 16)} ${pad(`sub=${overlaid.subtitleText}`, 20)} frameReads=${reads} sameObject=${
+          overlaid === base ? 1 : 0
+        } sameAsDirect=${sameAsDirect ? 1 : 0}`,
       )
     }
   }
   lines.push(`defaultFrames=${DEFAULT_SPINNER_FRAMES.join("")}`)
+  return lines
+}
+
+/**
+ * Persisted board lifecycle (`TaskStatus`) crossed with runtime activity.
+ *
+ * The row is a RUNTIME projection: `status` is user-driven and must never
+ * reach it, so every column here should be identical down the `status` axis
+ * and vary only with `act`. Written as a golden block rather than left to the
+ * collapse assertion in `sidebar-row-view.test.ts` because that one only
+ * proves the collapse with activity ABSENT — the case this block adds back is
+ * "a `done` task whose engine is asking for permission still shows `?`".
+ */
+export function statusVsActivityBlock(): string[] {
+  const statuses: readonly TaskStatus[] = ["backlog", "in_progress", "in_review", "done", "canceled", "error"]
+  const lines: string[] = []
+  for (const status of statuses) {
+    for (const state of ACTIVITY_STATES) {
+      const view = build({ task: task({ status }), activity: activityOf(state) })
+      lines.push(row([pad(`status=${status}`, 20), pad(`act=${state ?? "-"}`, 22)], view))
+    }
+  }
   return lines
 }
 

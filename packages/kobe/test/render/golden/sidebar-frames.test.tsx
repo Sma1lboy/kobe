@@ -19,12 +19,11 @@
  * then read the diff. Every changed cell should be one you meant to change.
  */
 
-import { expect, test } from "bun:test"
-import { DEFAULT_SPINNER_FRAMES } from "@/engine/spinner-frames"
-import { CLAUDE_SPINNER_FRAMES } from "@/engine/spinner-frames"
+import { afterAll, beforeAll, expect, test } from "bun:test"
+import { CLAUDE_SPINNER_FRAMES, DEFAULT_SPINNER_FRAMES } from "@/engine/spinner-frames"
 import { currentLang, setLocaleLang } from "@/tui/i18n"
 import { goldenPath, matchGolden } from "../../golden/golden-file"
-import { renderComponent } from "../harness"
+import { renderComponent, settle } from "../harness"
 import { SCENES, SCENE_HEIGHT, SCENE_WIDTH, type Scene } from "./sidebar-scenes"
 
 /** Let opentui's mount, the tree's follow effect, and the layout pass settle
@@ -60,13 +59,19 @@ function frameDocument(scene: Scene, frame: string): string {
   ].join("\n")
 }
 
-const settle = (ms = SETTLE_MS) => new Promise((r) => setTimeout(r, ms))
-
 // The subtitles and the recent-jump row come from `t()`, so a capture under a
-// different active language would be a different document. Process-wide cell,
-// restored after the file's last scene.
-const RESTORE_LANG = currentLang()
-setLocaleLang("en")
+// different active language would be a different document. The locale cell is
+// process-wide and `bun test` runs this whole track in ONE process, so the
+// restore belongs in afterAll — hanging it off an unrelated test's body let
+// "en" leak into whatever ran next if that test was filtered or threw first.
+let restoreLang = "en"
+beforeAll(() => {
+  restoreLang = currentLang()
+  setLocaleLang("en")
+})
+afterAll(() => {
+  setLocaleLang(restoreLang as Parameters<typeof setLocaleLang>[0])
+})
 
 for (const scene of SCENES) {
   test(`sidebar frame golden: ${scene.name}`, async () => {
@@ -75,10 +80,10 @@ for (const scene of SCENES) {
       width: SCENE_WIDTH,
       height: SCENE_HEIGHT,
     })
-    await settle()
+    await settle(SETTLE_MS)
     for (const key of scene.keys ?? []) {
       mockInput.typeText(key)
-      await settle()
+      await settle(SETTLE_MS)
     }
     const captured = scene.animated ? maskSpinner(await frame()) : await frame()
     const document = frameDocument(scene, captured)
@@ -92,5 +97,4 @@ test("scene names are unique and every scene explains itself", () => {
   const names = SCENES.map((scene) => scene.name)
   expect(new Set(names).size).toBe(names.length)
   for (const scene of SCENES) expect(scene.about.length).toBeGreaterThan(20)
-  setLocaleLang(RESTORE_LANG)
 })

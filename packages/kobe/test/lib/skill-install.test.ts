@@ -5,7 +5,6 @@ import { fileURLToPath } from "node:url"
 import { afterEach, describe, expect, it } from "vitest"
 import {
   KOBE_SKILL_VERSION,
-  SKILL_INSTALL_COMMAND,
   bundledSkillDir,
   isKobeSkillInstalled,
   kobeSkillPaths,

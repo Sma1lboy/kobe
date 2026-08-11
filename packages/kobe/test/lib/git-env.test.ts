@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest"
-import { READ_ONLY_GIT_ENV, readOnlyGitProcessEnv } from "../../src/lib/git-env"
+import { readOnlyGitProcessEnv } from "../../src/lib/git-env"
 
 describe("read-only git env", () => {
   test("merges over an existing process env", () => {
