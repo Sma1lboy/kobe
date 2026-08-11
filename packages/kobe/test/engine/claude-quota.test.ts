@@ -81,7 +81,10 @@ describe("fetchClaudeQuotaUsage keychain lookup", () => {
   // `acct=unknown` row and today's login. Looking the item up by service
   // alone returned the stale one, so the dashboard stayed empty through
   // repeated re-logins. Pin the account flag the CLI itself passes.
-  it("queries the keychain by account as well as service", async () => {
+  // darwin-only: the lookup bails before spawning `security` elsewhere,
+  // so on Linux CI the spy records no call and the assertions have no
+  // subject (v0.8.66 publish gate failure).
+  it.runIf(process.platform === "darwin")("queries the keychain by account as well as service", async () => {
     spawnCapture.mockResolvedValue({ status: 1, stdout: "", stderr: "" })
     const { fetchClaudeQuotaUsage } = await import("../../src/engine/claude-code-local/quota.ts")
 
