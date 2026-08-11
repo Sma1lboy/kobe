@@ -29,7 +29,7 @@ import {
   partitionAttentionInboxAvailability,
 } from "./attention-inbox-core"
 import { readInboxVisits } from "./inbox-visits"
-import { knownTaskTab } from "./terminal-tabs-shared"
+import { activeTabIdFor, knownTaskTab } from "./terminal-tabs-shared"
 
 const MAX_VISIBLE_CARDS = 6
 const CARD_ROWS_WITH_GAP = 3
@@ -223,9 +223,12 @@ export function AttentionInboxPane(props: {
   // on a real write — memoizing on it keeps `rows` stable across the 10Hz
   // spinner tick.
   const visits = useMemo(() => readInboxVisits(props.kv), [props.kv])
+  // Only the tab you're actually on is dropped, not its whole task — its
+  // sibling chat tabs are exactly what RECENT is for.
+  const selectedTabId = props.selectedId ? activeTabIdFor(props.selectedId) : null
   const rows = useMemo(
-    () => inboxRows(availableItems, props.tasks, { selectedId: props.selectedId, visits }),
-    [availableItems, props.tasks, props.selectedId, visits],
+    () => inboxRows(availableItems, props.tasks, { selectedId: props.selectedId, selectedTabId, visits }),
+    [availableItems, props.tasks, props.selectedId, selectedTabId, visits],
   )
   const attentionCount = rows.filter((row) => row.kind === "attention").length
   const anyRunning = rows.some(

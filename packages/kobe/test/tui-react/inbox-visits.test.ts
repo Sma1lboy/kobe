@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest"
 import {
   type InboxVisit,
   inboxVisitIndex,
+  inboxVisitKey,
   parseInboxVisits,
   readInboxVisits,
   recordInboxVisit,
@@ -27,12 +28,20 @@ function fakeKv(seed: unknown = undefined) {
 // RECENT answers "where was I", so the order comes from a visit log —
 // `task.updatedAt` moves on any mutation and would answer "what changed".
 describe("inbox visit log", () => {
-  test("moves a revisited task to the front and adopts its new tab", () => {
-    const log = recordInboxVisit([visit("a", "tab-1", 1), visit("b", "tab-9", 2)], visit("b", "tab-2", 3))
+  test("moves a revisited tab to the front", () => {
+    const log = recordInboxVisit([visit("a", "tab-1", 1), visit("b", "tab-2", 2)], visit("b", "tab-2", 3))
     expect(log).toEqual([visit("b", "tab-2", 3), visit("a", "tab-1", 1)])
   })
 
-  test("keeps one entry per task and caps the log", () => {
+  // Owner report 2026-08-10: entries are keyed by (task, TAB). A task-keyed
+  // log collapsed a whole session of chat-tab switching into one row, so the
+  // tabs you'd just left never appeared in RECENT.
+  test("keeps a separate entry per tab of the same task", () => {
+    const log = recordInboxVisit([visit("a", "tab-1", 1)], visit("a", "tab-2", 2))
+    expect(log).toEqual([visit("a", "tab-2", 2), visit("a", "tab-1", 1)])
+  })
+
+  test("keeps one entry per (task, tab) and caps the log", () => {
     const log = [visit("a", null, 1), visit("b", null, 2), visit("c", null, 3)].reduce(
       (acc, entry) => recordInboxVisit(acc, entry, 2),
       [] as InboxVisit[],
@@ -50,7 +59,7 @@ describe("inbox visit log", () => {
 
     writeInboxVisit(kv, visit("a", "tab-2", 3))
     expect(kv.writes()).toBe(2)
-    expect(readInboxVisits(kv)).toEqual([visit("a", "tab-2", 3)])
+    expect(readInboxVisits(kv)).toEqual([visit("a", "tab-2", 3), visit("a", "tab-1", 1)])
   })
 
   test("drops malformed persisted entries instead of throwing", () => {
@@ -59,8 +68,9 @@ describe("inbox visit log", () => {
     expect(readInboxVisits(fakeKv({ not: "an array" }))).toEqual([])
   })
 
-  test("indexes by task, newest entry winning", () => {
-    const index = inboxVisitIndex([visit("a", "tab-2", 5), visit("a", "tab-1", 1)])
-    expect(index.get("a")).toEqual(visit("a", "tab-2", 5))
+  test("indexes by (task, tab), newest entry winning", () => {
+    const index = inboxVisitIndex([visit("a", "tab-2", 5), visit("a", "tab-1", 1), visit("a", "tab-2", 4)])
+    expect([...index.values()]).toEqual([visit("a", "tab-2", 5), visit("a", "tab-1", 1)])
+    expect(index.get(inboxVisitKey(visit("a", "tab-2", 5)))).toEqual(visit("a", "tab-2", 5))
   })
 })

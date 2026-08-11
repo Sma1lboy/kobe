@@ -103,20 +103,28 @@ export type InboxRow =
 /**
  * The Inbox reads as ONE list with two sections: every pending episode
  * (unread by definition — opening one removes it) sits on top, oldest
- * first so the queue drains top-down, then the tasks you most recently
- * VISITED. A task with a pending episode is not repeated below; neither
- * is the task you're already on.
+ * first so the queue drains top-down, then the TABS you most recently
+ * VISITED. Rows are per (task, tab), matching the visit log and the
+ * episode rows above — switching among one task's chat tabs is the most
+ * common way to move around, so collapsing them into a single per-task
+ * row hid exactly the places you'd want to jump back to.
+ *
+ * A target with a pending episode is not repeated below (a task-level
+ * episode covers every tab of its task); neither is the tab you're on.
  *
  * Visit order comes from the log (`inbox-visits.ts`), not `updatedAt` —
- * "where was I" is not "what changed". Never-visited tasks still appear,
- * ranked below every visited one by their own mtime, so a fresh install
- * has a useful RECENT section before the log fills up.
+ * "where was I" is not "what changed". Never-visited tasks still appear
+ * as one task-level row each, ranked below every visited tab by their own
+ * mtime, so a fresh install has a useful RECENT section before the log
+ * fills up.
  */
 export function inboxRows(
   items: readonly AttentionInboxItem[],
   tasks: readonly Task[],
   options: {
     selectedId?: string | null
+    /** The tab you're looking at right now, when the selected task has one. */
+    selectedTabId?: string | null
     recentLimit?: number
     visits?: readonly InboxVisit[]
   } = {},
@@ -125,17 +133,43 @@ export function inboxRows(
     items,
     tasks.map((task) => task.id),
   )
-  const pending = new Set(attention.map((item) => item.taskId))
-  const visited = inboxVisitIndex(options.visits ?? [])
-  const visitRank = new Map([...visited.keys()].map((taskId, index) => [taskId, index]))
-  const recent = tasks
-    .filter((task) => !task.archived && !pending.has(task.id) && task.id !== options.selectedId)
-    .sort((a, b) => {
-      const rankA = visitRank.get(a.id) ?? Number.MAX_SAFE_INTEGER
-      const rankB = visitRank.get(b.id) ?? Number.MAX_SAFE_INTEGER
-      return rankA === rankB ? compareRecent(a, b) : rankA - rankB
-    })
-    .slice(0, options.recentLimit ?? INBOX_RECENT_LIMIT)
+  const tasksById = new Map(tasks.map((task) => [String(task.id), task]))
+  // A visited row names one tab, so only an episode on THAT tab (or a
+  // task-level one) duplicates it. An unvisited row is task-level, so any
+  // episode on its task does.
+  const pendingTasks = new Set(items.map((item) => item.taskId))
+  const coveredTab = (taskId: string, tabId: string | null): boolean =>
+    items.some((item) => item.taskId === taskId && (item.tabId === null || item.tabId === tabId))
+  const visited = [...inboxVisitIndex(options.visits ?? []).values()]
+  // No known active tab (task never mounted its tabs) falls back to hiding
+  // the whole selected task, as before — there's nothing tab-precise to say.
+  const isSelected = (taskId: string, tabId: string | null): boolean =>
+    taskId === options.selectedId && (options.selectedTabId == null || tabId === options.selectedTabId)
+  const visitedRows = visited
+    .map((visit) => ({ visit, task: tasksById.get(visit.taskId) }))
+    .filter(
+      (entry): entry is { visit: InboxVisit; task: Task } =>
+        entry.task !== undefined &&
+        !entry.task.archived &&
+        !coveredTab(entry.visit.taskId, entry.visit.tabId) &&
+        !isSelected(entry.visit.taskId, entry.visit.tabId),
+    )
+    .map(({ visit, task }) => ({
+      kind: "recent" as const,
+      id: visit.tabId ? `r:${visit.taskId}:${visit.tabId}` : `r:${visit.taskId}`,
+      task,
+      tabId: visit.tabId,
+      at: visit.at,
+    }))
+  const seenTasks = new Set(visited.map((visit) => visit.taskId))
+  const unvisitedRows = tasks
+    .filter(
+      (task) =>
+        !task.archived && !seenTasks.has(task.id) && !pendingTasks.has(task.id) && task.id !== options.selectedId,
+    )
+    .sort(compareRecent)
+    .map((task) => ({ kind: "recent" as const, id: `r:${task.id}`, task, tabId: null, at: taskMtime(task) }))
+  const recent = [...visitedRows, ...unvisitedRows].slice(0, options.recentLimit ?? INBOX_RECENT_LIMIT)
   const rows: InboxRow[] = []
   if (attention.length > 0) {
     rows.push({ kind: "header", id: "header:attention", section: "attention" })
@@ -143,16 +177,7 @@ export function inboxRows(
   }
   if (recent.length > 0) {
     rows.push({ kind: "header", id: "header:recent", section: "recent" })
-    for (const task of recent) {
-      const visit = visited.get(task.id)
-      rows.push({
-        kind: "recent",
-        id: `r:${task.id}`,
-        task,
-        tabId: visit?.tabId ?? null,
-        at: visit?.at ?? taskMtime(task),
-      })
-    }
+    rows.push(...recent)
   }
   return rows
 }
