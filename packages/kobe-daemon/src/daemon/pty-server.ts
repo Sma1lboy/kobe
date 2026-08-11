@@ -191,8 +191,10 @@ export async function startPtyHostServer(options: PtyHostServerOptions = {}): Pr
               ? payload.command.filter((c): c is string => typeof c === "string")
               : undefined,
             shell: typeof payload.shell === "string" ? payload.shell : undefined,
-            cols: typeof payload.cols === "number" ? payload.cols : 80,
-            rows: typeof payload.rows === "number" ? payload.rows : 24,
+            // undefined, not 80×24: a size-less open must stay size-agnostic
+            // (spawn defaults live in the host; reattach must not resize).
+            cols: typeof payload.cols === "number" ? payload.cols : undefined,
+            rows: typeof payload.rows === "number" ? payload.rows : undefined,
           },
           client,
           (frame) => writeFrame(client, frame),

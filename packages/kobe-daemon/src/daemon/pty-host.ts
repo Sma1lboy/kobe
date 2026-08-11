@@ -123,10 +123,17 @@ export class PtyHost {
       created = true
       session = this.adoptSpare(key, spec) ?? this.spawn(key, spec)
       this.sessions.set(key, session)
-    } else if (session.alive && (session.cols !== spec.cols || session.rows !== spec.rows)) {
+    } else if (
+      session.alive &&
+      spec.cols !== undefined &&
+      spec.rows !== undefined &&
+      (session.cols !== spec.cols || session.rows !== spec.rows)
+    ) {
       // Reattach from a differently-sized client: last-attach-wins, like
       // tmux — the SIGWINCH makes a full-screen app repaint at the new
-      // size, fixing what the stale-size replay painted.
+      // size, fixing what the stale-size replay painted. Size-less opens
+      // (headless delivery/ensure clients) never resize: shrinking a live
+      // session out from under its attached TUI garbles the pane (#18).
       this.resize(key, spec.cols, spec.rows)
     }
     session.sinks.set(token, sink)
@@ -197,11 +204,15 @@ export class PtyHost {
     if (want.length !== 1 || want[0] !== spare.command[0]) return null
     this.spare = null
     spare.key = key
-    if (spare.cols !== spec.cols || spare.rows !== spec.rows) {
-      spare.cols = spec.cols
-      spare.rows = spec.rows
+    // A size-less spec keeps the spare's dimensions (headless adopters
+    // don't care; the first sized attach will resize).
+    const cols = spec.cols ?? spare.cols
+    const rows = spec.rows ?? spare.rows
+    if (spare.cols !== cols || spare.rows !== rows) {
+      spare.cols = cols
+      spare.rows = rows
       try {
-        spare.proc?.resize(spec.cols, spec.rows)
+        spare.proc?.resize(cols, rows)
       } catch {
         this.markExited(spare)
         return null
@@ -209,7 +220,7 @@ export class PtyHost {
     }
     this.opts.log?.("pty", `adopted warm shell for ${key} (pid ${spare.proc?.pid})`)
     this.opts.onSessionStart?.()
-    this.warm(spec.cwd, spare.command[0], spec.cols, spec.rows)
+    this.warm(spec.cwd, spare.command[0], cols, rows)
     return spare
   }
 
@@ -346,6 +357,8 @@ export class PtyHost {
    *  open (its adoption fires the callback instead). */
   private spawn(key: string, spec: PtySpawnSpec, spare = false): PtySessionState {
     const argv = spec.command && spec.command.length > 0 ? [...spec.command] : [spec.shell ?? resolveLoginShell()]
+    const cols = spec.cols ?? 80
+    const rows = spec.rows ?? 24
     const session: PtySessionState = {
       key,
       cwd: spec.cwd,
@@ -354,8 +367,8 @@ export class PtyHost {
       chunks: [],
       bytes: 0,
       totalBytes: 0,
-      cols: spec.cols,
-      rows: spec.rows,
+      cols,
+      rows,
       command: argv,
       title: "",
       titleCarry: "",
@@ -371,13 +384,13 @@ export class PtyHost {
         cwd: spec.cwd,
         env: embeddedTerminalEnv(process.env, {
           TERM: "xterm-256color",
-          COLUMNS: String(spec.cols),
-          LINES: String(spec.rows),
+          COLUMNS: String(cols),
+          LINES: String(rows),
           BASH_SILENCE_DEPRECATION_WARNING: "1",
           KOBE_TERMINAL_PTY: "1",
         }),
-        cols: spec.cols,
-        rows: spec.rows,
+        cols,
+        rows,
         onData: (data) => this.onData(session, data),
       })
       void session.proc.exited.then(

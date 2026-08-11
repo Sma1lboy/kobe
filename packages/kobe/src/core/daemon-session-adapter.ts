@@ -111,8 +111,7 @@ export async function deliverPromptToLiveEngineAdapter(
     const engineBin = interactiveEngineCommand(task.vendor)[0]
     const key = findHostedEngineKey(sessions, task.id, engineBin)
     if (!key) return false
-    const delivered = await deliverToHostedKey(host.rpc, key, task.worktreePath, prompt)
-    await host.rpc.request("pty.detach", { key }).catch(() => {})
+    const delivered = await deliverToHostedKey(host.rpc, key, prompt)
     return delivered
   } catch {
     return false
