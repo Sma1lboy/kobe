@@ -20,8 +20,15 @@ function reduceActivity(
       // mid-turn (an approved permission resumes without a new turn-start).
       // Engines fire Stop on automated wakes too — a background monitor
       // stream ending "completed" a turn nobody started and lit the ●
-      // lamp (owner bug 2026-08-02). Mirrors kobe's hook-events reducer.
-      return previous === "running" || previous === "permission_needed" ? "turn_complete" : (previous ?? "idle")
+      // lamp (owner bug 2026-08-02); that signature is a Stop on a KNOWN
+      // untracked state (explicit idle/sticky entry) and stays swallowed.
+      // `undefined` is a COLD registry (fresh daemon after a restart) — the
+      // one real way a task's first event is a Stop is a turn that started
+      // before the wipe, so let it complete instead of eating the ● lamp.
+      // Mirrors kobe's hook-events reducer.
+      return previous === "running" || previous === "permission_needed" || previous === undefined
+        ? "turn_complete"
+        : previous
     case "turn-failed":
       return detail?.failure === "rate_limit" || detail?.failure === "billing" ? "rate_limited" : "error"
     case "awaiting-input":

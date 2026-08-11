@@ -119,8 +119,13 @@ export function reduceActivity(
       // permission continues WITHOUT a new turn-start). Engines fire Stop
       // for automated wakes too — a background monitor stream ending
       // "completes" a turn the user never started, and the ● lamp lit for
-      // it (owner bug 2026-08-02). Without a tracked turn, keep what was.
-      return prev === "running" || prev === "permission_needed" ? "turn_complete" : (prev ?? "idle")
+      // it (owner bug 2026-08-02). That wake signature is a Stop landing on
+      // a KNOWN untracked state (an explicit idle/sticky entry) — keep it.
+      // `undefined` is different: the reducer knows NOTHING (fresh daemon,
+      // registry wiped by a restart), and the one real way a first event is
+      // a Stop is a turn that started before the wipe — swallowing it cost
+      // the ● lamp for every turn that outlived a daemon restart.
+      return prev === "running" || prev === "permission_needed" || prev === undefined ? "turn_complete" : prev
     case "turn-failed":
       return detail?.failure === "rate_limit" || detail?.failure === "billing" ? "rate_limited" : "error"
     case "awaiting-input":

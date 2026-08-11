@@ -14,15 +14,23 @@ describe("reduceActivity", () => {
     expect(reduceActivity("running", "session-end")).toBe("idle")
   })
 
-  it("a Stop with no tracked turn is an automated wake, not a completion", () => {
+  it("a Stop on a KNOWN untracked state is an automated wake, not a completion", () => {
     // Engines fire Stop on hook-driven wakes (a monitor stream ending) with
     // no user turn in flight — that must not light the ● lamp (owner
-    // 2026-08-02). Only running / permission_needed (a mid-turn approval
-    // resumes without a new turn-start) complete.
-    expect(reduceActivity(undefined, "turn-complete")).toBe("idle")
+    // 2026-08-02). The wake signature is an explicit idle/sticky previous
+    // state; running / permission_needed (a mid-turn approval resumes
+    // without a new turn-start) complete.
     expect(reduceActivity("idle", "turn-complete")).toBe("idle")
     expect(reduceActivity("turn_complete", "turn-complete")).toBe("turn_complete")
     expect(reduceActivity("permission_needed", "turn-complete")).toBe("turn_complete")
+  })
+
+  it("a Stop on a COLD registry (undefined) completes — the turn outlived a daemon restart", () => {
+    // A restart wipes the in-memory registry; a turn that started before the
+    // wipe ends with a Stop that is the task's FIRST event since boot.
+    // Swallowing it cost the ● lamp for every turn that outlived a restart
+    // (prod 2026-08-10). Only a known untracked state means "automated wake".
+    expect(reduceActivity(undefined, "turn-complete")).toBe("turn_complete")
   })
 
   it("classifies turn-failed by failure class", () => {
