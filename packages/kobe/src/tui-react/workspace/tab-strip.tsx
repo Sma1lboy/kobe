@@ -15,19 +15,22 @@
  */
 
 import { type BoxRenderable, TextAttributes } from "@opentui/core"
+import { useTerminalDimensions } from "@opentui/react"
 import { useEffect, useRef, useState } from "react"
 import type { ChatTabTurnState } from "../../engine/turn-detector"
-import { displayWidth } from "../../lib/display-width"
+import { approxCharCells, displayWidth } from "../../lib/display-width"
 import {
   TAB_STRIP_HIDE_SINGLE_KEY,
   TAB_STRIP_MODE_KEY,
   resolveTabStripMode,
   tabStripVisible,
 } from "../../state/tab-strip"
+import { truncateEndCells } from "../../tui/lib/truncate"
 import { type TerminalTab, tabTitle, visibleNativeStatus } from "../../tui/workspace/terminal-tabs-core"
 import type { VendorId } from "../../types/vendor"
 import { useKV } from "../context/kv"
 import { useTheme } from "../context/theme"
+import { isNarrowWidth } from "../lib/narrow-mode"
 
 export { tabTitle }
 
@@ -62,6 +65,7 @@ export function TabStrip(props: {
   const themeCtx = useTheme()
   const { theme } = themeCtx
   const kv = useKV()
+  const dims = useTerminalDimensions()
   // The sidebar tree lists every worktree's tabs, so the strip is off by
   // default (owner call 2026-08-01) — Settings → Terminal brings it back.
   // Rendered as a late bail so the hooks below always run in the same order.
@@ -69,7 +73,11 @@ export function TabStrip(props: {
     kv.get(TAB_STRIP_MODE_KEY, undefined),
     kv.get(TAB_STRIP_HIDE_SINGLE_KEY, undefined),
   )
-  const hidden = !tabStripVisible(stripMode, props.tabs.length)
+  // Narrow (issue #14) overrides the mode: the sidebar tree — the reason
+  // the strip defaults off — is not on screen beside a narrow workspace,
+  // so the condensed strip is the only tab affordance there.
+  const narrow = isNarrowWidth(dims.width)
+  const hidden = !narrow && !tabStripVisible(stripMode, props.tabs.length)
 
   /* --------- turn-complete pulse ---------------------------------------
    * Track running→done transitions; a transitioned tab id sits in
@@ -151,6 +159,51 @@ export function TabStrip(props: {
   offsetRef.current = offset
 
   if (hidden) return null
+
+  /* --------- narrow condensed form (issue #14) --------------------------
+   * At phone-SSH widths a row of tabs cannot fit: show only the ACTIVE
+   * tab — turn chip + title truncated to the pane — with a right-stuck
+   * `2/3` position counter. Tab-switching chords are unchanged; the
+   * counter is what tells you the others exist. */
+  if (narrow) {
+    const activeIndex = Math.max(
+      0,
+      entries.findIndex((entry) => entry.tab.id === props.activeId),
+    )
+    const active = entries[activeIndex]
+    if (!active) return null
+    const counter = `${activeIndex + 1}/${entries.length}`
+    // Budget: strip padding (2) + active-chip padding (2) + chip glyph
+    // (2 when shown) + gap before the counter (1) + the counter itself.
+    const titleCells = Math.max(4, dims.width - 5 - (active.chipShown ? 2 : 0) - counter.length)
+    const pulse = pulsing.has(active.tab.id)
+    return (
+      <box
+        flexDirection="row"
+        flexShrink={0}
+        paddingLeft={1}
+        paddingRight={1}
+        gap={1}
+        overflow="hidden"
+        backgroundColor={theme.backgroundElement}
+      >
+        <box flexDirection="row" flexShrink={1} paddingLeft={1} paddingRight={1} backgroundColor={theme.focusAccent}>
+          {active.chipShown ? (
+            <text fg={theme.backgroundElement} attributes={pulse ? TextAttributes.BOLD : undefined} wrapMode="none">
+              {`${TURN_GLYPHS[active.turn]} `}
+            </text>
+          ) : null}
+          <text fg={theme.backgroundElement} attributes={TextAttributes.BOLD} wrapMode="none">
+            {truncateEndCells(active.title, titleCells, approxCharCells)}
+          </text>
+        </box>
+        <box flexGrow={1} />
+        <text fg={theme.textMuted} wrapMode="none">
+          {counter}
+        </text>
+      </box>
+    )
+  }
 
   return (
     <box

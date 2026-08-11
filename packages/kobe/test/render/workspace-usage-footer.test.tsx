@@ -60,3 +60,36 @@ test("renders nothing when no vendor has a snapshot", async () => {
   expect(out).toContain("body")
   expect(out).not.toContain("%")
 })
+
+test("narrow footer collapses each vendor to its session-window percent", async () => {
+  const orch = orchestratorWith(
+    new Map<string, EngineQuotaUsage>([
+      [
+        "claude",
+        {
+          capturedAt: Date.now(),
+          windows: [
+            { kind: "session", label: "5h", percent: 42, resetsAt: IN_AN_HOUR },
+            { kind: "weekly_all", label: "7d", percent: 12, resetsAt: null },
+          ],
+        },
+      ],
+      ["codex", { capturedAt: Date.now(), windows: [{ kind: "primary", label: "7d", percent: 96, resetsAt: null }] }],
+    ]),
+  )
+  const { frame } = await renderComponent(
+    <WorkspaceFrame orchestrator={orch}>
+      <box />
+    </WorkspaceFrame>,
+    { width: 46, height: 6 },
+  )
+  const out = await frame()
+  const footer = out.trimEnd().split("\n").at(-1) ?? ""
+  // One chip per vendor: tone-colored percent only — no window label, no
+  // reset time, and no second window.
+  expect(footer).toContain("CLAUDE 42%")
+  expect(footer).toContain("CODEX 96%")
+  expect(footer).not.toContain("5h")
+  expect(footer).not.toContain("12%")
+  expect(footer).not.toContain("→")
+})
