@@ -28,10 +28,16 @@
 #   4. Biome `--write` on the regenerated package.json / CHANGELOG.md so the
 #      reserialized JSON can't fail the lint gate (the `files` array used to
 #      re-expand to multi-line and break `biome check`).
-#   5. Commits "chore: release — X.Y.Z", tags vX.Y.Z.
-#   6. Asks before pushing (main + tag) — the push triggers GitHub Actions
-#      which lints, typechecks, tests (incl. behavior), builds, publishes to
-#      npm, and creates the GitHub release with the extracted CHANGELOG notes.
+#   5. Commits "chore: release — X.Y.Z". The tag is NOT created yet.
+#   6. Asks, then pushes the release COMMIT to main and waits for its CI run
+#      (ci.yml on ubuntu/macos — the same job set release.yml makes `publish`
+#      wait on) to go green. Only THEN tags vX.Y.Z and pushes the tag, which
+#      triggers the publish. Local gates run on this (macOS) machine, so a
+#      Linux-only red reaches CI first — under the old order that red arrived
+#      AFTER the tag and burned the version number (v0.8.58, v0.8.66). Now a
+#      red release commit leaves no tag: land the fix on main and re-run this
+#      script — it detects the committed-but-untagged version and RESUMES
+#      (wait for CI at the fixed HEAD → tag the same vX.Y.Z → push).
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -39,9 +45,80 @@ PKG_JSON="$REPO_ROOT/packages/kobe/package.json"
 CHANGELOG="$REPO_ROOT/packages/kobe/CHANGELOG.md"
 cd "$REPO_ROOT"
 
+# ── two-phase tag: wait for the release commit's CI, then tag + push ─────────
+# The tag is what publishes, and the version number it carries is single-use.
+# So the tag only gets created after the release COMMIT is green on GitHub CI
+# (ubuntu + macos), which the local gate on this machine cannot prove
+# (platform-dependent reds: v0.8.66's darwin-only test path). ci.yml's
+# main-push jobs (typecheck-and-test, behavior, render-track,
+# visual-ground-truth) are the same set release.yml makes `publish` wait on.
+await_ci_then_tag() {
+  local version="$1" tag="v$1" sha run_id="" tries=0 concl
+  sha=$(git rev-parse HEAD)
+  echo "Waiting for CI on ${sha:0:9} (the same Linux/macOS gates that block publish)…"
+  while [ -z "$run_id" ]; do
+    tries=$((tries + 1))
+    if [ "$tries" -gt 36 ]; then
+      echo "Error: no ci.yml run appeared for $sha within ~3min. Check gh auth / Actions." >&2
+      return 1
+    fi
+    sleep 5
+    run_id=$(gh run list --workflow=ci.yml --branch main --limit 15 --json databaseId,headSha \
+      --jq ".[] | select(.headSha == \"$sha\") | .databaseId" | head -1)
+  done
+  echo "  ci.yml run $run_id — watching to completion…"
+  if ! gh run watch "$run_id" --exit-status >/dev/null; then
+    concl=$(gh run view "$run_id" --json conclusion --jq .conclusion)
+    if [ "$concl" = "cancelled" ]; then
+      echo "CI run was CANCELLED (a newer main push superseded it — ci.yml cancels in-progress runs)." >&2
+      echo "Nothing was tagged. Pull main and re-run scripts/release.sh to resume $tag." >&2
+    else
+      echo "CI FAILED on the release commit. NO tag was pushed — $version is NOT burned." >&2
+      echo "  Logs:   gh run view $run_id --log-failed" >&2
+      echo "  Recover: land the fix on main, re-run scripts/release.sh — it resumes and" >&2
+      echo "           tags $tag at the fixed HEAD (package.json still carries $version)." >&2
+    fi
+    return 1
+  fi
+  echo "✓  CI green on the release commit"
+  if git rev-parse "$tag" &>/dev/null; then
+    if [ "$(git rev-parse "$tag^{commit}")" != "$sha" ]; then
+      echo "Error: local tag $tag exists but points elsewhere — resolve manually." >&2
+      return 1
+    fi
+  else
+    git tag "$tag"
+  fi
+  git push origin "$tag"
+  echo ""
+  echo "✓  Tagged + pushed $tag — publish is running:"
+  echo "   https://github.com/sma1lboy/kobe/actions"
+}
+
 # ── safety: there must be pending changesets to release ───────────────────────
 PENDING=$(find .changeset -maxdepth 1 -name '*.md' ! -name 'README.md' 2>/dev/null | wc -l | tr -d ' ')
 if [ "$PENDING" = "0" ]; then
+  # Committed-but-untagged version ⇒ an interrupted two-phase release (CI was
+  # red or the wait was cancelled). Resume it instead of demanding changesets.
+  CURRENT=$(node -p "require('$PKG_JSON').version")
+  if ! git ls-remote --tags origin "refs/tags/v$CURRENT" | grep -q .; then
+    echo "No pending changesets, but v$CURRENT is committed and NOT tagged on origin."
+    echo "Resuming the interrupted release of $CURRENT…"
+    git fetch origin main --quiet
+    if [ "$(git rev-list --count HEAD..origin/main)" != "0" ]; then
+      echo "Error: local main is BEHIND origin/main — pull first, then re-run." >&2
+      exit 1
+    fi
+    read -rp "Wait for CI on HEAD, then tag + push v$CURRENT? [y/N] " REPLY
+    [[ "$REPLY" =~ ^[Yy]$ ]] || exit 0
+    # Ahead-only (release commit answered N to the push, or a fix landed
+    # locally): push main first so CI runs on what will be tagged.
+    if [ "$(git rev-list --count origin/main..HEAD)" != "0" ]; then
+      git push origin main
+    fi
+    await_ci_then_tag "$CURRENT"
+    exit $?
+  fi
   echo "No pending changesets in .changeset/ — nothing to release." >&2
   echo "Add one with: bun run changeset" >&2
   exit 1
@@ -178,24 +255,21 @@ if ! git diff --quiet bun.lock 2>/dev/null; then
   git add bun.lock
 fi
 git commit -m "chore: release — $NEW_VERSION"
-git tag "$TAG"
-echo "✓  Committed + tagged $TAG"
+echo "✓  Committed $NEW_VERSION — the tag comes only after CI validates this commit"
 
-# ── push ──────────────────────────────────────────────────────────────────────
+# ── push commit → await CI → tag ─────────────────────────────────────────────
 echo ""
-echo "Ready to push main + $TAG → GitHub Actions will:"
-echo "  • typecheck + test + build"
+echo "Ready to push the release commit → wait for its CI (ubuntu+macos) →"
+echo "then tag $TAG, which triggers:"
 echo "  • npm publish @sma1lboy/kobe@$NEW_VERSION"
-echo "  • create GitHub release with the notes above"
+echo "  • GitHub release with the notes above"
 echo ""
 read -rp "Push now? [y/N] " REPLY
 if [[ "$REPLY" =~ ^[Yy]$ ]]; then
-  git push origin main "$TAG"
-  echo ""
-  echo "✓  Pushed — watch CI at:"
-  echo "   https://github.com/sma1lboy/kobe/actions"
+  git push origin main
+  await_ci_then_tag "$NEW_VERSION"
 else
   echo ""
-  echo "Not pushed. When ready:"
-  echo "  git push origin main $TAG"
+  echo "Not pushed. When ready, re-run scripts/release.sh — it will resume"
+  echo "(push is already committed; it waits for CI, then tags $TAG)."
 fi

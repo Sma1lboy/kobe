@@ -130,24 +130,32 @@ hand:
 scripts/release.sh
 ```
 
-What it does (don't fight it): gate (`lint` → `typecheck` → `test`) → `changeset
-version` → `bun install` +
-`--frozen-lockfile` → `lint:fix` on the regenerated JSON → commits
-`chore: release — X.Y.Z` → tags `vX.Y.Z` → **prompts** before pushing `main` + tag.
+What it does (don't fight it): gate (`lint` → `typecheck` → `test` → `build` →
+`behavior`) → `changeset version` → `bun install` + `--frozen-lockfile` →
+`lint:fix` on the regenerated JSON → commits `chore: release — X.Y.Z` (**no tag
+yet**) → **prompts**, pushes the release commit to `main`, **waits for that
+commit's `ci.yml` run to go green** (the Linux/macOS gates the local macOS run
+can't prove — v0.8.66 died exactly there), and only then tags `vX.Y.Z` and
+pushes the tag.
 
 - Confirm the printed `CURRENT → NEW (vX.Y.Z)` matches your Step 1 prediction. A
   mismatch means a changeset changed under you — stop and re-inspect.
 - The script asks `Push now? [y/N]`. Answer `y` only after the version line checks
-  out. If the user wanted a dry run / review-before-push, answer `N` and report the
-  staged commit + tag so they can push manually.
+  out. If the user wanted a dry run / review-before-push, answer `N` — re-running
+  the script later resumes (push → wait CI → tag).
+- If the CI wait comes back RED, no tag exists and the version is NOT burned:
+  land the fix on `main` (no new changeset) and re-run `scripts/release.sh` —
+  with zero pending changesets and an untagged committed version it enters
+  resume mode and tags the same version at the fixed HEAD.
 
 The push of tag `vX.Y.Z` is what triggers `.github/workflows/release.yml`.
 
 ## Step 4 — Poll CI until publish completes
 
 The tag push starts the **Release** workflow (`publish` job: gates → npm publish →
-GitHub release; then `binaries` matrix). Watch it to terminal state — don't
-declare success on push alone:
+GitHub release). npm is the sole distribution channel — standalone binaries were
+dropped 2026-08-02, so an empty release-assets list is normal. Watch the run to
+terminal state — don't declare success on push alone:
 
 ```bash
 gh run list --workflow=release.yml --limit 5          # find the run for this tag
@@ -159,14 +167,13 @@ On success, verify the package actually landed (don't trust the green check alon
 
 ```bash
 npm view @sma1lboy/kobe@<new-version> version          # must echo the new version
-gh release view v<new-version> --json name,assets -q '.assets[].name'   # binaries attached?
+gh release view v<new-version> --json name -q .name    # GitHub release exists
 ```
 
 Confirm: published version == tag == `packages/kobe/package.json`, release landed
-on `main` (`git log --oneline -1 origin/main` is the `chore: release` commit),
-binaries for darwin-arm64 / linux-x64 / linux-arm64 are attached. Then report
-done with the version, the npm dist-tag it went to (`latest` for plain semver), and
-the release URL.
+on `main` (`git log --oneline -1 origin/main` is the `chore: release` commit).
+Then report done with the version, the npm dist-tag it went to (`latest` for
+plain semver), and the release URL.
 
 ## Step 5 — Diagnose CI failure (auto-fix or stop precisely)
 
@@ -185,7 +192,7 @@ Map the failure to a cause and act. **Never** retry blindly or force-push.
 | `Verify tag matches package.json` step fails | tag ≠ `package.json` version (retag drift) | Means the tag and the committed version disagree — surface it; do **not** force-retag. The fix is to bump+commit then tag fresh, which is the user's call. |
 | Typecheck / test / build red | real regression that local gates somehow missed | Reproduce locally (`bun run typecheck|test|build`), fix in-scope, and note that the tag already pushed — a fix needs a **new** patch release, not a force-push over the tag. |
 | `npm publish` → `E409`/`cannot publish over` | version already on npm | The version is already out — likely a double-run. Stop; the next release is a new version. |
-| `binaries` job fails but `publish` succeeded | runner/compile flake on one arch | npm already has the package. Report which arch is missing; the matrix can be re-run with `gh run rerun <run-id> --failed` (re-running binary upload is safe — `action-gh-release` is idempotent on the tag; re-running `publish` is NOT, it'll hit E409). |
+| A sibling job (`behavior`/`render-track`/`visual-ground-truth`) fails but `publish` succeeded | flake in a non-blocking rerun | npm already has the package; report it. `gh run rerun <run-id> --failed` is safe for those jobs; re-running `publish` is NOT — it'll hit E409. |
 
 The principle: anything that *changes published artifacts or rewrites history*
 (retag, force-push, republish) is **stop-and-report**, not auto-fix. Anything

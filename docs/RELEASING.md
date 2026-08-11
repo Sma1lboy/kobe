@@ -29,14 +29,17 @@ scripts/release.sh
 > commit + tag that `release.sh` pushes is the ONE sanctioned direct push —
 > it only consumes changesets that already passed PR CI.
 
-This first runs the release gate — lint, typecheck, unit tests, build, and the **behavior** suite — and aborts before touching anything if it fails. The gate deliberately mirrors everything `release.yml` makes `publish` wait on: a check that only ran in CI would be discovered by the *tag*, and a tag that fails to publish burns its version number for good (v0.8.58 did exactly this — green locally, then the pipeline's behavior job failed). If a gate is added to `release.yml`, add it here too.
+This first runs the release gate — lint, typecheck, unit tests, build, and the **behavior** suite — and aborts before touching anything if it fails. The gate deliberately mirrors everything `release.yml` makes `publish` wait on: a check that only ran in CI would be discovered by the *tag*, and a tag that fails to publish burns its version number for good (v0.8.58 did exactly this — green locally, then the pipeline's behavior job failed). If a gate is added to `release.yml`, add it here too. The local gate is a fast-fail, **not the verdict**: it runs on the operator's macOS while CI publishes from ubuntu, and a platform-dependent red (v0.8.66 — a darwin-only code path's test) only shows up on CI. That's why tagging is two-phase (below).
 
 With a green gate, it consumes every pending `.changeset/*.md`:
 
 1. `changeset version` — computes the next version from the pending bump types, rewrites `packages/kobe/package.json`, and prepends the collected notes to `CHANGELOG.md` (then deletes the consumed changesets).
 2. Runs `bun install`, then `bun install --frozen-lockfile`, so `bun.lock` matches the workspace package versions before the release commit is made.
 3. Re-runs Biome `--write` on the touched `package.json` / `CHANGELOG.md` so the generated JSON formatting can't fail the lint gate (Changesets and the release script both reserialize `package.json`, which used to re-expand the single-line `files` array). This step is no longer error-swallowed — a `lint:fix` failure stops the release.
-4. Commits `chore: release — X.Y.Z`, tags `vX.Y.Z`, and (after confirming) pushes `main` + the tag.
+4. Commits `chore: release — X.Y.Z`. **No tag yet.**
+5. (After confirming) pushes the release commit to `main`, then **waits for that commit's `ci.yml` run** — typecheck-and-test, behavior, render-track, visual-ground-truth on real CI hardware, the same set `release.yml` makes `publish` wait on. Only when it's green does the script tag `vX.Y.Z` and push the tag.
+
+If CI comes back red, **no tag exists and the version number is not burned**: `package.json` on `main` already carries X.Y.Z, so land the fix on `main` (no new changeset needed) and re-run `scripts/release.sh` — with zero pending changesets and an untagged committed version it enters **resume mode**: waits for CI at the fixed HEAD, then tags the same `vX.Y.Z` there. The same resume path covers answering `N` at the push prompt and a CI run cancelled by a newer main push.
 
 The push triggers `.github/workflows/release.yml`, which gates on **lint + typecheck + unit tests (fast + socket) + build**, waits on the same **behavior** suite `ci.yml`'s PR gate runs, then `npm publish`es and extracts the new `CHANGELOG.md` section as the GitHub release body. npm is the sole distribution channel — standalone binaries were dropped 2026-08-02 (nothing consumed them; `packages/kobe/scripts/compile.ts` still builds one locally on demand). The same publish job also piggyback-publishes **`@sma1lboy/kobe-plugin-sdk`** whenever its (independently changeset-versioned) current version isn't on npm yet — the SDK has no tag of its own; an SDK-only release still rides the next kobe release.
 
