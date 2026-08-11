@@ -357,23 +357,6 @@ export function supportsStructuredHistory(vendor: VendorId): boolean {
  */
 
 /**
- * Display name for a live terminal title: an engine's own title collapses
- * to its launch binary ("✳ Claude Code" → "claude", codex's likewise) so
- * every kobe surface (tab labels, split corner tags) speaks ONE vocabulary
- * for a process no matter how it was started or what decoration the CLI
- * put in its title. Non-engine titles pass through raw (vim, htop, a
- * cwd-titling shell) — that's the dynamic real-terminal behavior.
- *
- * `vendor` is the PROCESS identity (`live-engine.ts`), not something read
- * back out of the title: deriving it from the title itself is what
- * labelled a claude tab "codex" whenever claude's activity summary
- * mentioned codex.
- */
-export function titleDisplayName(title: string, vendor: VendorId | null): string {
-  return vendor ? (engineEntry(vendor).defaultCommand[0] ?? vendor) : title
-}
-
-/**
  * Strip the engine's own STATUS decoration from a live OSC title.
  *
  * Engines that own their title write their turn state into it — claude's

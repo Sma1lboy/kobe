@@ -9,7 +9,6 @@
  */
 
 import { describe, expect, it } from "vitest"
-import { titleDisplayName } from "../../src/engine/registry"
 import { createTitleSubscriptions } from "../../src/tui-react/workspace/title-subscriptions"
 import type { TaskPtyLike } from "../../src/tui/panes/terminal/pty-types"
 
@@ -76,7 +75,6 @@ describe("createTitleSubscriptions", () => {
       const store = createTitleSubscriptions((key) => (key === "k" ? pty : null))
       store.reconcile(["k"])
       expect(store.get("k")).toBe(raw)
-      expect(titleDisplayName(raw, null)).toBe(raw)
     }
   })
 
