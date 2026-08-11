@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vitest"
 import {
+  RECENT_ROW_ID,
   type TreeTab,
   buildTreeRows,
   filterTreeRows,
@@ -9,6 +10,7 @@ import {
   tabRowActivity,
   tabRowId,
   treeFlatIds,
+  withRecentRow,
 } from "../../src/tui/panes/sidebar/tree-core"
 import type { Task } from "../../src/types/task"
 import { toTaskId } from "../../src/types/task"
@@ -267,5 +269,23 @@ describe("tabRowActivity", () => {
     expect(
       tabRowActivity({ tabActivity: undefined, reportedTabCount: 0, taskActivity: undefined, active: true }),
     ).toBeUndefined()
+  })
+})
+
+describe("withRecentRow", () => {
+  test("prepends a navigable recent row whose id no task can own", () => {
+    const recent = task("b")
+    const all = withRecentRow(rows({ tasks: [task("a"), recent], tabsByTask: new Map() }), recent)
+    expect(all[0]).toMatchObject({ kind: "recent", id: RECENT_ROW_ID, task: recent })
+    // The cursor can land on it: flatIds include it, first.
+    expect(treeFlatIds(all)[0]).toBe(RECENT_ROW_ID)
+    // parseRowId on the synthetic id yields a task id no ULID can be —
+    // cursor chords that miss the special case fall through to a lookup miss.
+    expect(parseRowId(RECENT_ROW_ID)).toEqual({ taskId: RECENT_ROW_ID, tabId: null })
+  })
+
+  test("no recent task = rows unchanged", () => {
+    const base = rows({ tasks: [task("a")], tabsByTask: new Map() })
+    expect(withRecentRow(base, null)).toEqual(base)
   })
 })

@@ -53,6 +53,25 @@ export type TreeRow =
       readonly tab: TreeTab
       readonly depth: 2
     }
+  | { readonly kind: "recent"; readonly id: typeof RECENT_ROW_ID; readonly task: Task; readonly depth: 1 }
+
+/**
+ * Navigation id of the narrow-mode "↩ recent" jump row (issue #14, 2A).
+ * Not a ULID and free of {@link TAB_ROW_SEPARATOR}, so `parseRowId` on it
+ * yields a task id no task can have — cursor chords that don't special-case
+ * it fall through to a lookup miss instead of acting on a real task.
+ */
+export const RECENT_ROW_ID = "~recent"
+
+/**
+ * Prepend the "↩ recent: <task>" jump row (narrow mode only — the caller
+ * gates). The row names the last task the user was INSIDE, so a cold
+ * reconnect (phone SSH) gets a one-keystroke way back into it.
+ */
+export function withRecentRow(rows: readonly TreeRow[], recent: Task | null): TreeRow[] {
+  if (!recent) return [...rows]
+  return [{ kind: "recent", id: RECENT_ROW_ID, task: recent, depth: 1 }, ...rows]
+}
 
 /** Compose a tab row's navigation id. */
 export function tabRowId(taskId: string, tabId: string): string {

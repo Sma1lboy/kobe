@@ -17,12 +17,13 @@
  * that already selects tasks.
  */
 
+import type { Task } from "@/types/task"
 import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { createSidebarController } from "../../../tui/panes/sidebar/controller"
 import { type SidebarView, filterByView } from "../../../tui/panes/sidebar/groups"
-import { type TreeRow, parseRowId } from "../../../tui/panes/sidebar/tree-core"
+import { RECENT_ROW_ID, type TreeRow, parseRowId } from "../../../tui/panes/sidebar/tree-core"
 import type { TreeMenuAction } from "../../../tui/panes/sidebar/tree-menu"
 import { MAIN_BRANCH_POLL_MS, SIDEBAR_WIDTH, cycleViewTarget } from "../../../tui/panes/sidebar/view-core"
 import { usePaneHintMark } from "../../component/keyboard-hints"
@@ -54,6 +55,9 @@ export type SidebarTreeProps = SidebarProps & {
   onSelectTab?: (taskId: string, tabId: string) => void
   /** Close one tab of any worktree — offered by the tab row's menu. */
   onCloseTab?: (taskId: string, tabId: string) => void
+  /** Narrow mode's "↩ recent" jump target (issue #14, 2A) — renders as the
+   *  first navigable row; ⏎ re-enters that task's workspace. */
+  recentTask?: Task | null
 }
 
 export function SidebarTree(props: SidebarTreeProps) {
@@ -87,6 +91,7 @@ export function SidebarTree(props: SidebarTreeProps) {
     selectedTaskId: props.selectedId,
     selectedTabId: props.selectedTabId ?? null,
     query: search.active ? search.query : "",
+    recentTask: props.recentTask ?? null,
   })
   const flatIndexOf = useMemo(() => {
     const map = new Map<string, number>()
@@ -163,9 +168,12 @@ export function SidebarTree(props: SidebarTreeProps) {
    * AND tab. Both go through the host so the right pane, the pty registry,
    * and the tab state all move together.
    */
+  const recentTaskRef = useLatest(props.recentTask ?? null)
   const activateRow = useCallback(
     (rowId: string): void => {
-      const { taskId, tabId } = parseRowId(rowId)
+      // The "↩ recent" jump row IS its task — ⏎ re-enters that workspace.
+      const recent = rowId === RECENT_ROW_ID ? recentTaskRef.current : null
+      const { taskId, tabId } = recent ? { taskId: recent.id, tabId: null } : parseRowId(rowId)
       props.onSelect(taskId)
       if (tabId === null) {
         props.onActivate?.(taskId)
@@ -352,6 +360,9 @@ export function SidebarTree(props: SidebarTreeProps) {
   function withCursorTask(fn?: (taskId: string) => void): void {
     const rowId = flatIdsRef.current[cursorRef.current]
     if (rowId === undefined || !fn) return
+    // The "↩ recent" jump row answers only to ⏎ — per-task verbs
+    // (delete/archive/rename) on a shortcut row would act at a distance.
+    if (rowId === RECENT_ROW_ID) return
     // Per-task verbs target the row's TASK even from a tab row: the verbs
     // (delete/archive/rename) have no tab-level meaning, and refusing them
     // one level down would just make the user press k first.

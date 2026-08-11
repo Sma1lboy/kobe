@@ -95,9 +95,8 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   // mode / toasts live in useSidebarHostState below.
   const [searchActive, setSearchActive] = useState(false)
 
-  // Narrow mode (issue #14, phone SSH): sidebar and workspace become
-  // mutually exclusive full-screen surfaces; the files pane stays hidden.
-  // Everything is gated on this one flag so ≥70 cols stays byte-identical.
+  // Narrow mode (issue #14, phone SSH): sidebar/workspace go mutually
+  // exclusive, files pane hides — all gated here so ≥70 cols is unchanged.
   const narrow = isNarrowWidth(dims.width)
 
   // Selection + adopt-first-focus + the archived-task PTY sweep — extracted
@@ -313,13 +312,15 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   if (fullWindowPage) return fullWindowPage
   const openPage = renderContentPage(pageDeps)
 
-  // Narrow: exactly one of sidebar/content renders (`narrowSurface`);
-  // desktop renders both, unchanged.
+  // Narrow: exactly one of sidebar/content renders; desktop renders both.
   const surface = narrow
     ? narrowSurface({ focusedPane: focus.focused, hasSelection: selectedTask != null, hasOpenPage: openPage != null })
     : null
   const showSidebar = surface !== "content"
   const showContent = surface !== "sidebar"
+  // "↩ recent" jump target (issue #14, 2A): the daemon's active task — already
+  // persisted as `lastActive.taskId`, so a cold reconnect still knows it.
+  const recentTask = (narrow ? tasks.find((task) => task.id === activeTaskId && !task.archived) : null) ?? null
 
   if (pages.settingsOpen) {
     // The scrollbox lives inside SettingsDialog (standalone mode) so its
@@ -404,6 +405,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
           zenActive={zen}
           onZenClick={toggleZen}
           onFocusRequest={() => focus.setFocused("sidebar")}
+          recentTask={recentTask}
         />
       ) : null}
 

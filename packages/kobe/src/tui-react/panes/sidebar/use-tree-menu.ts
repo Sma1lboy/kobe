@@ -78,7 +78,8 @@ export function useTreeMenu(deps: TreeMenuDeps): TreeMenu {
   const openForRow = useCallback(
     (flatIndex: number, rowId: string, x: number, y: number): void => {
       const row = tree.rows.find((candidate) => candidate.id === rowId)
-      if (!row || row.kind === "project") return
+      // The "↩ recent" jump row has no menu — it's a shortcut, not a task row.
+      if (!row || row.kind === "project" || row.kind === "recent") return
       // Move the cursor too: the menu and the highlight must agree about which
       // row the next action lands on.
       setCursorIndex(flatIndex)
