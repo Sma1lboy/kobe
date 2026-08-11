@@ -9,6 +9,12 @@
  * on a single confirm; a dirty one (uncommitted/untracked changes) fails the
  * first attempt and surfaces a SECOND, danger-styled confirm before retrying
  * with `force: true` — no client-side dirty check duplicates the backend's.
+ *
+ * The delete itself is OPTIMISTIC: `git worktree remove` on a worktree with a
+ * populated `node_modules` is seconds of real filesystem work, so the row and
+ * the dialog go away the moment the user confirms and the request runs in the
+ * background. A failure puts the row back. Same contract as the TUI page
+ * (`kobe/src/tui-react/component/worktrees-page.tsx`).
  */
 
 import { useNavigate } from "@tanstack/react-router"
@@ -100,7 +106,9 @@ export function WorktreesPage() {
   const [pendingDelete, setPendingDelete] = useState<WorktreeRow | null>(null)
   const [pendingForceDelete, setPendingForceDelete] =
     useState<WorktreeRow | null>(null)
-  const [busy, setBusy] = useState(false)
+  // Paths whose delete is in flight — hidden from the list so the row goes
+  // away on confirm, restored if the request fails.
+  const [removingPaths, setRemovingPaths] = useState<readonly string[]>([])
 
   const linkedTaskTitles = useMemo(() => {
     const map = new Map<string, string>()
@@ -121,6 +129,11 @@ export function WorktreesPage() {
 
   useEffect(load, [])
 
+  const visibleProjects = (projects ?? []).map((project) => ({
+    ...project,
+    worktrees: project.worktrees.filter((w) => !removingPaths.includes(w.path)),
+  }))
+
   const removeRow = (path: string): void => {
     setProjects(
       (prev) =>
@@ -131,37 +144,37 @@ export function WorktreesPage() {
     )
   }
 
+  /** Hide the row, run the delete in the background, restore it on failure. */
+  const deleteInBackground = (row: WorktreeRow, force: boolean): void => {
+    setRemovingPaths((paths) => [...paths, row.path])
+    void removeWorktree(row.path, force)
+      .then(() => {
+        // Drop the row for real, then stop tracking it as "removing".
+        removeRow(row.path)
+        setRemovingPaths((paths) => paths.filter((p) => p !== row.path))
+      })
+      .catch((err: unknown) => {
+        setRemovingPaths((paths) => paths.filter((p) => p !== row.path))
+        if (!force && err instanceof DirtyWorktreeError) {
+          setPendingForceDelete(row)
+        } else {
+          reportError(force ? "force delete worktree" : "delete worktree", err)
+        }
+      })
+  }
+
   const onConfirmDelete = (): void => {
     if (!pendingDelete) return
     const row = pendingDelete
-    setBusy(true)
-    void removeWorktree(row.path, false)
-      .then(() => {
-        removeRow(row.path)
-        setPendingDelete(null)
-      })
-      .catch((err: unknown) => {
-        setPendingDelete(null)
-        if (err instanceof DirtyWorktreeError) {
-          setPendingForceDelete(row)
-        } else {
-          reportError("delete worktree", err)
-        }
-      })
-      .finally(() => setBusy(false))
+    setPendingDelete(null)
+    deleteInBackground(row, false)
   }
 
   const onConfirmForceDelete = (): void => {
     if (!pendingForceDelete) return
     const row = pendingForceDelete
-    setBusy(true)
-    void removeWorktree(row.path, true)
-      .then(() => {
-        removeRow(row.path)
-        setPendingForceDelete(null)
-      })
-      .catch((err: unknown) => reportError("force delete worktree", err))
-      .finally(() => setBusy(false))
+    setPendingForceDelete(null)
+    deleteInBackground(row, true)
   }
 
   return (
@@ -203,12 +216,12 @@ export function WorktreesPage() {
           <p className="px-3 py-6 text-center text-[12px] text-subtle">
             Loading worktrees…
           </p>
-        ) : projects.length === 0 ? (
+        ) : visibleProjects.length === 0 ? (
           <p className="px-3 py-6 text-center text-[12px] text-subtle">
             No local projects known to kobe yet.
           </p>
         ) : (
-          projects.map((project) => (
+          visibleProjects.map((project) => (
             <div key={project.repo} className="border-b border-line">
               <div className="border-b border-line-subtle bg-surface px-3 py-1.5 font-mono text-[11px] text-subtle">
                 {project.repo}
@@ -238,7 +251,6 @@ export function WorktreesPage() {
           body={`Delete the worktree for "${pendingDelete.branch || pendingDelete.path}"? This removes the working directory; the branch itself is kept.`}
           confirmLabel="Delete"
           danger
-          busy={busy}
           onConfirm={onConfirmDelete}
           onCancel={() => setPendingDelete(null)}
         />
@@ -250,7 +262,6 @@ export function WorktreesPage() {
           body={`"${pendingForceDelete.branch || pendingForceDelete.path}" has uncommitted or untracked changes that will be PERMANENTLY LOST. Force delete anyway?`}
           confirmLabel="Force delete"
           danger
-          busy={busy}
           onConfirm={onConfirmForceDelete}
           onCancel={() => setPendingForceDelete(null)}
         />

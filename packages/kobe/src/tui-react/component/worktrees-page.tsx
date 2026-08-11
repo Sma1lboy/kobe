@@ -16,6 +16,11 @@
  * more severe confirm before retrying with `force: true` — no client-side
  * dirty check duplicates the backend's.
  *
+ * The delete itself is OPTIMISTIC: `git worktree remove` on a worktree with
+ * a populated `node_modules` is seconds of real filesystem work, so the row
+ * disappears the moment the user confirms and the daemon call runs in the
+ * background. A failure (dirty refusal, or anything else) puts the row back.
+ *
  * Solid→React deltas: the Solid `createResource` becomes THE ASYNC CANON
  * (`src/tui-react/history/host.tsx`) — `useState` + a `reloadTick`-keyed
  * `useEffect` whose stale completions are dropped by an effect-local
@@ -84,7 +89,13 @@ export function WorktreesPage(props: { orchestrator: RemoteOrchestrator | null; 
       .listWorktrees()
       .then((rows) => {
         fullLanded = true
-        if (!disposed) setProjects(rows)
+        if (disposed) return
+        setProjects(rows)
+        // Stop hiding paths the daemon confirms are gone; a path still listed
+        // is either a delete still running or one that never took, and the
+        // catch path is what un-hides those.
+        const live = new Set(flattenRows(rows).map((r) => r.path))
+        setRemovingPaths((paths) => paths.filter((p) => live.has(p)))
       })
       .catch(() => {
         // Same boundary as the Solid resource: a failed read leaves the
@@ -95,7 +106,14 @@ export function WorktreesPage(props: { orchestrator: RemoteOrchestrator | null; 
     }
   }, [props.orchestrator, reloadTick])
 
-  const flatRows = flattenRows(projects ?? [])
+  // Paths whose delete is in flight — hidden from the list so the row goes
+  // away on confirm, restored if the daemon call fails.
+  const [removingPaths, setRemovingPaths] = useState<readonly string[]>([])
+  const visibleProjects = (projects ?? []).map((p) => ({
+    ...p,
+    worktrees: p.worktrees.filter((w) => !removingPaths.includes(w.path)),
+  }))
+  const flatRows = flattenRows(visibleProjects)
 
   const [cursor, setCursor] = useState(0)
   // Re-clamp whenever the row count changes — the Solid `createEffect` on `flatRows().length`.
@@ -105,8 +123,35 @@ export function WorktreesPage(props: { orchestrator: RemoteOrchestrator | null; 
 
   const [busyPath, setBusyPath] = useState<string | null>(null)
 
+  /** Hide the row, run the daemon delete in the background, restore on failure. */
+  async function deleteInBackground(row: WorktreeAuditRow, force: boolean): Promise<void> {
+    const orch = props.orchestrator
+    if (!orch) return
+    setRemovingPaths((paths) => [...paths, row.path])
+    try {
+      await orch.removeWorktree(row.path, force)
+      // Path stays in `removingPaths`: refetch is async, and dropping it here
+      // would flash the dead row back until the fresh list lands.
+      refetch()
+    } catch (err) {
+      setRemovingPaths((paths) => paths.filter((p) => p !== row.path))
+      if (!force && err instanceof Error && DIRTY_REFUSAL_RE.test(err.message)) {
+        const confirmed = await DialogConfirm.show(
+          dialog,
+          t("worktrees.delete.forceTitle"),
+          t("worktrees.delete.forceBody", { branch: row.branch || row.path }),
+          t("common.cancel"),
+          t("worktrees.delete.button"),
+        )
+        if (confirmed === true) await deleteInBackground(row, true)
+        return
+      }
+      console.error(`[kobe worktrees] ${t("worktrees.delete.failed", { error: String(err) })}`)
+    }
+  }
+
   async function requestDelete(row: WorktreeAuditRow): Promise<void> {
-    if (!props.orchestrator || busyPath) return
+    if (!props.orchestrator || busyPath || removingPaths.includes(row.path)) return
     const ok = await DialogConfirm.show(
       dialog,
       t("worktrees.delete.confirmTitle"),
@@ -115,35 +160,7 @@ export function WorktreesPage(props: { orchestrator: RemoteOrchestrator | null; 
       t("worktrees.delete.button"),
     )
     if (ok !== true) return
-    setBusyPath(row.path)
-    try {
-      await props.orchestrator.removeWorktree(row.path, false)
-      refetch()
-    } catch (err) {
-      if (err instanceof Error && DIRTY_REFUSAL_RE.test(err.message)) {
-        setBusyPath(null)
-        const force = await DialogConfirm.show(
-          dialog,
-          t("worktrees.delete.forceTitle"),
-          t("worktrees.delete.forceBody", { branch: row.branch || row.path }),
-          t("common.cancel"),
-          t("worktrees.delete.button"),
-        )
-        if (force === true) {
-          setBusyPath(row.path)
-          try {
-            await props.orchestrator.removeWorktree(row.path, true)
-            refetch()
-          } catch (err2) {
-            console.error(`[kobe worktrees] ${t("worktrees.delete.failed", { error: String(err2) })}`)
-          }
-        }
-      } else {
-        console.error(`[kobe worktrees] ${t("worktrees.delete.failed", { error: String(err) })}`)
-      }
-    } finally {
-      setBusyPath(null)
-    }
+    void deleteInBackground(row, false)
   }
 
   async function requestLand(row: WorktreeAuditRow): Promise<void> {
@@ -242,10 +259,10 @@ export function WorktreesPage(props: { orchestrator: RemoteOrchestrator | null; 
 
       {loading ? (
         <text fg={theme.textMuted}>{t("worktrees.loading")}</text>
-      ) : (projects ?? []).length === 0 ? (
+      ) : visibleProjects.length === 0 ? (
         <text fg={theme.textMuted}>{t("worktrees.noProjects")}</text>
       ) : (
-        (projects ?? []).map((project) => {
+        visibleProjects.map((project) => {
           const base = rowBase
           rowBase += project.worktrees.length
           return (
