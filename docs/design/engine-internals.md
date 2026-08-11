@@ -15,7 +15,7 @@ built-in engine registers an entry exposing:
   these and must never hard-code vendor strings.
 - `capabilities` — model catalog, permission modes, context-window math.
 - `history` — a reader over the engine's on-disk transcript store (auto-title,
-  recap, the Ops activity badge).
+  recap, and activity polling).
 - `detectAccount` — a read-only binary + login probe (Settings → Accounts,
   `kobe doctor`).
 - `createHookAdapter` — installs activity hooks into the engine's own config
@@ -177,8 +177,8 @@ from matching the title string.
 
 Each engine with a verified on-disk format ships a reader behind the neutral
 `EngineHistoryReader` contract: session ids for a worktree (oldest-first),
-messages for a session id, and the newest transcript mtime (the Ops pane's
-activity badge watches this).
+messages for a session id, and the newest transcript mtime used by activity
+polling.
 
 | Engine | Transcript store |
 |---|---|

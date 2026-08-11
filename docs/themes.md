@@ -4,8 +4,8 @@ kobe bundles three themes — `claude`, `conductor`, `tokyonight` — and ten
 more are [one command away](#hosted-themes). You can also write your own.
 
 Any `~/.kobe/themes/*.json` file loads at boot and appears in the theme
-picker (Settings → General → Theme, or `ctrl+,`). A user theme with the same
-name as a bundled one wins.
+picker (Settings → General → Theme, or `ctrl+a` then `,`). A user theme with
+the same name as a bundled one wins.
 
 ## JSON shape
 

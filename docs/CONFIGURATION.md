@@ -1,7 +1,7 @@
 # Configuration
 
-Most settings are written for you by the Settings dialog — press `ctrl+,`.
-This page is for when you want to edit them by hand.
+Most settings are written for you by the Settings dialog — press `ctrl+a`,
+then `,`. This page is for when you want to edit them by hand.
 
 ## Where things live
 

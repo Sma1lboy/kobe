@@ -45,8 +45,9 @@ transcript and `sessionId`. Tabs let you ask a side question without
 polluting a long conversation — close the tab when you're done, keep the
 worktree.
 
-Engine, model, and permission mode are per-task, shared by every tab. If you
-want a different model, open a different task.
+Each tab pins the engine it starts with, so tabs in one task may use different
+engines. Model and permission mode remain task-level; open a different task
+when you need a separate worktree or different task settings.
 
 Conversation history belongs to the engine, not to kobe (Claude Code keeps
 JSONL transcripts under `~/.claude/projects/**`). That's why a crash never
@@ -80,7 +81,8 @@ flowchart LR
 ```
 
 - **Daemon** — owns your task list, worktrees, and the issue store. Starts on
-  its own, stops when the last client disconnects.
+  its own, then stops after the last attached GUI disconnects unless an
+  enabled routine holds it alive.
 - **PTY host** — owns the running engine and shell processes. Survives both
   the TUI *and* a daemon restart.
 - **The TUI** — just a viewport. Quitting it kills nothing.

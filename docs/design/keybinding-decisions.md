@@ -1,9 +1,9 @@
 # Keybinding decisions
 
 The reasoning behind kobe's chord placements, newest first within each topic.
-Chord placement is an **owner decision** (see the rule in `CLAUDE.md`); this
-file is where each resolution and its reasoning is recorded so the next agent
-has the context.
+Chord placement is an **owner decision** (see the rule in
+[`AGENTS.md`](../../AGENTS.md)); this file is where each resolution and its
+reasoning is recorded so the next agent has the context.
 
 The user-facing vocabulary lives in [`../KEYBINDINGS.md`](../KEYBINDINGS.md).
 `F1` renders the live keymap and is authoritative over both.

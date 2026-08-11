@@ -46,8 +46,9 @@ flowchart TB
 
 - **TUI and web** are pure attach clients. Closing one touches nothing else.
 - **The daemon** owns your task index, worktree records, and the event bus.
-  It starts on first launch and stops once the last client disconnects.
-  Restarting it is routine: `kobe daemon restart`.
+  It starts on first launch and stops after the last attached GUI disconnects,
+  unless an enabled routine holds it alive. Restarting it is routine:
+  `kobe daemon restart`.
 - **The PTY host** owns every engine and shell process, plus their
   scrollback. It's deliberately a *separate* process from the daemon, so a
   daemon restart never kills a running engine. Like the tmux server, it exits
