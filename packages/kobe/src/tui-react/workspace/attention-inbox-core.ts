@@ -127,6 +127,14 @@ export function inboxRows(
     selectedTabId?: string | null
     recentLimit?: number
     visits?: readonly InboxVisit[]
+    /**
+     * TRI-STATE "does this tab still exist" (see `taskTabExists`). Nothing
+     * prunes the visit log when a tab closes, and a row whose tab is gone
+     * renders with the TASK's label — so three closed tabs of one task read
+     * as three identical rows that each eat a slot and open nothing.
+     * `undefined` (unreadable list) KEEPS the row, same rule as episodes.
+     */
+    tabExists?: (taskId: string, tabId: string) => boolean | undefined
   } = {},
 ): InboxRow[] {
   const attention = sortAttentionInbox(
@@ -145,12 +153,18 @@ export function inboxRows(
   // the whole selected task, as before — there's nothing tab-precise to say.
   const isSelected = (taskId: string, tabId: string | null): boolean =>
     taskId === options.selectedId && (options.selectedTabId == null || tabId === options.selectedTabId)
+  // A visit to a tab that has since closed opens nothing and renders with the
+  // task's own label, so several of them read as duplicate rows. Confirmed
+  // gone drops the row; unreadable keeps it.
+  const tabAlive = (visit: InboxVisit): boolean =>
+    visit.tabId === null || options.tabExists?.(visit.taskId, visit.tabId) !== false
   const visitedRows = visited
     .map((visit) => ({ visit, task: tasksById.get(visit.taskId) }))
     .filter(
       (entry): entry is { visit: InboxVisit; task: Task } =>
         entry.task !== undefined &&
         !entry.task.archived &&
+        tabAlive(entry.visit) &&
         !coveredTab(entry.visit.taskId, entry.visit.tabId) &&
         !isSelected(entry.visit.taskId, entry.visit.tabId),
     )

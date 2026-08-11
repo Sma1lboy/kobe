@@ -34,7 +34,7 @@ import { DEFAULT_TASK_VENDOR, type Task } from "../../types/task"
 import type { KVContext } from "../context/kv"
 import type { NotificationsContext } from "../context/notifications"
 import { isAttentionInboxItemAvailable, nextAttentionInboxTarget } from "./attention-inbox-core"
-import { activeTabIdFor, knownTaskTab } from "./terminal-tabs-shared"
+import { activeTabIdFor, knownTaskTab, taskTabExists } from "./terminal-tabs-shared"
 
 const CROSS_TASK_KEY = "notifications.crossTask.enabled"
 
@@ -145,11 +145,13 @@ export function useAttention(args: {
         taskId: selectedId,
         tabId: selectedId ? activeTabIdFor(selectedId) : null,
       },
+      // Tri-state — a binary check made F7 skip episodes whose task simply
+      // hasn't mounted here and toast "nothing needs you".
       (item) =>
         isAttentionInboxItemAvailable(
           item,
           tasks.find((task) => task.id === item.taskId),
-          (tabId) => knownTaskTab(kv, item.taskId, tabId) !== undefined,
+          (tabId) => taskTabExists(kv, item.taskId, tabId),
         ),
     )
     if (!target) {

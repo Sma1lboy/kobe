@@ -29,7 +29,7 @@ import {
   partitionAttentionInboxAvailability,
 } from "./attention-inbox-core"
 import { readInboxVisits } from "./inbox-visits"
-import { activeTabIdFor, knownTaskTab } from "./terminal-tabs-shared"
+import { activeTabIdFor, knownTaskTab, taskTabExists } from "./terminal-tabs-shared"
 
 const MAX_VISIBLE_CARDS = 6
 const CARD_ROWS_WITH_GAP = 3
@@ -78,10 +78,11 @@ function tabLabel(
   task: Task | undefined,
   kv: KVContext,
 ): { label: string; available: boolean } {
-  const tab = item.tabId ? knownTaskTab(kv, item.taskId, item.tabId) : undefined
   return {
     label: taskTabLabel(item.taskId, item.tabId, task, kv),
-    available: isAttentionInboxItemAvailable(item, task, () => tab !== undefined),
+    // Tri-state: `available: false` makes enter DISMISS the episode instead
+    // of opening it, so an unreadable tab list must not answer "gone".
+    available: isAttentionInboxItemAvailable(item, task, (tabId) => taskTabExists(kv, item.taskId, tabId)),
   }
 }
 
@@ -206,10 +207,11 @@ export function AttentionInboxPane(props: {
   const [now, setNow] = useState(() => Date.now())
   const { availableItems } = useMemo(
     () =>
-      partitionAttentionInboxAvailability(
-        props.items,
-        props.tasks,
-        (taskId, tabId) => knownTaskTab(props.kv, taskId, tabId) !== undefined,
+      // Tri-state, same predicate as the host's partition — a binary
+      // `!== undefined` here read "don't know" as "gone", so the header badge
+      // counted episodes this list hid.
+      partitionAttentionInboxAvailability(props.items, props.tasks, (taskId, tabId) =>
+        taskTabExists(props.kv, taskId, tabId),
       ),
     [props.items, props.tasks, props.kv],
   )
@@ -227,8 +229,14 @@ export function AttentionInboxPane(props: {
   // sibling chat tabs are exactly what RECENT is for.
   const selectedTabId = props.selectedId ? activeTabIdFor(props.selectedId) : null
   const rows = useMemo(
-    () => inboxRows(availableItems, props.tasks, { selectedId: props.selectedId, selectedTabId, visits }),
-    [availableItems, props.tasks, props.selectedId, selectedTabId, visits],
+    () =>
+      inboxRows(availableItems, props.tasks, {
+        selectedId: props.selectedId,
+        selectedTabId,
+        visits,
+        tabExists: (taskId, tabId) => taskTabExists(props.kv, taskId, tabId),
+      }),
+    [availableItems, props.tasks, props.selectedId, selectedTabId, visits, props.kv],
   )
   const attentionCount = rows.filter((row) => row.kind === "attention").length
   const anyRunning = rows.some(

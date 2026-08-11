@@ -47,6 +47,28 @@ export function knownTaskTab(kv: TabsSnapshotKv, taskId: string, tabId: string):
 }
 
 /**
+ * TRI-STATE "does this tab exist" — the ONE implementation every Inbox
+ * surface must use. `true` = present, `false` = the tab list was readable
+ * and this tab is gone, `undefined` = the list could not be read at all
+ * (this process never mounted that task's TerminalTabs, so it has no KV
+ * snapshot).
+ *
+ * The distinction is load-bearing because callers DELETE episodes that read
+ * as unavailable. `knownTaskTab(...) !== undefined` collapses "don't know"
+ * into "gone" and destroys live episodes — the owner-reported "two tabs are
+ * unread but the Inbox only lists one" (40641c01). That fix converted the
+ * host but left the dialog, its per-row badge, and the F7 jump on the binary
+ * form, so the badge counted episodes the list hid and opening such a row
+ * silently dismissed it instead of navigating. Route every availability
+ * question through here.
+ */
+export function taskTabExists(kv: TabsSnapshotKv | null, taskId: string, tabId: string): boolean | undefined {
+  const known = knownTaskTabs(kv, taskId)
+  if (known === null) return undefined
+  return known.tabs.some((tab) => tab.id === tabId)
+}
+
+/**
  * A task's tabs as a surface that does NOT host them sees them — the sidebar
  * tree, which lists every worktree's tabs whether or not that worktree is the
  * selected one (only the selected task has a mounted TerminalTabs).
