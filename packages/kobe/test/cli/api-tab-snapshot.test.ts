@@ -18,7 +18,14 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
-import { mintCliTab, publishCliTabSnapshot } from "../../src/cli/api/tab-snapshot.ts"
+import {
+  hasLiveEngineTab,
+  joinTaskTabs,
+  mintCliTab,
+  publishCliTabSnapshot,
+  readTabsSnapshot,
+} from "../../src/cli/api/tab-snapshot.ts"
+import type { TabsState } from "../../src/tui/workspace/terminal-tabs-core.ts"
 
 let home: string
 let originalHome: string | undefined
@@ -114,5 +121,97 @@ describe("mintCliTab", () => {
     expect(id).toBe("tab-2")
     const snapshot = readState()["terminalTabs.t1"] as { tabs: { id: string }[] }
     expect(snapshot.tabs.map((t) => t.id)).toEqual(["tab-1", "tab-2"])
+  })
+})
+
+describe("readTabsSnapshot", () => {
+  it("returns the persisted snapshot and undefined for absent/malformed keys", () => {
+    const snap = { tabs: [{ kind: "engine", id: "tab-1", title: null, ordinal: 1 }], activeId: "tab-1", nextOrdinal: 2 }
+    writeState({ "terminalTabs.t1": snap, "terminalTabs.bad": { tabs: "nope" } })
+    expect(readTabsSnapshot("t1")).toEqual(snap)
+    expect(readTabsSnapshot("bad")).toBeUndefined()
+    expect(readTabsSnapshot("missing")).toBeUndefined()
+  })
+})
+
+describe("hasLiveEngineTab (the get-task/collect .running rule)", () => {
+  const snapshot = (tabs: unknown[]): TabsState =>
+    ({ tabs, activeId: "tab-1", nextOrdinal: tabs.length + 1 }) as unknown as TabsState
+
+  it("counts a live LATER engine tab when tab-1 is dead — the issue-#5 bug", () => {
+    const snap = snapshot([
+      { kind: "engine", id: "tab-1", title: null, ordinal: 1 },
+      { kind: "engine", id: "tab-2", title: null, ordinal: 2 },
+    ])
+    const sessions = [
+      { key: "t1::tab-1", alive: false },
+      { key: "t1::tab-2", alive: true },
+    ]
+    expect(hasLiveEngineTab(snap, "t1", sessions)).toBe(true)
+  })
+
+  it("a live canonical tab-1 counts even with no snapshot (headless start, snapshot write failed)", () => {
+    expect(hasLiveEngineTab(undefined, "t1", [{ key: "t1::tab-1", alive: true }])).toBe(true)
+  })
+
+  it("non-engine tabs and other tasks' sessions never count", () => {
+    const snap = snapshot([
+      { kind: "engine", id: "tab-1", title: null, ordinal: 1 },
+      { kind: "command", id: "tab-2", title: "editor", ordinal: 2, command: ["nvim"] },
+    ])
+    const sessions = [
+      { key: "t1::tab-1", alive: false },
+      { key: "t1::tab-2", alive: true }, // command tab — a paste target this must never bless
+      { key: "t2::tab-1", alive: true }, // someone else's task
+    ]
+    expect(hasLiveEngineTab(snap, "t1", sessions)).toBe(false)
+  })
+
+  it("a split's extra shell leaf does not make the tab read alive", () => {
+    const snap = snapshot([{ kind: "engine", id: "tab-2", title: null, ordinal: 2 }])
+    expect(hasLiveEngineTab(snap, "t1", [{ key: "t1::tab-2::leaf-2", alive: true }])).toBe(false)
+  })
+})
+
+describe("joinTaskTabs", () => {
+  it("maps snapshot fields and joins per-tab liveness on the tab's own key", () => {
+    const snap = {
+      tabs: [
+        { kind: "engine", id: "tab-1", title: "renamed", ordinal: 1, lastTitle: "building", autoTitle: "first prompt" },
+        { kind: "engine", id: "tab-2", title: null, ordinal: 2, vendor: "codex", liveVendor: "codex" },
+      ],
+      activeId: "tab-2",
+      nextOrdinal: 3,
+    } as unknown as TabsState
+    const rows = joinTaskTabs(snap, "t1", [
+      { key: "t1::tab-2", alive: true },
+      { key: "t1::tab-1::leaf-2", alive: true }, // split shell leaf — not the tab itself
+    ])
+    expect(rows).toEqual([
+      {
+        id: "tab-1",
+        kind: "engine",
+        title: "renamed",
+        vendor: null,
+        liveVendor: null,
+        lastTitle: "building",
+        autoTitle: "first prompt",
+        alive: false,
+      },
+      {
+        id: "tab-2",
+        kind: "engine",
+        title: null,
+        vendor: "codex",
+        liveVendor: "codex",
+        lastTitle: null,
+        autoTitle: null,
+        alive: true,
+      },
+    ])
+  })
+
+  it("returns [] for a task with no snapshot", () => {
+    expect(joinTaskTabs(undefined, "t1", [{ key: "t1::tab-1", alive: true }])).toEqual([])
   })
 })

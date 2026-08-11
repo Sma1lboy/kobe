@@ -13,13 +13,19 @@ import {
   deliverHostedPrompt,
   deliverToExactTab,
   ensurePtyHost,
-  findEngineKey,
   killTaskSessions,
   listSessions,
   openPtyHost,
   taskKeys,
 } from "./pty-delivery.ts"
-import { mintCliTab, publishCliTabSnapshot } from "./tab-snapshot.ts"
+import {
+  type TaskSessionRow,
+  hasLiveEngineTab,
+  joinTaskTabs,
+  mintCliTab,
+  publishCliTabSnapshot,
+  readTabsSnapshot,
+} from "./tab-snapshot.ts"
 import { ApiError, type ApiRuntime, type DeliveredPrompt, type PromptDeliveryOps, type PromptTarget } from "./types.ts"
 
 /** Ensure and address the task's hosted engine session (`target.tab` routes:
@@ -121,13 +127,23 @@ export async function resolveActiveTaskId(client: DaemonRpc): Promise<string | n
 }
 
 export const defaultApiRuntime: ApiRuntime = {
-  isTaskRunning: async (taskId) => {
+  isTaskRunning: async (taskId) => (await defaultApiRuntime.taskTabs(taskId)).running,
+  taskTabs: async (taskId) => {
+    // No host = no sessions, an honest "nothing alive"; the persisted tabs
+    // still return so a stopped task's layout stays inspectable.
+    let sessions: readonly TaskSessionRow[] = []
     const host = await openPtyHost()
-    if (!host) return false
-    try {
-      return findEngineKey(await listSessions(host.rpc), taskId) !== null
-    } finally {
-      host.close()
+    if (host) {
+      try {
+        sessions = await listSessions(host.rpc)
+      } finally {
+        host.close()
+      }
+    }
+    const snapshot = readTabsSnapshot(taskId)
+    return {
+      tabs: joinTaskTabs(snapshot, taskId, sessions),
+      running: hasLiveEngineTab(snapshot, taskId, sessions),
     }
   },
   deliverPrompt: (client, target, prompt) => deliverPrompt(client, target, prompt),

@@ -110,14 +110,38 @@ describe("collect handler", () => {
 })
 
 describe("task lifecycle handlers", () => {
-  it("pairs get-task with hosted-session liveness", async () => {
+  it("pairs get-task with tab liveness — running + per-tab alive from one read", async () => {
     const task = taskFixture()
     const client = new FakeClient({ "task.get": () => ({ task }) })
+    // The issue-#5 shape: canonical tab-1 dead, a later engine tab alive —
+    // running must be true and the tabs array must say which tab to target.
+    const tabs = [
+      {
+        id: "tab-1",
+        kind: "engine",
+        title: null,
+        vendor: null,
+        liveVendor: null,
+        lastTitle: null,
+        autoTitle: null,
+        alive: false,
+      },
+      {
+        id: "tab-2",
+        kind: "engine",
+        title: null,
+        vendor: null,
+        liveVendor: "claude",
+        lastTitle: "wiring tests",
+        autoTitle: null,
+        alive: true,
+      },
+    ] as const
     const result = await invokeVerb("get-task", ["--task-id", "t1"], {
       client,
-      runtime: stubRuntime({ isTaskRunning: async () => true }),
+      runtime: stubRuntime({ taskTabs: async () => ({ tabs, running: true }) }),
     })
-    expect(result).toEqual({ task, running: true })
+    expect(result).toEqual({ task, running: true, tabs })
   })
 
   it("sets and clears active task", async () => {
