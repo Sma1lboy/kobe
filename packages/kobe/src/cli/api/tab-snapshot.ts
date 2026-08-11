@@ -21,6 +21,7 @@
  * session, so overwriting here would clobber live state with a one-tab stub.
  */
 
+import type { PtySessionExit } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import { loadStateFile, patchStateFile } from "../../state/store.ts"
 import { terminalTabsKey } from "../../tui-react/workspace/terminal-tabs-persist.ts"
 import { type TabsState, type TerminalTab, initialTabs } from "../../tui/workspace/terminal-tabs-core.ts"
@@ -40,12 +41,17 @@ export interface TaskTabRow {
   readonly lastTitle: string | null
   readonly autoTitle: string | null
   readonly alive: boolean
+  /** How the tab's session died — ABNORMAL exits only (clean exit 0 stays
+   *  null, per issue #9's no-noise rule); null while alive/unknown. Joined
+   *  from the live host when present, else the durable exit records. */
+  readonly exit: PtySessionExit | null
 }
 
 /** The slice of a `pty.list` row the liveness joins below need. */
 export interface TaskSessionRow {
   readonly key: string
   readonly alive?: boolean
+  readonly exit?: PtySessionExit | null
 }
 
 /** The task's persisted `terminalTabs.<taskId>` snapshot; undefined when absent/malformed/unreadable. */
@@ -61,27 +67,41 @@ export function readTabsSnapshot(taskId: string): TabsState | undefined {
 const aliveKeysOf = (sessions: readonly TaskSessionRow[]): Set<string> =>
   new Set(sessions.filter((s) => s.alive).map((s) => s.key))
 
+/** Abnormal death only — exit 0 without a signal is not worth surfacing. */
+const abnormalExit = (exit: PtySessionExit | null | undefined): PtySessionExit | null =>
+  exit && (exit.code !== 0 || exit.signal !== null) ? exit : null
+
 /**
  * Persisted tabs joined with hosted-session liveness. Exact-key match on
  * purpose: a split's extra shell leaves (`<taskId>::<tabId>::leaf-N`) never
  * make the tab itself read alive — only the tab's own session does.
+ * `persistedExits` (the durable `pty-exits.json` records, keyed by session
+ * key) answers "how did it die" after the host itself is gone; a live host's
+ * in-memory exit wins when both exist.
  */
 export function joinTaskTabs(
   snapshot: TabsState | undefined,
   taskId: string,
   sessions: readonly TaskSessionRow[],
+  persistedExits: Readonly<Record<string, PtySessionExit>> = {},
 ): TaskTabRow[] {
   const alive = aliveKeysOf(sessions)
-  return (snapshot?.tabs ?? []).map((t) => ({
-    id: t.id,
-    kind: t.kind,
-    title: t.title ?? null,
-    vendor: (t as { vendor?: string }).vendor ?? null,
-    liveVendor: t.liveVendor ?? null,
-    lastTitle: t.lastTitle ?? null,
-    autoTitle: t.autoTitle ?? null,
-    alive: alive.has(`${taskId}::${t.id}`),
-  }))
+  const sessionExits = new Map(sessions.map((s) => [s.key, s.exit]))
+  return (snapshot?.tabs ?? []).map((t) => {
+    const key = `${taskId}::${t.id}`
+    const isAlive = alive.has(key)
+    return {
+      id: t.id,
+      kind: t.kind,
+      title: t.title ?? null,
+      vendor: (t as { vendor?: string }).vendor ?? null,
+      liveVendor: t.liveVendor ?? null,
+      lastTitle: t.lastTitle ?? null,
+      autoTitle: t.autoTitle ?? null,
+      alive: isAlive,
+      exit: isAlive ? null : abnormalExit(sessionExits.get(key) ?? persistedExits[key]),
+    }
+  })
 }
 
 /**

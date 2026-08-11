@@ -21,11 +21,19 @@
  * and identically tested on every platform.
  */
 
+/** How a PTY child ended. `code` XOR `signal` for a normal wait; both
+ *  null when the runtime could not tell. */
+export interface PtyExit {
+  readonly code: number | null
+  readonly signal: string | null
+}
+
 /** The slice of a spawned PTY child that `PtyHost` actually drives. */
 export interface PtyChild {
   readonly pid: number
-  /** Settles when the child exits. Never rejects meaningfully — exit is exit. */
-  readonly exited: Promise<unknown>
+  /** Settles with the child's exit status. Never rejects meaningfully —
+   *  exit is exit; an unknowable status resolves `{code:null,signal:null}`. */
+  readonly exited: Promise<PtyExit>
   write(data: string): void
   resize(cols: number, rows: number): void
   /** Release the pty handle once exited. Must tolerate being called twice. */
@@ -58,6 +66,10 @@ export interface BunTerminalHandle {
 export interface BunTerminalProc {
   readonly pid: number
   readonly exited: Promise<unknown>
+  /** Set once the child exits (null when signal-killed) — Bun's Subprocess. */
+  readonly exitCode?: number | null
+  /** Set once the child exits from a signal — Bun's Subprocess. */
+  readonly signalCode?: string | null
   readonly terminal?: BunTerminalHandle
   kill(signal: NodeJS.Signals): void
 }
@@ -95,7 +107,13 @@ export function bunTerminalDriver(spawn?: BunTerminalSpawn): PtyDriver {
     })
     return {
       pid: proc.pid,
-      exited: proc.exited,
+      // Bun's `exited` resolves with the exit code, but the properties carry
+      // the signal too — read both AFTER settle so a SIGKILLed child reports
+      // its signal instead of a bare null code.
+      exited: proc.exited.then(
+        () => ({ code: proc.exitCode ?? null, signal: proc.signalCode ?? null }),
+        () => ({ code: null, signal: null }),
+      ),
       // The handle disappears when the child exits, so every use is optional —
       // a late write from a detaching client must not throw past the host.
       write: (data) => proc.terminal?.write(data),
@@ -145,12 +163,13 @@ export async function nodePtyDriver(spawn?: NodePtySpawn): Promise<PtyDriver> {
         Object.entries(request.env).filter((entry): entry is [string, string] => entry[1] !== undefined),
       ),
     })
-    let settle: (code: number) => void = () => {}
-    const exited = new Promise<number>((resolve) => {
+    let settle: (exit: PtyExit) => void = () => {}
+    const exited = new Promise<PtyExit>((resolve) => {
       settle = resolve
     })
     child.onData((data) => request.onData(data))
-    child.onExit(({ exitCode }) => settle(exitCode))
+    // ConPTY has no signals — the exit code is the whole story here.
+    child.onExit(({ exitCode }) => settle({ code: exitCode, signal: null }))
     return {
       pid: child.pid,
       exited,

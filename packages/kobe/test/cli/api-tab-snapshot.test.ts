@@ -197,6 +197,7 @@ describe("joinTaskTabs", () => {
         lastTitle: "building",
         autoTitle: "first prompt",
         alive: false,
+        exit: null,
       },
       {
         id: "tab-2",
@@ -207,11 +208,39 @@ describe("joinTaskTabs", () => {
         lastTitle: null,
         autoTitle: null,
         alive: true,
+        exit: null,
       },
     ])
   })
 
   it("returns [] for a task with no snapshot", () => {
     expect(joinTaskTabs(undefined, "t1", [{ key: "t1::tab-1", alive: true }])).toEqual([])
+  })
+
+  const oneTabSnap = (id: string): TabsState =>
+    ({ tabs: [{ kind: "engine", id, title: null, ordinal: 1 }], activeId: id, nextOrdinal: 2 }) as TabsState
+
+  it("surfaces a dead tab's abnormal exit from the live host session", () => {
+    const exit = { code: 1, signal: null, at: "2026-08-11T00:00:00.000Z" }
+    const rows = joinTaskTabs(oneTabSnap("tab-1"), "t1", [{ key: "t1::tab-1", alive: false, exit }])
+    expect(rows[0]).toMatchObject({ alive: false, exit })
+  })
+
+  it("falls back to the durable exit record when the host has no session (idle-exited)", () => {
+    const exit = { code: null, signal: "SIGKILL", at: "2026-08-11T00:00:00.000Z" }
+    const rows = joinTaskTabs(oneTabSnap("tab-1"), "t1", [], { "t1::tab-1": exit })
+    expect(rows[0]).toMatchObject({ alive: false, exit })
+  })
+
+  it("keeps clean exits quiet: code 0 reports exit null (issue #9 no-noise rule)", () => {
+    const exit = { code: 0, signal: null, at: "2026-08-11T00:00:00.000Z" }
+    const rows = joinTaskTabs(oneTabSnap("tab-1"), "t1", [{ key: "t1::tab-1", alive: false, exit }])
+    expect(rows[0]?.exit).toBeNull()
+  })
+
+  it("an alive tab never reports an exit, even with a stale record for its key", () => {
+    const stale = { code: 1, signal: null, at: "2026-08-10T00:00:00.000Z" }
+    const rows = joinTaskTabs(oneTabSnap("tab-1"), "t1", [{ key: "t1::tab-1", alive: true }], { "t1::tab-1": stale })
+    expect(rows[0]).toMatchObject({ alive: true, exit: null })
   })
 })

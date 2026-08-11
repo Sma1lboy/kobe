@@ -26,60 +26,31 @@
 
 import { StringDecoder } from "node:string_decoder"
 import { resolveLoginShell } from "./platform-shell.js"
-import type { DaemonFrame, PtyPeekResult } from "./protocol.ts"
-import { type PtyChild, type PtyDriver, bunTerminalDriver } from "./pty-driver.ts"
+import type { DaemonFrame, PtyPeekResult, PtySessionExit } from "./protocol.ts"
+import { type PtyChild, type PtyExit, bunTerminalDriver } from "./pty-driver.ts"
 import { embeddedTerminalEnv } from "./pty-env.js"
-import { type PtyHostStats, type PtySessionInfo, peekRing, scanOscTitle } from "./pty-observability.ts"
+import type { PtyAttachResult, PtyHostOptions, PtySink, PtySpawnSpec } from "./pty-host-types.ts"
+import {
+  type PtyHostStats,
+  type PtySessionInfo,
+  describeExit,
+  peekRing,
+  ringTail,
+  scanOscTitle,
+} from "./pty-observability.ts"
 import { settledWithin, signalProcessGroup } from "./pty-termination.ts"
 
 export type { PtyHostStats, PtySessionInfo } from "./pty-observability.ts"
 // Re-exported for the cross-chunk title-boundary tests (pure fold).
 export { foldOscTitle } from "./pty-observability.ts"
-
-/** Everything `pty.open` needs to spawn a session's child on first open. */
-export interface PtySpawnSpec {
-  readonly cwd: string
-  /** Explicit argv (engine sessions). Falls back to `shell`. */
-  readonly command?: readonly string[]
-  /** Shell override; defaults to `resolveLoginShell()`. */
-  readonly shell?: string
-  readonly cols: number
-  readonly rows: number
-}
-
-/** Attach result — mirrors the wire `PtyOpenResult`. */
-export interface PtyAttachResult {
-  readonly replay: string
-  readonly alive: boolean
-  /** The session child's pid (null when spawn failed) — see `PtyOpenResult.pid`. */
-  readonly pid: number | null
-  /** True when this open spawned/adopted the session — see `PtyOpenResult.created`. */
-  readonly created: boolean
-  /** Monotonic byte offset at attach — see `PtyOpenResult.offset`. */
-  readonly offset: number
-  /** `replay` is the exact delta since the request's `sinceOffset` — see `PtyOpenResult.sinceValid`. */
-  readonly sinceValid: boolean
-}
-
-/** Writes one event frame to an attached connection. */
-export type PtySink = (frame: DaemonFrame) => void
-
-export interface PtyHostOptions {
-  /** A session's child spawned — cancels a pending daemon idle-stop grace. */
-  readonly onSessionStart?: () => void
-  /** A session's child ended — may arm the idle-stop grace. */
-  readonly onSessionEnd?: () => void
-  /** Ring-buffer cap in bytes per session. Default {@link DEFAULT_SCROLLBACK_CAP}. */
-  readonly scrollbackCap?: number
-  /** How children spawn. Default Bun's; the Windows host injects node-pty's. */
-  readonly driver?: PtyDriver
-  readonly log?: (event: string, message: string) => void
-}
+export type { PtyAttachResult, PtyHostOptions, PtySink, PtySpawnSpec } from "./pty-host-types.ts"
 
 /** Per-session scrollback cap — same order as the web PTY sidecar's 256KB. */
 export const DEFAULT_SCROLLBACK_CAP = 512 * 1024
 /** Let a cooperative terminal child shut down before escalating to SIGKILL. */
 const TERMINATION_GRACE_MS = 500
+/** Raw ring tail captured into a session's death record. */
+const EXIT_TAIL_BYTES = 16 * 1024
 
 interface PtySessionState {
   /** Mutable: warm-shell adoption re-keys the spare under the opener's key. */
@@ -107,6 +78,8 @@ interface PtySessionState {
   /** A detached TUI still holds a serialized screen for an exact-delta wake. */
   parked: boolean
   parkedScreenBytes: number
+  /** Death cause, recorded once by markExited; null while alive. */
+  exit: PtySessionExit | null
 }
 
 export class PtyHost {
@@ -308,6 +281,7 @@ export class PtyHost {
       title: s.title,
       parked: s.parked,
       parkedScreenBytes: s.parkedScreenBytes,
+      exit: s.exit,
     }))
   }
 
@@ -389,6 +363,7 @@ export class PtyHost {
       sinks: new Map(),
       parked: false,
       parkedScreenBytes: 0,
+      exit: null,
     }
     try {
       session.proc = (this.opts.driver ?? bunTerminalDriver())({
@@ -406,7 +381,7 @@ export class PtyHost {
         onData: (data) => this.onData(session, data),
       })
       void session.proc.exited.then(
-        () => this.markExited(session),
+        (exit) => this.markExited(session, exit),
         () => this.markExited(session),
       )
       this.opts.log?.("pty", `spawned ${argv[0]} for ${key} (pid ${session.proc.pid})`)
@@ -440,9 +415,10 @@ export class PtyHost {
     for (const sink of session.sinks.values()) sink(frame)
   }
 
-  private markExited(session: PtySessionState): void {
+  private markExited(session: PtySessionState, exit?: PtyExit): void {
     if (!session.alive) return
     session.alive = false
+    session.exit = { code: exit?.code ?? null, signal: exit?.signal ?? null, at: new Date().toISOString() }
     try {
       session.proc?.close()
     } catch {
@@ -451,10 +427,20 @@ export class PtyHost {
     const frame: DaemonFrame = {
       type: "event",
       name: "pty.exit",
-      payload: { key: session.key, pid: session.proc?.pid ?? null },
+      payload: { key: session.key, pid: session.proc?.pid ?? null, ...session.exit },
     }
     for (const sink of session.sinks.values()) sink(frame)
-    this.opts.log?.("pty", `session ${session.key} exited`)
+    this.opts.log?.("pty", `session ${session.key} exited${describeExit(session.exit)}`)
+    try {
+      this.opts.onSessionExit?.({
+        key: session.key,
+        pid: session.proc?.pid ?? null,
+        exit: session.exit,
+        tail: ringTail(session.chunks, session.bytes, EXIT_TAIL_BYTES),
+      })
+    } catch {
+      // A death-record hook must never block session teardown.
+    }
     this.opts.onSessionEnd?.()
   }
 

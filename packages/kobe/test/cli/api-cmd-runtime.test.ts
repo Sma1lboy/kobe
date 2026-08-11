@@ -171,6 +171,7 @@ describe("defaultApiRuntime", () => {
         lastTitle: "boot",
         autoTitle: null,
         alive: false,
+        exit: null,
       },
       {
         id: "tab-2",
@@ -181,6 +182,7 @@ describe("defaultApiRuntime", () => {
         lastTitle: null,
         autoTitle: null,
         alive: true,
+        exit: null,
       },
     ])
   })

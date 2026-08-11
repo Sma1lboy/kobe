@@ -114,15 +114,15 @@ describe("nodePtyDriver", () => {
     expect(proc.pid).toBe(31337)
 
     let settled: unknown = "pending"
-    void proc.exited.then((code) => {
-      settled = code
+    void proc.exited.then((exit) => {
+      settled = exit
     })
     await Promise.resolve()
     expect(settled).toBe("pending")
 
     pty.emitExit(3)
     await proc.exited
-    expect(settled).toBe(3)
+    expect(settled).toEqual({ code: 3, signal: null })
   })
 
   test("forwards write and resize, and collapses every kill onto node-pty's", async () => {
@@ -155,12 +155,19 @@ function fakeBunTerminal(withHandle = true) {
   const calls: string[] = []
   let emit: (data: Uint8Array) => void = () => {}
   let spawnArgs: { argv: string[]; options: Record<string, unknown> } | null = null
-  let settleExit: (code: number) => void = () => {}
+  let settleExit: (code: number | null, signal?: string | null) => void = () => {}
 
-  const proc: BunTerminalProc = {
+  // Mutable like Bun's Subprocess: exitCode/signalCode are set at exit time.
+  const proc: BunTerminalProc & { exitCode: number | null; signalCode: string | null } = {
     pid: 777,
-    exited: new Promise<number>((resolve) => {
-      settleExit = resolve
+    exitCode: null,
+    signalCode: null,
+    exited: new Promise<number | null>((resolve) => {
+      settleExit = (code, signal) => {
+        proc.exitCode = code
+        proc.signalCode = signal ?? null
+        resolve(code)
+      }
     }),
     terminal: withHandle
       ? {
@@ -240,12 +247,22 @@ describe("bunTerminalDriver", () => {
     expect(bun.calls).toEqual([])
   })
 
-  test("exposes the proc's pid and its exited promise unchanged", async () => {
+  test("exposes the pid and settles exited with the proc's exit code", async () => {
     const bun = fakeBunTerminal()
     const proc = bunTerminalDriver(bun.spawn)(request())
     expect(proc.pid).toBe(777)
 
-    bun.settleExit(0)
-    await expect(proc.exited).resolves.toBe(0)
+    bun.settleExit(3)
+    // The death cause used to be discarded here (issue #9) — the driver now
+    // reads Bun's exitCode/signalCode after settle instead of dropping them.
+    await expect(proc.exited).resolves.toEqual({ code: 3, signal: null })
+  })
+
+  test("a signal-killed child reports its signal, not a bare null code", async () => {
+    const bun = fakeBunTerminal()
+    const proc = bunTerminalDriver(bun.spawn)(request())
+
+    bun.settleExit(null, "SIGKILL")
+    await expect(proc.exited).resolves.toEqual({ code: null, signal: "SIGKILL" })
   })
 })

@@ -27,7 +27,7 @@
  *     task/engine lifecycle (terminal reads go through `pty.peek`).
  */
 
-import type { PtyPeekResult, SerializedTask } from "@sma1lboy/kobe-daemon/daemon/protocol"
+import type { PtyPeekResult, PtySessionExit, SerializedTask } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import { interactiveEngineCommand } from "../../engine/interactive-command.ts"
 import { type EngineHistoryReader, engineEntry, supportsStructuredHistory } from "../../engine/registry.ts"
 import type { Message } from "../../types/engine.ts"
@@ -72,6 +72,9 @@ export interface ReadOutputEnvelope {
     /** True when older output was dropped to fit the tail caps. */
     readonly truncated: boolean
     readonly live: boolean
+    /** How the session died when `live` is false — null while alive or
+     *  when the host predates exit records. */
+    readonly exit?: PtySessionExit | null
   }
   /** Opaque next-page cursor; null when there is nothing to page. */
   readonly cursor: string | null
@@ -203,6 +206,7 @@ export interface TerminalPeekPage {
   /** False when `sinceOffset` was trimmed out of the ring (gap in output). */
   readonly sinceValid: boolean
   readonly live: boolean
+  readonly exit?: PtySessionExit | null
 }
 
 export interface ReadOutputDeps {
@@ -352,7 +356,7 @@ async function firstTerminalPage(
   return {
     taskId: input.taskId,
     source: "terminal",
-    terminal: { tail, truncated, live: t.live },
+    terminal: { tail, truncated, live: t.live, exit: t.exit ?? null },
     cursor: encodeCursor({ v: 1, task: input.taskId, src: "terminal", pid: t.pid, off: t.offset, fr: fallbackReason }),
     fallbackReason,
     warnings: [],
@@ -373,7 +377,7 @@ async function continueTerminal(
   return {
     taskId: input.taskId,
     source: "terminal",
-    terminal: { tail, truncated, live: t.live },
+    terminal: { tail, truncated, live: t.live, exit: t.exit ?? null },
     cursor: encodeCursor({ v: 1, task: input.taskId, src: "terminal", pid: t.pid, off: t.offset, fr }),
     fallbackReason: fr,
     warnings,
@@ -408,6 +412,7 @@ async function peekTaskTerminal(
       text: Buffer.from(res.data, "base64").toString("utf8"),
       sinceValid: res.sinceValid,
       live: res.alive,
+      exit: res.exit ?? null,
     }
   } catch {
     return null

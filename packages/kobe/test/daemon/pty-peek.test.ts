@@ -29,6 +29,7 @@ describe("peekRing", () => {
       offset: 0,
       data: "",
       sinceValid: false,
+      exit: null,
     })
   })
 

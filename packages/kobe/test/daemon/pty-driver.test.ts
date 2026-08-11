@@ -1,16 +1,17 @@
-import type { PtyChild, PtySpawnRequest } from "@sma1lboy/kobe-daemon/daemon/pty-driver"
+import type { PtyChild, PtyExit, PtySpawnRequest } from "@sma1lboy/kobe-daemon/daemon/pty-driver"
 import { PtyHost } from "@sma1lboy/kobe-daemon/daemon/pty-host"
+import type { PtySessionEndInfo } from "@sma1lboy/kobe-daemon/daemon/pty-observability"
 import { describe, expect, test } from "vitest"
 
 /** Records what PtyHost asks a driver for, and lets a test drive the child. */
 function recordingDriver() {
   const requests: PtySpawnRequest[] = []
   const calls: string[] = []
-  let settleExit: () => void = () => {}
+  let settleExit: (exit?: PtyExit) => void = () => {}
   const child: PtyChild = {
     pid: 4242,
-    exited: new Promise<void>((resolve) => {
-      settleExit = resolve
+    exited: new Promise<PtyExit>((resolve) => {
+      settleExit = (exit) => resolve(exit ?? { code: 0, signal: null })
     }),
     write: (data) => calls.push(`write:${data}`),
     resize: (cols, rows) => calls.push(`resize:${cols}x${rows}`),
@@ -77,7 +78,57 @@ describe("PtyHost driver seam", () => {
     // close() is the driver's "release the handle" hook — skipping it leaks a
     // ConPTY pseudoconsole per session on Windows.
     expect(rec.calls).toContain("close")
-    expect(frames).toContainEqual({ type: "event", name: "pty.exit", payload: { key: "t::tab-1", pid: 4242 } })
+    // The exit frame carries the death cause (issue #9) — key/pid plus
+    // code/signal/at so an attached client can render "engine died: 1".
+    const exit = frames.find((f) => f.name === "pty.exit")
+    expect(exit?.payload).toMatchObject({ key: "t::tab-1", pid: 4242, code: 0, signal: null })
+    expect((exit?.payload as { at?: string }).at).toBeTruthy()
+  })
+
+  test("records the death cause: exit code/signal in list(), the log line, and the onSessionExit record", async () => {
+    const rec = recordingDriver()
+    const logs: string[] = []
+    const deaths: PtySessionEndInfo[] = []
+    const host = new PtyHost({
+      driver: rec.driver,
+      log: (_event, message) => logs.push(message),
+      onSessionExit: (info) => deaths.push(info),
+    })
+    host.open("t::tab-1", { cwd: "/wt", command: ["claude"], cols: 80, rows: 24 }, {}, () => {})
+    rec.requests[0]?.onData("boom: config missing\r\n")
+
+    rec.settleExit({ code: 1, signal: null })
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(host.list()[0]?.exit).toMatchObject({ code: 1, signal: null })
+    expect(logs.some((line) => line.includes("session t::tab-1 exited (code 1)"))).toBe(true)
+    expect(deaths).toHaveLength(1)
+    expect(deaths[0]).toMatchObject({ key: "t::tab-1", pid: 4242, exit: { code: 1, signal: null } })
+    expect(deaths[0]?.tail).toContain("boom: config missing")
+    // peek keeps answering after death — scrollback plus the recorded cause.
+    expect(host.peek("t::tab-1").exit).toMatchObject({ code: 1, signal: null })
+  })
+
+  test("a signal death logs the signal, and a throwing onSessionExit never blocks teardown", async () => {
+    const rec = recordingDriver()
+    const logs: string[] = []
+    const host = new PtyHost({
+      driver: rec.driver,
+      log: (_event, message) => logs.push(message),
+      onSessionExit: () => {
+        throw new Error("disk full")
+      },
+    })
+    host.open("t::tab-1", { cwd: "/wt", command: ["claude"], cols: 80, rows: 24 }, {}, () => {})
+
+    rec.settleExit({ code: null, signal: "SIGKILL" })
+    await Promise.resolve()
+    await Promise.resolve()
+
+    // The record hook threw, but the session still tore down cleanly.
+    expect(host.liveCount()).toBe(0)
+    expect(logs.some((line) => line.includes("exited (signal SIGKILL)"))).toBe(true)
   })
 
   test("escalates to SIGKILL and still finishes when the child never reports exiting", async () => {

@@ -222,6 +222,24 @@ describe("PtyHost", () => {
     expect(host.list()).toMatchObject([{ key: "t1::tab1", alive: false }])
   })
 
+  // Why: issue #9 — a crashed engine used to leave "session exited" with no
+  // cause anywhere. The real Bun child is what production runs, so this is
+  // the end-to-end proof the exit code survives the driver seam.
+  test("a real child's non-zero exit code lands in list(), the exit frame, and the death record", async () => {
+    const deaths: Array<{ key: string; exit: { code: number | null }; tail: string }> = []
+    const host = makeHost({ onSessionExit: (info) => deaths.push(info) })
+    const { frames, sink } = collector()
+    host.open("t1::tab1", { ...SPEC, command: ["/bin/sh", "-c", "echo dying-now; exit 7"] }, {}, sink)
+    await until(() => frames.some((f) => f.type === "event" && f.name === "pty.exit"))
+
+    const exitFrame = frames.find((f) => f.type === "event" && f.name === "pty.exit")
+    expect((exitFrame as { payload: { code: number | null } }).payload.code).toBe(7)
+    expect(host.list()[0]?.exit).toMatchObject({ code: 7, signal: null })
+    expect(host.peek("t1::tab1").exit).toMatchObject({ code: 7 })
+    expect(deaths[0]?.exit.code).toBe(7)
+    expect(deaths[0]?.tail).toContain("dying-now")
+  })
+
   // Why this matters: pty.list's `title` is how headless surfaces
   // (`kobe api pty-list`) see each child's live process name without a TUI
   // attached — the same OSC 0/2 stream the tab strip renders. Last title

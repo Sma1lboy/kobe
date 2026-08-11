@@ -32,6 +32,7 @@ import { objectPayload, requireString } from "./handler-validators.ts"
 import { defaultPtyHostPidPath, defaultPtyHostSocketPath, isWindowsPipePath } from "./paths.ts"
 import { DAEMON_PROTOCOL_VERSION, type DaemonFrame, frameToLine } from "./protocol.ts"
 import type { PtyDriver } from "./pty-driver.ts"
+import { recordPtyExit } from "./pty-exit-store.ts"
 import { PtyHost } from "./pty-host.ts"
 
 /**
@@ -103,6 +104,15 @@ export async function startPtyHostServer(options: PtyHostServerOptions = {}): Pr
     onSessionStart: cancelIdle,
     onSessionEnd: () => {
       if (ptys.liveCount() === 0) armIdle()
+    },
+    // Durable death record — must survive this host's own idle-exit. The
+    // host already guards the callback; logging the failure is on us.
+    onSessionExit: (info) => {
+      try {
+        recordPtyExit(info)
+      } catch (err) {
+        log("pty", `exit record write failed for ${info.key}: ${err instanceof Error ? err.message : String(err)}`)
+      }
     },
     driver: options.driver,
     log,
