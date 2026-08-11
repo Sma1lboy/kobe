@@ -12,7 +12,7 @@
  */
 
 import type { VendorId } from "@/types/vendor"
-import { engineEntry } from "../../engine/registry"
+import { engineEntry, stripEngineStatusPrefix } from "../../engine/registry"
 import { t } from "../i18n"
 import { pathLeaf } from "../lib/path-helpers"
 import { type SplitState, leaves } from "./split-core"
@@ -154,24 +154,50 @@ export function meaningfulAutoTitle(autoTitle: string | null | undefined): strin
 }
 
 /**
+ * The recorded title as a stable NAME, or null when it is not one.
+ *
+ * Strips the engine's status decoration (idempotent — a title recorded after
+ * the entry-point fix passes through, an older snapshot heals on display),
+ * then rejects a recording that was ONLY decoration. `stripEngineStatusPrefix`
+ * keeps such a title on purpose — a session genuinely named "✳" owns that
+ * name — but in the tree a lone glyph is not a label, so the caller falls
+ * through to the first-prompt summary or the vendor default instead.
+ */
+function stableRecordedTitle(tab: TerminalTab, vendor: VendorId): string | null {
+  const recorded = tab.lastTitle?.trim()
+  if (!recorded) return null
+  const cleaned = stripEngineStatusPrefix(recorded, vendor)
+  // Unchanged AND made only of this engine's glyphs = decoration, not a name.
+  if (cleaned === recorded && isEngineDecoration(recorded, vendor)) return null
+  return cleaned || null
+}
+
+/** True when every character of `text` is one of the engine's status glyphs. */
+function isEngineDecoration(text: string, vendor: VendorId): boolean {
+  const prefixes = engineEntry(vendor).terminalTitle?.statusPrefixes
+  if (!prefixes || prefixes.length === 0) return false
+  const glyphs = new Set(prefixes)
+  return [...text].every((ch) => ch.trim().length === 0 || glyphs.has(ch))
+}
+
+/**
  * A tab's name for a surface that shows kobe's OWN state glyph beside it —
  * the sidebar tree.
  *
- * `tabTitle` lets a status-owning engine's live OSC title BE the name, which
- * is right in the tab strip: you are looking at that terminal, and claude's
- * self-report is the status surface there (`visibleNativeStatus` suppresses
- * our duplicate chip for exactly that reason). In the tree it is wrong twice
- * over. The tree renders no live title (it lists tabs it does not host), so
- * it falls back to `lastTitle` — a FROZEN status string from whenever that
- * tab last reported, e.g. `⠐ 利用自进化…` still spinning on an idle row. And
- * the tree already shows real state in its own glyph, derived from daemon
- * activity, so the name repeating a stale one contradicts it.
+ * This used to DISCARD the recorded `lastTitle` for a status-owning engine
+ * and fall through to the first-prompt summary or the vendor default,
+ * because that recording was the engine's whole status line — `⠐ 利用自进化…`
+ * still spinning on a row whose glyph said idle. Since the status prefix is
+ * stripped where the title enters the app (`stripEngineStatusPrefix`), what
+ * is recorded is the NAME, and throwing it away left every tree row reading
+ * "claude 1" while the tab strip showed the real conversation title (owner
+ * report 2026-08-10).
  *
- * So: skip the engine-owned status titles and take the next stable thing
- * down `tabTitle`'s own precedence (first-prompt summary, else the vendor
- * default). A manual rename still wins — that's the user's name, not the
- * engine's. Engines that don't claim `ownsStatus` are untouched: their OSC
- * title is a real process name, which is a fine label.
+ * So the rule is now: strip the decoration, keep the name. Titles recorded
+ * BEFORE that fix still carry their prefix, so it is stripped again here —
+ * display-side, so old snapshots heal without a migration (same approach as
+ * `meaningfulAutoTitle`). A manual rename still wins: that is the user's
+ * name, not the engine's.
  */
 export function tabTitleStable(tab: TerminalTab, taskVendor: VendorId, liveVendor?: VendorId | null): string {
   // `liveVendor` is tri-state: a vendor = that engine runs in the tab NOW;
@@ -195,18 +221,31 @@ export function tabTitleStable(tab: TerminalTab, taskVendor: VendorId, liveVendo
   if (!vendor || engineEntry(vendor).terminalTitle?.ownsStatus !== true) {
     return tabTitle(tab, taskVendor)
   }
-  // `lastTitle: null` re-runs the same precedence with the engine's status
-  // string removed, rather than duplicating the fallback chain here. The
-  // RESOLVED vendor also replaces an engine tab's creation pin in that
+  // Re-run the normal precedence with the recorded title CLEANED rather than
+  // dropped: `stripEngineStatusPrefix` is idempotent, so a title recorded
+  // after the entry-point fix passes through untouched while an older
+  // snapshot (`⠂ Herdr…`) heals on display. An empty result means the
+  // recording was nothing but decoration — fall through to the next rung
+  // (first-prompt summary, then the vendor default) by clearing it.
+  //
+  // The RESOLVED vendor also replaces an engine tab's creation pin in that
   // fallback: a tab spawned as codex whose shell now runs claude must not
   // keep wearing "codex N" — the pin is history, the live process is the name.
   //
-  // The vendor rides along for a COMMAND tab too (mirroring line ~183's
-  // engine→command demotion): a shell the user typed `claude` into is named
-  // by that engine, not "shell N". `kind` only steers `tabTitle`'s final
+  // The vendor rides along for a COMMAND tab too (mirroring the demotion
+  // branch above): a shell the user typed `claude` into is named by that
+  // engine, not "shell N". `kind` only steers `tabTitle`'s final
   // vendor-default branch, so re-shaping it here is naming-only — no session
   // or resume story is implied (see terminal-tab-identity.ts).
-  return tabTitle({ ...tab, kind: "engine", vendor, lastTitle: null } as TerminalTab, taskVendor)
+  // `stripEngineStatusPrefix` deliberately returns a decoration-ONLY title
+  // untouched (a session genuinely named "✳" keeps its name — see there).
+  // In the tree that is not a name at all, so drop it and let the next rung
+  // answer: `meaningfulAutoTitle` already applies the same "this is not a
+  // label" judgement to first-prompt summaries.
+  return tabTitle(
+    { ...tab, kind: "engine", vendor, lastTitle: stableRecordedTitle(tab, vendor) } as TerminalTab,
+    taskVendor,
+  )
 }
 
 export function tabTitle(tab: TerminalTab, taskVendor: VendorId, liveName?: string | null): string {
