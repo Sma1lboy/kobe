@@ -116,16 +116,20 @@ menu instead, see [Troubleshooting](./TROUBLESHOOTING.md).)
 
 ## Inbox
 
-`ctrl+a` `i` opens it. Rows are pending items, oldest first.
+`ctrl+a` `i` opens it. Two sections: **ATTENTION** (pending items, oldest
+first) and **RECENT** (tabs you visited last). What each is for:
+[The TUI → Inbox](TUI.md#inbox).
 
 | Key | Action |
 |---|---|
-| `j` / `k` | Select |
+| `j` / `k` (or arrows) | Select |
 | `enter` | Open the target task and tab, and clear the item |
-| `d` | Clear the item without navigating |
+| `d` | Clear an ATTENTION item without navigating |
+| `esc` | Close |
 
 Visiting a target clears its item too — visiting means handled. A newer item
-for the same task and tab replaces the older one.
+for the same task and tab replaces the older one. `F7` opens the oldest
+pending item directly, across all projects, without opening the Inbox.
 
 ## Diff review
 
@@ -134,9 +138,12 @@ In the read-only diff tab, with the workspace focused:
 | Key | Action |
 |---|---|
 | `j` / `k` | Move the line cursor |
-| `v` | Anchor a range |
+| `v` | Anchor a range (`v` again cancels) |
 | `c` | Write a note |
 | `s` | Send all unsent notes to the engine |
+
+These four are fixed — they can't be rebound. The workflow they belong to:
+[The TUI → Diff review](TUI.md#diff-review).
 
 ## Customizing
 

@@ -38,6 +38,7 @@ const SECTIONS = [
     pages: [
       ['QUICKSTART.md', 'quick-start'],
       ['CONCEPTS.md', 'concepts'],
+      ['TUI.md', 'tui'],
       ['KEYBINDINGS.md', 'keybindings'],
     ],
   },
