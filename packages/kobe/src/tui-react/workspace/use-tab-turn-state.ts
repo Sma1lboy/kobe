@@ -18,6 +18,7 @@ import type { TranscriptActivity } from "../../client/remote-orchestrator"
 import type { ChatTabTurnState } from "../../engine/turn-detector"
 import { attentionEdges, chipAttentionKind } from "../../tui/lib/notify-state"
 import { defaultShell } from "../../tui/panes/terminal/pty-types"
+import { InterruptObserver } from "../../tui/workspace/interrupt-observer"
 import { demoteExitedEngine } from "../../tui/workspace/terminal-tab-identity"
 import {
   type TabsState,
@@ -45,14 +46,52 @@ export function useTabTurnState(deps: {
   notif: NotificationsContext
   /** Tab-state writer — used to RECORD each tab's latest live title. */
   update?: (next: TabsState) => void
+  /** Confirmed ESC interrupt on a hook-running tab (issue #15) — the host
+   *  reports it to the daemon as a `turn-interrupted` engine event. */
+  onEngineInterrupt?: (tabId: string) => void
 }): {
   turnStates: ReadonlyMap<string, ChatTabTurnState>
   liveTitles: ReadonlyMap<string, string>
   turnVendors: ReadonlyMap<string, VendorId>
 } {
-  const { turnStates: pollStates, liveTitles, turnVendors } = useTurnPolls(deps)
+  const { turnStates: pollStates, liveTitles, rawTitles, turnVendors } = useTurnPolls(deps)
 
   const turnStates = useMemo(() => mergeTurnStates(deps.hookTabStates, pollStates), [deps.hookTabStates, pollStates])
+
+  // ESC-interrupt watch (issue #15): a hook-claimed `running` tab whose RAW
+  // live title flipped to the engine's resting form ended its turn without
+  // any hook (claude-code's abort path runs none). The observer owns the
+  // Stop-race debounce; both callbacks read LIVE state through refs so a
+  // Stop landing inside the window wins, and the confirm re-check is
+  // against the daemon's current claim, never the arm-time snapshot.
+  const hookStatesRef = useLatest(deps.hookTabStates)
+  const onInterruptRef = useLatest(deps.onEngineInterrupt)
+  const observerRef = useRef<InterruptObserver | null>(null)
+  if (observerRef.current === null) {
+    observerRef.current = new InterruptObserver({
+      confirm: (tabId) => hookStatesRef.current?.get(tabId)?.state === "running",
+      report: (tabId) => onInterruptRef.current?.(tabId),
+    })
+  }
+  useEffect(() => {
+    const observer = observerRef.current
+    if (!observer) return
+    const running = new Set<string>()
+    for (const [tabId, entry] of deps.hookTabStates ?? []) {
+      if (entry.state === "running") running.add(tabId)
+    }
+    // Every tab with either signal gets an observation: a tab missing from
+    // `running` disarms any pending confirm (Stop/permission landed).
+    const tabIds = new Set([...running, ...rawTitles.keys()])
+    for (const tabId of tabIds) {
+      observer.observe(tabId, {
+        rawTitle: rawTitles.get(tabId),
+        vendor: turnVendors.get(tabId),
+        hookRunning: running.has(tabId),
+      })
+    }
+  }, [deps.hookTabStates, rawTitles, turnVendors])
+  useEffect(() => () => observerRef.current?.dispose(), [])
 
   // Record the live titles AND live engine identity onto the tabs
   // themselves. Only THIS component sees the OSC stream / turn targets, and

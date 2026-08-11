@@ -158,6 +158,9 @@ describe("golden: session events → sidebar running state", () => {
   })
 
   it("an interrupt drops the spinner without a completion lamp", () => {
+    // The `turn-interrupted` event is what the TUI's interrupt observer
+    // reports after confirming an ESC (issue #15) — and what Kimi fires
+    // natively instead of Stop. Either way: idle, never a ● lamp.
     const h = track(harness())
     h.registry.report(TASK_ID, "turn-start", undefined, "tab-1")
     expect(h.row("tab-1").loading).toBe(true)
@@ -165,6 +168,18 @@ describe("golden: session events → sidebar running state", () => {
     const row = h.row("tab-1", { active: true })
     expect(row.loading).toBe(false)
     expect(row.glyph).not.toBe("●")
+  })
+
+  it("an interrupted tab re-lights on its next turn-start, and that turn completes normally", () => {
+    // The transitions AROUND an interrupt (issue #15 stake): interrupt →
+    // idle must not poison the next turn's running edge or its ● lamp.
+    const h = track(harness())
+    h.registry.report(TASK_ID, "turn-start", undefined, "tab-1")
+    h.registry.report(TASK_ID, "turn-interrupted", undefined, "tab-1")
+    h.registry.report(TASK_ID, "turn-start", undefined, "tab-1")
+    expect(h.row("tab-1").loading).toBe(true)
+    h.registry.report(TASK_ID, "turn-complete", undefined, "tab-1")
+    expect(h.row("tab-1").glyph).toBe("●")
   })
 
   it("attention states are sticky words, not spinners — and never lapse-policed", () => {

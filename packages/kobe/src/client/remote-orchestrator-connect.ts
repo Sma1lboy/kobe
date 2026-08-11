@@ -8,7 +8,7 @@
  */
 
 import type { KobeDaemonClient } from "@sma1lboy/kobe-daemon/client"
-import { logClient } from "@sma1lboy/kobe-daemon/client/client-log"
+import { logClient, logClientError } from "@sma1lboy/kobe-daemon/client/client-log"
 import {
   type ChannelName,
   DAEMON_PROTOCOL_VERSION,
@@ -24,6 +24,41 @@ export interface PerformInitOptions {
   readonly channels?: readonly ChannelName[]
   /** `false` when a channel filter excludes `task.snapshot` — skip hello task hydration. */
   readonly subscribesTasks: boolean
+}
+
+/**
+ * The reconnect loop body — moved verbatim from
+ * `RemoteOrchestrator.runReconnectLoop` (file-size cap), taking an explicit
+ * deps bag instead of closing over `this`. A GUI (`spawnDaemon`) may spawn
+ * the daemon via `ensureReachable`; a pane only retries the existing socket
+ * so helper panes never defeat daemon lazy-shutdown. Failures stay silent in
+ * the UI with the caller-supplied bounded forensic logging policy.
+ */
+export async function runReconnectLoop(deps: {
+  readonly isDisposed: () => boolean
+  readonly spawnDaemon: boolean
+  readonly ensureReachable: () => Promise<unknown>
+  readonly init: () => Promise<void>
+  readonly shouldLogAttempt: (attempt: number) => boolean
+}): Promise<void> {
+  let delayMs = deps.spawnDaemon ? 0 : 500
+  let attempt = 0
+  while (!deps.isDisposed()) {
+    if (delayMs > 0) await new Promise((r) => setTimeout(r, delayMs))
+    if (deps.isDisposed()) break
+    attempt++
+    try {
+      if (deps.spawnDaemon) await deps.ensureReachable()
+      await deps.init()
+      logClient("orch", `reconnected and re-subscribed after ${attempt} attempt(s) — task list re-synced`)
+      return
+    } catch (err) {
+      // Pane failures are expected while no GUI owns a daemon; GUI failures
+      // mean ensure/start itself is temporarily failing.
+      if (deps.shouldLogAttempt(attempt)) logClientError("orch-reconnect", err)
+      delayMs = delayMs === 0 ? 500 : Math.min(delayMs * 2, 3000)
+    }
+  }
 }
 
 /** Open the daemon socket, hello, subscribe to the task snapshot stream. */

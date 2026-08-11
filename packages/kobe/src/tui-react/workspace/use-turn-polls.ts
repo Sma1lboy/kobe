@@ -60,6 +60,9 @@ export function useTurnPolls(deps: {
    *  title matches a vendor, else the raw OSC title). Feeds the tab
    *  strip's dynamic default names. */
   liveTitles: ReadonlyMap<string, string>
+  /** tabId → UNSTRIPPED live OSC title — the engine's status decoration
+   *  intact, for the ESC-interrupt observer's working→rest flip read. */
+  rawTitles: ReadonlyMap<string, string>
   /** tabId → resolved live engine identity — the `targetFor` vendor the
    *  attached detector tracks, whether kobe-launched or user-typed. The tab
    *  strip's launch-path-agnostic "does this process own its status" input. */
@@ -67,6 +70,7 @@ export function useTurnPolls(deps: {
 } {
   const [turnStates, setTurnStates] = useState<ReadonlyMap<string, ChatTabTurnState>>(new Map())
   const [liveTitles, setLiveTitles] = useState<ReadonlyMap<string, string>>(new Map())
+  const [rawTitles, setRawTitles] = useState<ReadonlyMap<string, string>>(new Map())
   const [turnVendors, setTurnVendors] = useState<ReadonlyMap<string, VendorId>>(new Map())
   const turnPollsRef = useRef(new Map<string, { dispose: () => void; vendor: VendorId; key: string }>())
   /** Shared live-title store: ptyKey → display title, instance-compared so a
@@ -107,6 +111,19 @@ export function useTurnPolls(deps: {
       if (key) soloKeys.set(key, tab.id)
     }
     titleStore.reconcile(soloKeys.keys())
+    // The UNSTRIPPED titles, for the one consumer that needs the engine's
+    // status decoration intact: the ESC-interrupt observer reads the
+    // working-frame → resting flip (`engineTitleTurnHint`), which the
+    // display strip below would erase. Identity-stable like its sibling.
+    setRawTitles((prev) => {
+      const next = new Map<string, string>()
+      for (const [key, tabId] of soloKeys) {
+        const title = titleStore.get(key)
+        if (title !== undefined) next.set(tabId, title)
+      }
+      if (next.size === prev.size && [...next].every(([id, v]) => prev.get(id) === v)) return prev
+      return next
+    })
     // Project the store's ptyKey→title map onto tabId→title for render; identity-
     // stable so the slow tick doesn't churn re-renders when nothing moved.
     setLiveTitles((prev) => {
@@ -256,5 +273,5 @@ export function useTurnPolls(deps: {
     }
   }, [])
 
-  return { turnStates, liveTitles, turnVendors }
+  return { turnStates, liveTitles, rawTitles, turnVendors }
 }

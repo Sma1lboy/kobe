@@ -53,6 +53,17 @@ export async function forgetProjectOp(client: KobeDaemonClient, repo: string): P
   await client.request("project.forget", { repo })
 }
 
+/**
+ * Fire-and-forget `turn-interrupted` report for a tab whose engine ended
+ * its turn with NO hook of its own — an ESC interrupt (issue #15; the TUI's
+ * `InterruptObserver` confirmed the engine's resting title against a
+ * hook-claimed `running`). Same `engine.reportEvent` verb the `kobe hook`
+ * processes use, so the daemon reduces + broadcasts it like any hook event.
+ */
+export function reportEngineInterruptOp(client: KobeDaemonClient, taskId: string, tabId: string): void {
+  void client.request("engine.reportEvent", { kind: "turn-interrupted", taskId, tabId }).catch(() => {})
+}
+
 export async function setTitleOp(client: KobeDaemonClient, id: TaskId | string, title: string): Promise<void> {
   await client.request("task.rename", { taskId: String(id), title })
 }
