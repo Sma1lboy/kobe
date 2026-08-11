@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.8.71
+
+### Patch Changes
+
+- e41b81d: fix: end daemon-succession split brain — a daemon that loses its socket path now stops itself so attached TUIs reconnect to the new owner (issue #10)
+
+  Three cooperating guards in the daemon lifecycle: a socket-ownership watchdog
+  (a daemon whose `daemon.sock` was taken over or removed stops itself, and the
+  TUI's existing reconnect loop silently migrates to the new owner — no more
+  re-entering kobe to see new state); ownership-checked shutdown cleanup (a
+  superseded daemon no longer closes/unlinks the socket path by name, which
+  deleted the NEW daemon's socket and cascaded into repeated autospawns); and a
+  cross-process autospawn lock (concurrent clients that all find the daemon
+  unreachable no longer each run stop+spawn — losers wait for the winner's
+  daemon).
+
+- 6193871: An ESC-interrupted turn now flips the sidebar running state within seconds instead of sticking until the ~10min watchdog (issue #15). The engine's abort path fires no Stop hook, so the TUI watches the one signal an interrupt leaves — the engine's own title rewrite from its animated working frame to its resting form (engine-declared `workingPrefixes`) — confirms it against the hook-claimed running state with a Stop-race debounce, and reports `turn-interrupted` to the daemon so every attached client's badge flips.
+- fe40cf5: Narrow mode for phone-SSH terminals (issue #14, phase 1): below 70 cols the workspace collapses to a single-panel layout — sidebar and workspace render as mutually exclusive full-screen surfaces (enter a task for the workspace, the existing ctrl+q comes back to the list; no new chords), the files pane stays hidden (spec addendum: three panes don't fit 46 cols), the tab strip condenses to the active tab plus a 2/3 counter, the footer keeps one session-window usage chip per vendor with hints collapsed to their chord caps, the prefix HUD goes full width, dialogs clamp centered with halved body padding, and the sidebar gains a "↩ Recent" jump row back into the last-entered task (persisted via lastActive, so a cold reconnect keeps it). Desktop layouts at ≥70 cols are unchanged. Also fixes selectTask skipping the active-task publish when re-entering the already-selected task.
+- f4e5042: New worktree tasks' first prompt now carries a branch-rename coda (issue #8): every entry point that creates a task and delivers its first prompt (`add --prompt`, `fan-out`, quick-fork, issue-chat, automation/work-item starts) appends one instruction asking the agent to `kobe api set-branch` the auto-generated placeholder branch to a descriptive name. Applied once at the shared launch convergence point (`firstMessageFor` via a new `new-task` prompt intent), so prompts into existing sessions (`send`, `send --tab new`, `dispatch`, cross-engine handoffs) are never modified.
+- d6baea4: `kobe api send` / peer prompt delivery no longer garbles the attached TUI's pane (issue #18). The headless delivery client used to reattach via `pty.open` with a hardcoded 80×24, which the host's last-attach-wins rule turned into a real resize — the engine got SIGWINCH and repainted at 80 cols under a wider pane, wrapping content into the left half. Delivery now peeks + writes without ever attaching (indistinguishable from keyboard input), size-less `pty.open`s from other headless clients (ensure/spawn paths) no longer resize a live session, and delivery no longer clears a parked tab's exact-delta restore state. Sized reattaches (a real TUI) keep the tmux-style last-attach-wins behavior.
+- 56b5f2c: Engine sessions that die now leave a queryable cause of death (issue #9). The PTY host records exit code, signal, and exit time on every session end: the `pty.log` "session exited" line carries the cause (`(code 1)` / `(signal SIGKILL)`), `pty.exit` frames and `pty.list`/`pty.peek` expose it, and abnormal exits persist a durable record (code/signal/time + the last plain-text output lines) to `pty-exits.json`, surviving the host's idle-exit. `get-task` tab rows report `exit` for abnormally-dead tabs, `read-output` terminal pages include `terminal.exit`, and `kobe api inspect` gains a `sessionExits` section with the persisted records and output tails. Clean exits (code 0) stay quiet, and every new exit-path hook is fail-safe.
+- 5a12806: Sidebar running dots now track ground truth instead of only the hook event stream (issues #11/#16). The daemon runs an activity observer over the pty host's inventory: a PTY output heartbeat (output/title frozen for 30s ⇒ not working), an engine-owned title verdict (claude's ⠂/⠐ working frames vs its resting ✳; codex's braille), and a ~60s foreground-walk reconciler that corrects stale hook claims — with an immediate first pass so a daemon restart re-seeds busy sessions' dots in seconds instead of at the next turn boundary. The sidebar also distinguishes "the daemon doesn't know" (a dotted ◌) from known-idle (○), and known-idle facts replay to late subscribers.
+- ee02fdf: Fix the very first `kobe api` command on a fresh KOBE_HOME failing: the daemon spawn lock's `openSync(wx)` threw ENOENT when `.kobe/` didn't exist yet, which the held-lock fallback misread as "someone else is spawning" — a 15s stall ending in BAD_DAEMON. The lock now creates its parent directory first.
+- 5edacc8: Unified new-conversation dialog (issue #7): `ctrl+e` now opens one dialog for every "start a new chat" shape. The default state is the old engine/shell picker verbatim — enter still opens a fresh tab in this worktree. Inside the dialog, `tab` flips the destination (new tab here ⇄ fork a child task worktree) and `ctrl+f` flips the context (fresh ⇄ continue this conversation), with both states always visible in the footer. `ctrl+a c` and `ctrl+a f` remain as preset entries into the same dialog (context/destination pre-flipped); `ctrl+t` is untouched. Fork-destination + continue-context seeds the child task's first prompt with the transcript handoff brief. Also: the claude/codex history readers now honor `CLAUDE_CONFIG_DIR` / `CODEX_HOME`, matching the account probes.
+
 ## 0.8.70
 
 ### Patch Changes
