@@ -247,10 +247,15 @@ to do) from `dispatch_failed` (needs a human).
 - `pin --task-id ID [--pinned=false]`: pin/unpin a task to the top of the
   sidebar.
 - `land --task-id ID [--strategy merge|squash] [--delete-branch]
-  [--then-archive]`: merge a task's branch back into its base repo's
-  current branch (`--no-ff` merge, or one squash commit). Refuses a dirty
-  base checkout; on conflict it aborts and returns the conflicted files.
-  Returns `{ landedOn, commit }`.
+  [--then-archive] [--remove-worktree]`: merge a task's branch back into its
+  base repo's current branch (`--no-ff` merge, or one squash commit). Refuses
+  a dirty base checkout; on conflict it aborts and returns the conflicted
+  files. Returns `{ landedOn, commit }`.
+  `--remove-worktree` removes the task's worktree after a successful land —
+  the branch stays (pair with `--delete-branch` to drop it too). It never
+  forces: a dirty worktree, the base checkout, and the worktree the caller is
+  running from are all refused, and the outcome lands in the result's
+  `worktree` field (`{ removed, reason? }`) instead of failing the land.
 - `delete --task-id ID [--force]`: permanently remove a task **and its
   worktree**. Destructive; prefer `archive`. Needs `--force` on a dirty
   worktree.

@@ -442,6 +442,12 @@ export const VERBS: readonly VerbSpec[] = [
       },
       { name: "delete-branch", type: "bool", description: "Delete the task's branch after a successful land." },
       { name: "then-archive", type: "bool", description: "Archive the task after a successful land." },
+      {
+        name: "remove-worktree",
+        type: "bool",
+        description:
+          "Remove the task's worktree after a successful land (the branch stays). Dirty worktrees, the base checkout, and the caller's own worktree are refused — the outcome is reported in the result's `worktree` field, never thrown.",
+      },
     ],
     handler: land,
   },

@@ -14,7 +14,8 @@ import os from "node:os"
 import path from "node:path"
 import { afterEach, beforeEach, describe, expect, test } from "vitest"
 import { LandConflictError, MainCheckoutDirtyError } from "../../src/orchestrator/errors.ts"
-import { landTask } from "../../src/orchestrator/land.ts"
+import { landTask, landTaskWithCleanup } from "../../src/orchestrator/land.ts"
+import { GitWorktreeManager } from "../../src/orchestrator/worktree/manager.ts"
 import type { Task } from "../../src/types/task.ts"
 import { toTaskId } from "../../src/types/task.ts"
 
@@ -135,5 +136,89 @@ describe("landTask", () => {
     write("dirty.txt", "uncommitted\n") // untracked → dirty
 
     await expect(landTask(task("feat"))).rejects.toBeInstanceOf(MainCheckoutDirtyError)
+  })
+})
+
+describe("landTaskWithCleanup --remove-worktree", () => {
+  let wt: string
+
+  /** Real worktree on branch `feat` with one committed file, base back on main. */
+  function makeWorktree(): void {
+    wt = path.join(tmpRoot, "wt")
+    git(["worktree", "add", "-b", "feat", wt], repo)
+    fs.writeFileSync(path.join(wt, "b.txt"), "feature\n")
+    git(["add", "."], wt)
+    git(["commit", "-m", "feat commit"], wt)
+  }
+
+  function deps() {
+    const cleared: string[] = []
+    return {
+      cleared,
+      deps: {
+        worktrees: new GitWorktreeManager(),
+        setArchived: async () => {},
+        clearWorktreePath: async (id: unknown) => {
+          cleared.push(String(id))
+        },
+      },
+    }
+  }
+
+  function branchExists(name: string): boolean {
+    return spawnSync("git", ["branch", "--list", name], { cwd: repo, encoding: "utf8" }).stdout.trim().length > 0
+  }
+
+  test("successful land removes the worktree, keeps the branch, unlinks the task", async () => {
+    makeWorktree()
+    const { deps: d, cleared } = deps()
+    const res = await landTaskWithCleanup({ ...task("feat"), worktreePath: wt }, { removeWorktree: true }, d)
+    expect(res.worktree).toEqual({ removed: true })
+    expect(fs.existsSync(wt)).toBe(false)
+    expect(branchExists("feat")).toBe(true)
+    expect(cleared).toEqual(["t-land"])
+    expect(fs.existsSync(path.join(repo, "b.txt"))).toBe(true) // the merge itself landed
+  })
+
+  test("dirty worktree is refused (no force) but the land still stands", async () => {
+    makeWorktree()
+    fs.writeFileSync(path.join(wt, "wip.txt"), "uncommitted\n")
+    const { deps: d, cleared } = deps()
+    const res = await landTaskWithCleanup({ ...task("feat"), worktreePath: wt }, { removeWorktree: true }, d)
+    expect(res.worktree?.removed).toBe(false)
+    expect(res.worktree?.reason).toMatch(/dirty/)
+    expect(fs.existsSync(path.join(wt, "wip.txt"))).toBe(true)
+    expect(cleared).toEqual([])
+    expect(fs.existsSync(path.join(repo, "b.txt"))).toBe(true)
+  })
+
+  test("caller inside the worktree is refused with an explanation", async () => {
+    makeWorktree()
+    const { deps: d } = deps()
+    const res = await landTaskWithCleanup(
+      { ...task("feat"), worktreePath: wt },
+      { removeWorktree: true, callerCwd: wt },
+      d,
+    )
+    expect(res.worktree?.removed).toBe(false)
+    expect(res.worktree?.reason).toMatch(/caller's own worktree/)
+    expect(fs.existsSync(wt)).toBe(true)
+  })
+
+  test("never removes the base checkout even if worktreePath points at it", async () => {
+    makeWorktree()
+    const { deps: d } = deps()
+    const res = await landTaskWithCleanup({ ...task("feat"), worktreePath: repo }, { removeWorktree: true }, d)
+    expect(res.worktree?.removed).toBe(false)
+    expect(res.worktree?.reason).toMatch(/base checkout/)
+    expect(fs.existsSync(repo)).toBe(true)
+  })
+
+  test("without removeWorktree the result has no worktree field", async () => {
+    makeWorktree()
+    const { deps: d } = deps()
+    const res = await landTaskWithCleanup({ ...task("feat"), worktreePath: wt }, {}, d)
+    expect(res.worktree).toBeUndefined()
+    expect(fs.existsSync(wt)).toBe(true)
   })
 })

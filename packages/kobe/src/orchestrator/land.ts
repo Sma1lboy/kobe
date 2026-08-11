@@ -16,6 +16,8 @@
  * subprocesses through the same {@link ExecHost} the worktree manager uses.
  */
 
+import fs from "node:fs"
+import path from "node:path"
 import type { ExecHost } from "../exec/exec-host.ts"
 import type { Task, TaskId } from "../types/task.ts"
 import { LandConflictError, MainCheckoutDirtyError } from "./errors.ts"
@@ -35,12 +37,24 @@ export interface LandTaskOpts {
   readonly deleteBranch?: boolean
   /** Archive the task after a successful land (moves it off the active board). */
   readonly archive?: boolean
+  /** Remove the task's worktree after a successful land (the branch stays). */
+  readonly removeWorktree?: boolean
+  /** The land caller's cwd — a caller inside the worktree it asks to remove is refused. */
+  readonly callerCwd?: string
 }
 
 /** Collaborators `landTaskWithCleanup` drives for the post-land steps. */
 export interface LandDeps {
-  readonly worktrees: Pick<GitWorktreeManager, "deleteBranch">
+  readonly worktrees: Pick<GitWorktreeManager, "deleteBranch" | "remove">
   readonly setArchived: (id: TaskId | string, archived: boolean) => Promise<void>
+  /** Unlink the task's worktreePath after its worktree is removed. */
+  readonly clearWorktreePath: (id: TaskId | string) => Promise<void>
+}
+
+/** Outcome of the opt-in post-land worktree removal — reported in the result, never thrown. */
+export interface LandWorktreeCleanup {
+  readonly removed: boolean
+  readonly reason?: string
 }
 
 /**
@@ -54,9 +68,56 @@ export async function landTaskWithCleanup(task: Task, opts: LandTaskOpts, deps: 
   if (task.kind === "main") throw new Error("landTask: a main task has no branch to land")
   if (task.kind === "dir") throw new Error("landTask: a directory task has no kobe-managed branch to land")
   const result = await landTask(task, { strategy: opts.strategy })
+  // Worktree removal runs BEFORE branch deletion: git refuses to delete a
+  // branch that's still checked out in a live worktree, so the reverse order
+  // would leave --delete-branch a silent no-op when combined with it.
+  const worktree = opts.removeWorktree ? await removeLandedWorktree(task, opts.callerCwd, deps) : undefined
   if (opts.deleteBranch) await deps.worktrees.deleteBranch(task.repo, result.branch, { force: true })
   if (opts.archive) await deps.setArchived(task.id, true)
-  return result
+  return worktree ? { ...result, worktree } : result
+}
+
+/** Best-effort realpath for containment/identity checks (`/var` vs `/private/var`). */
+function resolveReal(p: string): string {
+  try {
+    return fs.realpathSync.native(p)
+  } catch {
+    return path.resolve(p)
+  }
+}
+
+/**
+ * Post-land worktree removal. Never throws — the merge has already committed,
+ * so every refusal/failure is reported in the result instead of failing the
+ * land. Hard safety edges: never the base checkout, never the caller's own
+ * worktree (an agent landing itself would delete its own cwd), and never a
+ * dirty worktree (`remove()` without force refuses it).
+ */
+async function removeLandedWorktree(
+  task: Task,
+  callerCwd: string | undefined,
+  deps: LandDeps,
+): Promise<LandWorktreeCleanup> {
+  const worktreePath = task.worktreePath.trim()
+  if (!worktreePath) return { removed: false, reason: "task has no worktree on disk (never materialised)" }
+  const wt = resolveReal(worktreePath)
+  if (wt === resolveReal(task.repo)) return { removed: false, reason: "refusing to remove the base checkout" }
+  if (callerCwd) {
+    const rel = path.relative(wt, resolveReal(callerCwd))
+    if (rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel))) {
+      return {
+        removed: false,
+        reason: `refusing to remove the caller's own worktree (${worktreePath}) — re-run from outside it`,
+      }
+    }
+  }
+  try {
+    await deps.worktrees.remove(worktreePath)
+    await deps.clearWorktreePath(task.id)
+    return { removed: true }
+  } catch (err) {
+    return { removed: false, reason: err instanceof Error ? err.message : String(err) }
+  }
 }
 
 export interface LandResult {
@@ -66,6 +127,8 @@ export interface LandResult {
   readonly landedOn: string
   /** Short SHA of the merge/commit that landed the work. */
   readonly commit: string
+  /** Present only when `removeWorktree` was requested — the cleanup outcome. */
+  readonly worktree?: LandWorktreeCleanup
 }
 
 /** Resolve the git working dir + ExecHost for the base repo — local path or remote basePath. */

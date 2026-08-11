@@ -415,10 +415,10 @@ export class Orchestrator {
 
   /** Land a task's branch back into its base repo — executor + cleanup in `land.ts`. */
   async landTask(id: TaskId | string, opts?: LandTaskOpts): Promise<LandResult> {
-    const task = this.requireTask(id)
-    return landTaskWithCleanup(task, opts ?? {}, {
+    return landTaskWithCleanup(this.requireTask(id), opts ?? {}, {
       worktrees: this.worktrees,
       setArchived: (tid, archived) => this.editor.setArchived(tid, archived),
+      clearWorktreePath: (tid) => this.clearWorktreePath(tid),
     })
   }
 
