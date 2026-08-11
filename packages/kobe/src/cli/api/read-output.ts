@@ -189,7 +189,12 @@ export function boundedTail(text: string): TerminalTail {
   let bytes = 0
   for (let i = lines.length - 1; i >= start; i--) {
     bytes += (lines[i]?.length ?? 0) + 1
-    if (bytes > TERMINAL_TAIL_BYTES) {
+    // Always keep the last line, even when it alone busts the byte budget —
+    // otherwise a single over-budget final line (a minified dump, a long
+    // base64 blob) sets `start` past the end and blanks the whole tail, so
+    // the read returns nothing to show. Mirrors buildHistoryPage's
+    // "never fewer than one" floor.
+    if (bytes > TERMINAL_TAIL_BYTES && i < lines.length - 1) {
       start = i + 1
       break
     }

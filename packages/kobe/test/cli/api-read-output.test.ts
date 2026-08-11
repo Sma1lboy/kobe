@@ -12,6 +12,7 @@ import {
   type ReadOutputDeps,
   type ReadOutputEnvelope,
   STRING_CLIP_CHARS,
+  TERMINAL_TAIL_BYTES,
   TERMINAL_TAIL_LINES,
   type TerminalPeekPage,
   boundedTail,
@@ -297,5 +298,26 @@ describe("read-output terminal tail shaping", () => {
     expect(capped.tail.length).toBe(TERMINAL_TAIL_LINES)
     expect(capped.truncated).toBe(true)
     expect(capped.tail[0]).toBe("l50")
+  })
+
+  it("keeps the last line even when it alone exceeds the byte budget", () => {
+    // A single line larger than the byte cap (a minified dump / base64 blob
+    // with no newline) must not blank the whole tail — the read has to show
+    // something. Regression: the budget loop counted the final line first and
+    // set `start` past the end, returning an empty tail.
+    const huge = "x".repeat(TERMINAL_TAIL_BYTES + 5000)
+    const shaped = boundedTail(huge)
+    expect(shaped.tail).toEqual([huge])
+    // Nothing older was dropped — there was only the one line.
+    expect(shaped.truncated).toBe(false)
+  })
+
+  it("drops older lines but still returns the over-budget final line", () => {
+    // Older short lines followed by an over-budget final line: the earlier
+    // lines are trimmed to fit the cap, yet the last line still comes back.
+    const huge = "y".repeat(TERMINAL_TAIL_BYTES + 5000)
+    const shaped = boundedTail(`old-1\nold-2\n${huge}`)
+    expect(shaped.tail).toEqual([huge])
+    expect(shaped.truncated).toBe(true)
   })
 })
