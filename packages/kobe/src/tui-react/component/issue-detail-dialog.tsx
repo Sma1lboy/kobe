@@ -34,7 +34,7 @@ import type { VendorId } from "../../types/task"
 import { useTheme } from "../context/theme"
 import { useT } from "../i18n"
 import { useBindings } from "../lib/keymap"
-import { type DialogContext, showDialog, useDialog } from "../ui/dialog"
+import { type DialogContext, showDialog, useDialog, useDialogPaddingX } from "../ui/dialog"
 import { IssueEventsSection, SectionHeader } from "./issue-detail-parts"
 
 export interface IssueDetailOptions {
@@ -82,6 +82,7 @@ function IssueDetailDialogView(
   const dialog = useDialog()
   const { theme } = useTheme()
   const t = useT()
+  const padX = useDialogPaddingX()
   const issue = props.issue
   const create = props.mode === "create"
   const linkedTaskId = !create && issue.taskId && issue.taskId !== "" ? issue.taskId : null
@@ -256,7 +257,7 @@ function IssueDetailDialogView(
   const frameColor = (ownField: Field) => (field === ownField ? theme.primary : theme.borderSubtle)
 
   return (
-    <box paddingLeft={2} paddingRight={2} gap={1}>
+    <box paddingLeft={padX} paddingRight={padX} gap={1}>
       <box flexDirection="row" justifyContent="space-between">
         {create ? (
           <text fg={theme.text} attributes={TextAttributes.BOLD} wrapMode="none">

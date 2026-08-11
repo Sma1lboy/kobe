@@ -14,6 +14,7 @@ import { TextAttributes } from "@opentui/core"
 import type { DialogTab } from "../../../tui/component/new-task-dialog/state"
 import { useTheme } from "../../context/theme"
 import { useT } from "../../i18n"
+import { useDialogPaddingX } from "../../ui/dialog"
 import { ChoiceRow, labelStyle } from "./picker-list"
 import { AdoptTab } from "./tab-adopt"
 import { CloneTab } from "./tab-clone"
@@ -27,6 +28,7 @@ const TAB_ORDER: readonly DialogTab[] = ["existing", "clone", "adopt"]
 export function NewTaskDialogView(props: NewTaskDialogProps) {
   const { theme } = useTheme()
   const t = useT()
+  const padX = useDialogPaddingX()
   const vm = useNewTaskViewModel(props)
 
   const tabLabel: Record<DialogTab, string> = {
@@ -41,7 +43,7 @@ export function NewTaskDialogView(props: NewTaskDialogProps) {
     selected ? (focused ? TextAttributes.BOLD | TextAttributes.UNDERLINE : TextAttributes.BOLD) : undefined
 
   return (
-    <box paddingLeft={2} paddingRight={2} gap={0}>
+    <box paddingLeft={padX} paddingRight={padX} gap={0}>
       <box flexDirection="row">
         <text attributes={TextAttributes.BOLD} fg={theme.text}>
           {t("newTask.title")}

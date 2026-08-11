@@ -19,7 +19,7 @@ import { useState } from "react"
 import { isBlankText, stripNewlines } from "../../tui/component/new-task-dialog/state"
 import { useTheme } from "../context/theme"
 import { useT } from "../i18n"
-import { type DialogContext, showDialog, useDialog } from "../ui/dialog"
+import { type DialogContext, showDialog, useDialog, useDialogPaddingX } from "../ui/dialog"
 
 export function RenameTaskDialogView(props: {
   currentTitle: string
@@ -38,6 +38,7 @@ export function RenameTaskDialogView(props: {
   const dialog = useDialog()
   const { theme } = useTheme()
   const t = useT()
+  const padX = useDialogPaddingX()
   const [value, setValue] = useState(props.currentTitle)
 
   function commit(): void {
@@ -50,7 +51,7 @@ export function RenameTaskDialogView(props: {
   }
 
   return (
-    <box paddingLeft={2} paddingRight={2} gap={1}>
+    <box paddingLeft={padX} paddingRight={padX} gap={1}>
       <box flexDirection="row" justifyContent="space-between">
         <text attributes={TextAttributes.BOLD} fg={theme.text}>
           {props.dialogTitle ?? t("common.rename.defaultTitle")}

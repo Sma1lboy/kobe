@@ -24,7 +24,7 @@ import { useState } from "react"
 import { useTheme } from "../context/theme"
 import { useT } from "../i18n"
 import { useBindings } from "../lib/keymap"
-import { type DialogContext, showDialog, useDialog } from "../ui/dialog"
+import { type DialogContext, showDialog, useDialog, useDialogPaddingX } from "../ui/dialog"
 import { ChoiceRow } from "./new-task-dialog/picker-list"
 
 /** What the picker can resolve to: an engine vendor or a plain shell tab.
@@ -58,6 +58,7 @@ export function NewChatDialogView(props: {
   const dialog = useDialog()
   const { theme } = useTheme()
   const t = useT()
+  const padX = useDialogPaddingX()
   const vendors = props.availableVendors.length > 0 ? props.availableVendors : ALL_VENDORS
   const extras = props.extraChoices ?? []
   const [destination, setDestination] = useState<NewChatDestination>(props.initialDestination ?? "tab")
@@ -115,7 +116,7 @@ export function NewChatDialogView(props: {
   const ctxValue = context === "fresh" ? t("terminal.tab.newChat.ctxFresh") : t("terminal.tab.newChat.ctxContinue")
 
   return (
-    <box paddingLeft={2} paddingRight={2} gap={1}>
+    <box paddingLeft={padX} paddingRight={padX} gap={1}>
       <box flexDirection="row" justifyContent="space-between">
         <text attributes={TextAttributes.BOLD} fg={theme.text}>
           {t("terminal.tab.newChat.title")}

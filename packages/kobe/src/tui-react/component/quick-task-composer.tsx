@@ -25,7 +25,7 @@ import { nextVendorWithin } from "../../types/vendor"
 import { useTheme } from "../context/theme"
 import { useT } from "../i18n"
 import { useBindings } from "../lib/keymap"
-import { type DialogContext, showDialog, useDialog } from "../ui/dialog"
+import { type DialogContext, showDialog, useDialog, useDialogPaddingX } from "../ui/dialog"
 import { ChoiceRow } from "./new-task-dialog/picker-list"
 import { quickTaskBindings } from "./quick-task-bindings"
 
@@ -62,6 +62,7 @@ function QuickTaskComposerView(
   const dialog = useDialog()
   const { theme } = useTheme()
   const t = useT()
+  const padX = useDialogPaddingX()
   const [field, setField] = useState<Field>("prompt")
   const [prompt, setPrompt] = useState("")
   const [vendor, setVendor] = useState<VendorId>(props.defaultVendor)
@@ -145,7 +146,7 @@ function QuickTaskComposerView(
   const fieldColor = (f: Field) => (field === f ? theme.accent : theme.textMuted)
 
   return (
-    <box paddingLeft={2} paddingRight={2} gap={1}>
+    <box paddingLeft={padX} paddingRight={padX} gap={1}>
       <box flexDirection="row" justifyContent="space-between">
         <text attributes={TextAttributes.BOLD} fg={theme.text}>
           {t("quickTask.title", { repoLabel: props.repoLabel })}
