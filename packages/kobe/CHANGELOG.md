@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.70
+
+### Patch Changes
+
+- 1691842: `kobe api get-task` now returns the task's terminal tabs (`.tabs[]`: id/kind/title/vendor/liveVendor/lastTitle/autoTitle + per-tab `alive`), so an agent can discover `send --tab tab-N` targets from the product API instead of the `inspect` debug verb. `.running` (also in `collect` and `read-output`) is fixed to count ANY live hosted engine tab — previously only the canonical `tab-1` counted, so a task whose engine lived in a later tab reported `running:false`.
+- 70a696a: `kobe api land --remove-worktree`: opt-in worktree removal after a successful land. The branch stays (pair with `--delete-branch` to drop it too); dirty worktrees are never forced, the base checkout and the caller's own worktree are never removed, and the cleanup outcome is reported in the result's `worktree` field instead of failing the land.
+
 ## 0.8.69
 
 ### Patch Changes
