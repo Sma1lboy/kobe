@@ -28,7 +28,7 @@ function UsageChips(props: { orchestrator: RemoteOrchestrator }) {
   const { theme } = useTheme()
   const usage = useAccessor(props.orchestrator.usageSnapshotSignal())
   if (!usage || usage.size === 0) return null
-  const toneColor = { ok: theme.textMuted, warn: theme.warning, crit: theme.error } as const
+  const toneColor = { ok: theme.success, warn: theme.warning, crit: theme.error } as const
   const now = Date.now()
   return (
     <box flexDirection="row" gap={2}>
@@ -38,9 +38,19 @@ function UsageChips(props: { orchestrator: RemoteOrchestrator }) {
             {engineDisplayName(vendor).toUpperCase()}
           </text>
           {usageChips(snapshot, now).map((chip, i) => (
-            <text key={chip.text} fg={toneColor[chip.tone]} wrapMode="none">
-              {i === 0 ? chip.text : `· ${chip.text}`}
-            </text>
+            <box key={chip.label} flexDirection="row" gap={1}>
+              <text fg={theme.textMuted} wrapMode="none">
+                {i === 0 ? chip.label : `· ${chip.label}`}
+              </text>
+              <text fg={toneColor[chip.tone]} wrapMode="none">
+                {chip.percentText}
+              </text>
+              {chip.resetText ? (
+                <text fg={theme.textMuted} wrapMode="none">
+                  {chip.resetText}
+                </text>
+              ) : null}
+            </box>
           ))}
         </box>
       ))}

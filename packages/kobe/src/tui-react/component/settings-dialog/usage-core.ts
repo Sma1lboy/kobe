@@ -38,9 +38,15 @@ export function formatReset(resetsAt: number | null, nowMs: number): string {
   return `→ ${d.getMonth() + 1}/${d.getDate()} ${clock}`
 }
 
-/** One window rendered as a single compact chip (the workspace footer line). */
+/**
+ * One window rendered as a compact chip (the workspace footer line), split
+ * into segments so the footer can color the percent by tone — mirroring the
+ * Settings dashboard — while label/reset stay muted.
+ */
 export interface UsageChipView {
-  readonly text: string
+  readonly label: string
+  readonly percentText: string
+  readonly resetText: string
   readonly tone: UsageTone
 }
 
@@ -51,7 +57,9 @@ export interface UsageChipView {
  */
 export function usageChips(usage: EngineQuotaUsage, nowMs: number): UsageChipView[] {
   return usage.windows.map((w) => ({
-    text: `${w.label} ${w.percent}%${formatReset(w.resetsAt, nowMs) ? ` ${formatReset(w.resetsAt, nowMs)}` : ""}`,
+    label: w.label,
+    percentText: `${w.percent}%`,
+    resetText: formatReset(w.resetsAt, nowMs),
     tone: toneOf(w.percent),
   }))
 }
