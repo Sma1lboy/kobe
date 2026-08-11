@@ -105,6 +105,9 @@ headless:
 kobe api pane-open --command "btop"
 kobe api pane-open --direction down --command "watch -n1 git status -sb"
 kobe api pane-open --placement tab --title logs --command "tail -f app.log"
+
+# Close panes you opened, by their --title (engine panes are never closed).
+kobe api pane-close --title logs
 ```
 
 Defaults: the caller's own task (`$KOBE_TASK_ID`, then the active task),

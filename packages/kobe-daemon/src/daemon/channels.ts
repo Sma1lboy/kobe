@@ -221,6 +221,13 @@ export interface ChannelPayloads {
    */
   "tab.open": TabOpenPayload
   /**
+   * The inverse of `tab.open`: one "close the panes opened under `title` in
+   * task X" (`kobe api pane-close` → `tab.close` RPC → here → the TUI
+   * hosting the task removes matching split leaves / command tabs). EVENT
+   * channel: consumers dedupe on `at` and drop stale replays.
+   */
+  "tab.close": TabClosePayload
+  /**
    * LOW-FREQUENCY agent-lifecycle signals the TUI renders (compaction in
    * progress, subagent activity). Deliberately excludes the tool family —
    * that volume stays plugin-only via the PluginHost's direct feed. EVENT
@@ -306,6 +313,16 @@ export interface TabOpenPayload {
   /** Split orientation: `right` (default) lays the new pane beside the
    *  active leaf, `down` stacks it below. Ignored for `placement: "tab"`. */
   readonly direction?: "right" | "down"
+  /** Publish time (ms epoch) — the consumer-side dedupe key. */
+  readonly at: number
+}
+
+/** The `tab.close` channel payload — close panes opened under `title`. */
+export interface TabClosePayload {
+  readonly taskId: string
+  /** Pane label to close — matches the `title` split leaves / command tabs
+   *  were opened with (`tab.open`); engine leaves are never closed. */
+  readonly title: string
   /** Publish time (ms epoch) — the consumer-side dedupe key. */
   readonly at: number
 }

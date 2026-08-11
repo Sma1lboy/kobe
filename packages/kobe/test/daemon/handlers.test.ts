@@ -79,6 +79,7 @@ describe("daemon handler registry", () => {
       "ui.prompt",
       "ui.promptReply",
       "tab.open",
+      "tab.close",
       "notice.send",
       "note.file",
       "note.list",
@@ -153,6 +154,21 @@ describe("daemon handler registry", () => {
       await dispatch("engine.reportEvent", { taskId: "t1", kind: "turn-complete" }, ctx)
       expect(rec.reported.map((r) => r.kind)).toEqual(["turn-complete"])
       expect(rec.published.filter((p) => p.channel === "engine.lifecycle")).toHaveLength(0)
+    })
+  })
+
+  describe("tab.close", () => {
+    it("publishes a tab.close event for a known task and rejects an unknown one", async () => {
+      const { ctx, rec } = fakeCtx({ getTask: (id: string) => (id === "t1" ? TASK : undefined) })
+      const before = Date.now()
+      const result = await dispatch("tab.close", { taskId: "t1", title: "demo" }, ctx)
+      expect(result).toEqual({ ok: true })
+      const event = rec.published[0] as { channel: string; payload: Record<string, unknown> }
+      expect(event.channel).toBe("tab.close")
+      expect(event.payload).toMatchObject({ taskId: "t1", title: "demo" })
+      expect(event.payload.at as number).toBeGreaterThanOrEqual(before)
+      const { ctx: ctx2 } = fakeCtx({ getTask: () => undefined })
+      await expect(dispatch("tab.close", { taskId: "nope", title: "t" }, ctx2)).rejects.toThrow(/task not found/)
     })
   })
 

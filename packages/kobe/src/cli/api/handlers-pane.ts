@@ -64,3 +64,27 @@ export const PANE_VERB: VerbSpec = {
     })
   },
 }
+
+export const PANE_CLOSE_VERB: VerbSpec = {
+  name: "pane-close",
+  summary:
+    "Close panes opened by pane-open: every split pane / command tab in the task whose label matches --title. Broadcast over the daemon's tab.close channel — an attached TUI showing the task performs the close (headless no-op). Task defaults to $KOBE_TASK_ID, then the active task.",
+  flags: [
+    F.taskId(false),
+    {
+      name: "title",
+      type: "string",
+      required: true,
+      placeholder: "TEXT",
+      description: "Pane label to close — the --title the pane was opened with (engine panes are never closed).",
+    },
+  ],
+  handler: async (ctx) => {
+    const client = daemonOf(ctx)
+    const taskId = ctx.args.str("task-id") ?? process.env.KOBE_TASK_ID ?? (await resolveActiveTaskId(client))
+    if (!taskId) {
+      throw new ApiError("no target task: pass --task-id (no $KOBE_TASK_ID, no active task)", "TASK_NOT_FOUND")
+    }
+    return simpleRpc(ctx, "tab.close", { taskId, title: ctx.args.str("title") })
+  },
+}

@@ -11,6 +11,7 @@ import { logClientError } from "@sma1lboy/kobe-daemon/client/client-log"
 import {
   type NoticeEventPayload,
   type SerializedTask,
+  type TabClosePayload,
   type TabOpenPayload,
   type UiPromptPayload,
   isAttentionInboxState,
@@ -303,6 +304,15 @@ export function handleOrchestratorEvent(name: string, payload: unknown, signals:
       return
     }
     signals.setTabOpenSig(p as TabOpenPayload)
+    return
+  }
+  if (name === "tab.close") {
+    const p = payload as Partial<TabClosePayload> | undefined
+    if (typeof p?.taskId !== "string" || typeof p.at !== "number" || typeof p.title !== "string") {
+      logClientError("orch", `dropped tab.close event: malformed payload (${describePayload(payload)})`)
+      return
+    }
+    signals.setTabCloseSig(p as TabClosePayload)
     return
   }
   if (name === "ui.prompt") {

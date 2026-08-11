@@ -10,7 +10,7 @@ import { DIGEST_VERB } from "./handlers-digest.ts"
 import { collect, fanOut, feedback } from "./handlers-fanout.ts"
 import { INSPECT_VERB } from "./handlers-inspect.ts"
 import { OUTCOME_VERBS } from "./handlers-outcome.ts"
-import { PANE_VERB } from "./handlers-pane.ts"
+import { PANE_CLOSE_VERB, PANE_VERB } from "./handlers-pane.ts"
 import {
   add,
   adopt,
@@ -73,7 +73,7 @@ export const VERB_GROUPS: Readonly<Record<string, readonly string[]>> = {
   discover: ["schema"],
   read: ["list", "get-task", "collect", "digest", "pty-list", "read-output", "inspect"],
   create: ["add", "fan-out"],
-  drive: ["send", "dispatch", "note", "note-list", "set-active", "pane-open"],
+  drive: ["send", "dispatch", "note", "note-list", "set-active", "pane-open", "pane-close"],
   supervise: ["report", "await"],
   edit: ["rename", "set-branch", "set-vendor", "set-status"],
   issues: ["issue-list", "issue-create", "issue-set-status", "issue-update"],
@@ -229,6 +229,7 @@ export const VERBS: readonly VerbSpec[] = [
     handler: (ctx) => simpleRpc(ctx, "note.list", { repo: ctx.args.requirePath("repo") }),
   },
   PANE_VERB,
+  PANE_CLOSE_VERB,
   {
     name: "feedback",
     summary: "Create a GitHub Discussion in the kobe repo's Feedback category through `gh`.",

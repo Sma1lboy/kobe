@@ -131,6 +131,19 @@ export const UI_HANDLERS: readonly DaemonRequestHandler[] = [
     },
   },
   {
+    name: "tab.close",
+    async handle(payload, ctx) {
+      // Inverse of tab.open: ask the TUI hosting the task to close every
+      // pane (split leaf / command tab) opened under `title`. Deliver-only
+      // broadcast — the daemon validates, the TUI owns the actual close.
+      const taskId = requireString(payload, "taskId")
+      const title = requireString(payload, "title")
+      if (!ctx.orch.getTask(taskId)) throw new Error(`task not found: ${taskId}`)
+      ctx.bus.publish("tab.close", { taskId, title, at: Date.now() })
+      return { ok: true }
+    },
+  },
+  {
     name: "notice.send",
     async handle(payload, ctx) {
       // `kobe api notify`: one toast for every attached UI. The daemon

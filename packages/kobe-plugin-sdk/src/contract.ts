@@ -108,6 +108,7 @@ export const DAEMON_CHANNELS = [
   "transcript.activity",
   "session.deliver",
   "tab.open",
+  "tab.close",
   "engine.lifecycle",
   "notice.event",
   "usage.snapshot",

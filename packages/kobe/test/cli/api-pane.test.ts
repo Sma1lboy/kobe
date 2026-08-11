@@ -38,6 +38,16 @@ describe("pane-open handler", () => {
     expect(client.requests[0].payload).toMatchObject({ placement: "tab", direction: "down" })
   })
 
+  it("pane-close passes taskId + title over tab.close; --title is required", async () => {
+    const client = new FakeClient({ "tab.close": () => ({ ok: true }) })
+    await invokeVerb("pane-close", ["--task-id", "t9", "--title", "fx"], { client, runtime: stubRuntime() })
+    expect(client.requestNames).toEqual(["tab.close"])
+    expect(client.requests[0].payload).toEqual({ taskId: "t9", title: "fx" })
+    const bare = new FakeClient()
+    await expectApiError(() => invokeVerb("pane-close", [], { client: bare, runtime: stubRuntime() }), "MISSING_FLAG")
+    expect(bare.requestNames).toEqual([])
+  })
+
   it("rejects an out-of-range --direction before any RPC", async () => {
     const client = new FakeClient()
     await expectApiError(

@@ -20,6 +20,7 @@ import {
   type ChannelName,
   type NoticeEventPayload,
   type SubscribeRole,
+  type TabClosePayload,
   type TabOpenPayload,
   type UiPrefsPayload,
   type UiPromptPayload,
@@ -145,6 +146,7 @@ export class RemoteOrchestrator {
   private readonly transcriptActivityAcc = createStateCell<TranscriptActivityMap | null>(null)
   private readonly noticeAcc = createStateCell<NoticeEventPayload | null>(null)
   private readonly tabOpenAcc = createStateCell<TabOpenPayload | null>(null)
+  private readonly tabCloseAcc = createStateCell<TabClosePayload | null>(null)
   private readonly uiPromptAcc = createStateCell<UiPromptPayload | null>(null)
   private readonly engineLifecycleAcc = createStateCell<EngineLifecycleMap>(new Map())
   private readonly uiPrefsAcc = createStateCell<UiPrefsPayload | null>(null)
@@ -193,6 +195,7 @@ export class RemoteOrchestrator {
       setTranscriptActivitySig: this.transcriptActivityAcc.set,
       setNoticeSig: this.noticeAcc.set,
       setTabOpenSig: this.tabOpenAcc.set,
+      setTabCloseSig: this.tabCloseAcc.set,
       setUiPromptSig: this.uiPromptAcc.set,
       engineLifecycleAcc: this.engineLifecycleAcc,
       setEngineLifecycleSig: this.engineLifecycleAcc.set,
@@ -363,6 +366,9 @@ export class RemoteOrchestrator {
 
   /** Latest `tab.open` request (plugin panes) — consumers dedupe on `at`. */
   readonly tabOpenStore = (): ExternalStore<TabOpenPayload | null> => this.tabOpenAcc
+
+  /** Latest `tab.close` request (pane-close) — consumers dedupe on `at`. */
+  readonly tabCloseStore = (): ExternalStore<TabClosePayload | null> => this.tabCloseAcc
 
   /** Latest `ui.prompt` request (host input dialog) — consumers dedupe on `at`. */
   readonly uiPromptStore = (): ExternalStore<UiPromptPayload | null> => this.uiPromptAcc

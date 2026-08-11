@@ -22,6 +22,7 @@ import type {
   NoticeEventPayload,
   SerializedTask,
   SubscribeRole,
+  TabClosePayload,
   TabOpenPayload,
   UiPrefsPayload,
   UiPromptPayload,
@@ -341,6 +342,7 @@ export interface OrchestratorSignals {
   readonly setTranscriptActivitySig: (next: TranscriptActivityMap | null) => void
   readonly setNoticeSig: (next: NoticeEventPayload | null) => void
   readonly setTabOpenSig: (next: TabOpenPayload | null) => void
+  readonly setTabCloseSig: (next: TabClosePayload | null) => void
   readonly setUiPromptSig: (next: UiPromptPayload | null) => void
   readonly engineLifecycleAcc: ReadableState<EngineLifecycleMap>
   readonly setEngineLifecycleSig: (next: EngineLifecycleMap) => void

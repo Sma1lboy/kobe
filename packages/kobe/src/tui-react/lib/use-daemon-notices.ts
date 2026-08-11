@@ -10,7 +10,12 @@
  * message.
  */
 
-import type { NoticeEventPayload, TabOpenPayload, UiPromptPayload } from "@sma1lboy/kobe-daemon/daemon/protocol"
+import type {
+  NoticeEventPayload,
+  TabClosePayload,
+  TabOpenPayload,
+  UiPromptPayload,
+} from "@sma1lboy/kobe-daemon/daemon/protocol"
 import { useEffect, useRef } from "react"
 import type { RemoteOrchestrator } from "../../client/remote-orchestrator"
 import { createStateCell } from "../../lib/external-store"
@@ -18,7 +23,7 @@ import type { NotifyInput } from "../../tui/lib/notify-state"
 import { RenameTaskDialog } from "../component/rename-task-dialog"
 import { t } from "../i18n"
 import type { DialogContext } from "../ui/dialog"
-import { requestTabOpen } from "../workspace/terminal-tabs-shared"
+import { requestPaneClose, requestTabOpen } from "../workspace/terminal-tabs-shared"
 import { useAccessor } from "./use-accessor"
 
 /** Replays older than this never toast — they're reconnect echoes, not news. */
@@ -27,6 +32,7 @@ const STALE_NOTICE_MS = 10_000
 /** Stable empty store so the hook stays unconditional when no daemon is attached. */
 const NO_NOTICES = createStateCell<NoticeEventPayload | null>(null)
 const NO_TAB_OPENS = createStateCell<TabOpenPayload | null>(null)
+const NO_TAB_CLOSES = createStateCell<TabClosePayload | null>(null)
 const NO_PROMPTS = createStateCell<UiPromptPayload | null>(null)
 
 /**
@@ -43,6 +49,18 @@ function useDaemonTabOpens(orch: RemoteOrchestrator | null): void {
     seenAt.current = request.at
     if (Date.now() - request.at > STALE_NOTICE_MS) return
     requestTabOpen(request.taskId, request.argv, request.title, request.placement, request.direction)
+  }, [request])
+}
+
+/** Bridge `tab.close` broadcasts (pane-close) the same way. */
+function useDaemonTabCloses(orch: RemoteOrchestrator | null): void {
+  const request = useAccessor(orch ? orch.tabCloseStore() : NO_TAB_CLOSES)
+  const seenAt = useRef<number | null>(null)
+  useEffect(() => {
+    if (!request || request.at === seenAt.current) return
+    seenAt.current = request.at
+    if (Date.now() - request.at > STALE_NOTICE_MS) return
+    requestPaneClose(request.taskId, request.title)
   }, [request])
 }
 
@@ -77,6 +95,7 @@ export function useDaemonNotices(
   dialog: DialogContext,
 ): void {
   useDaemonTabOpens(orch)
+  useDaemonTabCloses(orch)
   useDaemonPrompts(orch, dialog)
   const notice = useAccessor(orch ? orch.noticeStore() : NO_NOTICES)
   const seenAt = useRef<number | null>(null)

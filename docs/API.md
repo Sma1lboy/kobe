@@ -152,6 +152,11 @@ paths against `$PWD` (`~` expanded). Engine vendors: `claude`, `codex`,
   defaults to `$KOBE_TASK_ID`, then the active task. How far splits can go
   is decided by the terminal's size: a split that would shrink any pane
   below the minimum usable size (20×6 cells) falls back to a tab.
+- `pane-close [--task-id ID] --title TEXT`: the inverse — close every pane
+  (split leaf / command tab) in the task whose label matches `--title`, the
+  title it was opened with. Engine panes are never closed. Broadcast over
+  the daemon's `tab.close` channel; an attached TUI performs the close
+  (headless, nothing happens).
 
 ## supervise
 

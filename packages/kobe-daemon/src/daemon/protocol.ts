@@ -22,6 +22,7 @@ export {
   type NoticeEventPayload,
   type EngineLifecyclePayload,
   type SessionDeliverPayload,
+  type TabClosePayload,
   type TabOpenPayload,
   type TranscriptActivityPayload,
   type UiPrefsPayload,
@@ -207,6 +208,9 @@ export type DaemonRequestName =
   // the task to open a terminal tab running argv. Same trust boundary as
   // `pty.open`; the daemon only validates + publishes.
   | "tab.open"
+  // The inverse: publish a `tab.close` channel event asking the TUI hosting
+  // the task to close panes previously opened under a title.
+  | "tab.close"
   // Broadcast one toast to every attached UI over the `notice.event`
   // channel (`kobe api notify`). The daemon only validates + publishes.
   | "notice.send"

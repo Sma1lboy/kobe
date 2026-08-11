@@ -8,8 +8,8 @@
  * rendered size, depth cap when no size is known — made it a no-op).
  */
 
-import { initialSplit, renameLeaf, splitActive } from "./split-core"
-import { type TabsState, openCommandTab, setTabSplit } from "./terminal-tabs-core"
+import { initialSplit, leaves, removeLeaf, renameLeaf, splitActive } from "./split-core"
+import { type PersistedSplit, type TabsState, collapseSplit, openCommandTab, setTabSplit } from "./terminal-tabs-core"
 
 export type PanePlacement = "split" | "tab"
 export type PaneDirection = "right" | "down"
@@ -31,4 +31,46 @@ export function openPluginPane(
   const split = splitActive(base, direction === "down" ? "column" : "row", argv, activeSize)
   if (split === base) return openCommandTab(state, argv, title)
   return setTabSplit(state, active.id, renameLeaf(split, split.activeLeafId, title))
+}
+
+/**
+ * `tab.close` consumption — the inverse of {@link openPluginPane}: remove
+ * every split leaf whose label matches `title` (never the engine leaf) and
+ * name every command tab with that title for closing. Pure on the split
+ * trees; the CALLER releases the returned leaves' PTYs and closes the
+ * returned tabs through its own close path (exit behavior, releases). A tab
+ * whose LAST leaf matches closes as a whole tab instead of leaf-pruning.
+ */
+export function closePluginPanes(
+  state: TabsState,
+  title: string,
+): { next: TabsState; closedLeaves: readonly { tabId: string; leafId: string }[]; closedTabIds: readonly string[] } {
+  let next = state
+  const closedLeaves: { tabId: string; leafId: string }[] = []
+  const closedTabIds: string[] = []
+  for (const tab of state.tabs) {
+    if (tab.kind === "content") continue
+    if (tab.kind === "command" && tab.title === title) {
+      closedTabIds.push(tab.id)
+      continue
+    }
+    const tree = tab.splitTree
+    if (!tree) continue
+    let cur: PersistedSplit = tree
+    let closedWholeTab = false
+    for (const leaf of leaves(tree.root)) {
+      if (leaf.id === "leaf-1" || leaf.title !== title) continue
+      const pruned = removeLeaf(cur, leaf.id)
+      if (pruned === null) {
+        // Last surviving leaf — close the tab, its close path releases.
+        closedTabIds.push(tab.id)
+        closedWholeTab = true
+        break
+      }
+      cur = pruned
+      closedLeaves.push({ tabId: tab.id, leafId: leaf.id })
+    }
+    if (!closedWholeTab && cur !== tree) next = setTabSplit(next, tab.id, collapseSplit(cur))
+  }
+  return { next, closedLeaves, closedTabIds }
 }

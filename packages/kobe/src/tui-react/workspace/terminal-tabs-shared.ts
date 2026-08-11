@@ -134,6 +134,27 @@ export function requestTabOpen(
 }
 
 /**
+ * Cross-component "close panes opened under a title" request (`tab.close` —
+ * pane-close, the inverse of {@link requestTabOpen}). Consumed by the
+ * mounted TerminalTabs; matching is by pane label, so only titled
+ * split-leaves / command tabs (the ones tab.open creates) are affected.
+ */
+let pendingPaneClose: { taskId: string; title: string } | null = null
+
+export function requestPaneClose(taskId: string, title: string): void {
+  pendingPaneClose = { taskId, title }
+  for (const listener of tabActivationListeners) listener()
+}
+
+/** Consume a pending pane-close for this task, or null. */
+export function takePaneClose(taskId: string): { title: string } | null {
+  if (pendingPaneClose?.taskId !== taskId) return null
+  const title = pendingPaneClose.title
+  pendingPaneClose = null
+  return { title }
+}
+
+/**
  * Cross-component "close this tab" request — the third of the same family.
  *
  * Unlike its twins, this one has a caller that can name a tab of a task whose

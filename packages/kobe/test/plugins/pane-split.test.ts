@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { openPluginPane } from "../../src/tui/workspace/pane-split"
+import { closePluginPanes, openPluginPane } from "../../src/tui/workspace/pane-split"
 import { leaves } from "../../src/tui/workspace/split-core"
 import { initialTabs, openContentTab } from "../../src/tui/workspace/terminal-tabs-core"
 
@@ -55,5 +55,33 @@ describe("openPluginPane", () => {
     const next = openPluginPane(withContent, ARGV, "lazygit")
     expect(next.tabs).toHaveLength(withContent.tabs.length + 1)
     expect(next.tabs.find((t) => t.id === next.activeId)?.kind).toBe("command")
+  })
+})
+
+describe("closePluginPanes", () => {
+  it("prunes matching titled leaves and reports them; engine leaf survives", () => {
+    let state = openPluginPane(initialTabs(), ARGV, "fx")
+    state = openPluginPane(state, ARGV, "fx", "split", "down")
+    state = openPluginPane(state, ARGV, "keep")
+    const tabId = state.activeId
+    const { next, closedLeaves, closedTabIds } = closePluginPanes(state, "fx")
+    expect(closedTabIds).toEqual([])
+    expect(closedLeaves).toHaveLength(2)
+    expect(closedLeaves.every((c) => c.tabId === tabId)).toBe(true)
+    const tab = next.tabs.find((t) => t.id === tabId)
+    const tree = tab?.kind === "engine" || tab?.kind === "command" ? tab.splitTree : null
+    const remaining = leaves((tree as NonNullable<typeof tree>).root)
+    expect(remaining.map((l) => l.title ?? null)).toEqual([null, "keep"]) // engine + the other pane
+  })
+
+  it("names matching command tabs for closing and no-ops on no match", () => {
+    const state = openPluginPane(initialTabs(), ARGV, "fx", "tab")
+    const { next, closedTabIds } = closePluginPanes(state, "fx")
+    expect(closedTabIds).toEqual([state.activeId])
+    const untouched = closePluginPanes(state, "nope")
+    expect(untouched.next).toBe(state)
+    expect(untouched.closedLeaves).toEqual([])
+    expect(untouched.closedTabIds).toEqual([])
+    void next
   })
 })
