@@ -137,6 +137,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   const { jumpToNextAttention } = useAttention({
     tasks,
     engineState,
+    engineTabState,
     inboxItems: inbox.availableItems,
     selectedId,
     kv,
