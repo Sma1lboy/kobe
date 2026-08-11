@@ -3,7 +3,7 @@ name: kobe
 description: Use when controlling kobe tasks, parallel coding attempts, hosted agent sessions, task lifecycle, or the daemon-owned issue tracker from a shell.
 ---
 
-<!-- kobe-skill-version: 9 — bump in lockstep with KOBE_SKILL_VERSION (src/lib/skill-install.ts). -->
+<!-- kobe-skill-version: 10 — bump in lockstep with KOBE_SKILL_VERSION (src/lib/skill-install.ts). -->
 
 # kobe shell control
 
@@ -31,15 +31,17 @@ lifecycle tracking, and an explicit outcome contract.
   child the user cannot see or manage.
 - Following up on a task you started → `send`; waiting on results →
   `await`; comparing → `collect`; reporting your own verdict → `report`.
-- Messaging another task's agent → `send`. Sent from inside a kobe task,
-  the prompt arrives prefixed `[KOBE PEER] from "<title>" (task <id> —
-  reply: …)`, so the receiver knows who is talking and can answer with the
-  baked-in reply command — peer conversations need no coordinator and no
-  human relay. `--plain` skips the prefix when you truly need a verbatim
-  paste. Received a `[KOBE PEER]` message yourself? Reply with its baked-in
-  command, not by asking the user — and if you haven't loaded this skill or
-  `kobe api schema` yet, do that first (the message points there) before
-  improvising verbs.
+- Messaging another task's agent → `send`, and ONLY `send` — never relay
+  through the user, a side file, or a generic peer channel. Sent from
+  inside a kobe task, the prompt arrives prefixed `[KOBE PEER] from
+  "<title>" (task <id> — load the kobe agent skill FIRST …)`, so the
+  receiver knows who is talking, that this skill is required reading, and
+  how to answer — peer conversations need no coordinator and no human
+  relay. That prefix is the contract: do not strip it with `--plain` for
+  coordination messages (`--plain` is only for a verbatim paste the
+  receiver should treat as content, not conversation). Received a
+  `[KOBE PEER]` message yourself? Load this skill first — required, not
+  optional — then reply with the baked-in command, not by asking the user.
 - `dispatch` stays the dispatcher's verb (deliver-only into an
   already-hosted session; never impersonate the user in someone else's
   terminal).

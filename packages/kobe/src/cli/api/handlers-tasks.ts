@@ -37,8 +37,12 @@ async function withPeerProvenance(daemon: DaemonRpc, targetTaskId: string, promp
   // The trailing pointer closes the loop for a receiver that has never seen
   // kobe: reply command baked in, and where to learn the rest (the herdr
   // "--skill first" trick) — a pointer, not a curriculum, since every peer
-  // message pays for this prefix in context.
-  return `[KOBE PEER] from "${label}" (task ${senderId} — reply: \`${api} send --task-id ${senderId} --prompt "<text>"\`; more coordination verbs: the kobe agent skill or \`${api} schema\`): ${prompt}`
+  // message pays for this prefix in context. Loading the skill is REQUIRED,
+  // not suggested: a receiver that replies from the raw prefix alone
+  // improvises verbs and side-channels (2026-08-10: a peer coordination
+  // round-trip fell back to a human relay because neither side had the
+  // skill's contract in context).
+  return `[KOBE PEER] from "${label}" (task ${senderId} — load the kobe agent skill FIRST (required, e.g. /kobe), then reply: \`${api} send --task-id ${senderId} --prompt "<text>"\`; verb reference: \`${api} schema\`): ${prompt}`
 }
 
 export async function issueUpdate(ctx: VerbContext): Promise<unknown> {
