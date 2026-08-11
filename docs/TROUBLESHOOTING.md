@@ -22,10 +22,6 @@ on the *remote* machine's clipboard, not yours. The only channel that can
 reach the clipboard of the machine you are physically at is OSC52: it travels
 back through the SSH tty and is executed by your local terminal emulator.
 
-```
-kobe (remote) ──OSC52──▶ ssh tty ──▶ your terminal app ──▶ your clipboard
-```
-
 ```mermaid
 flowchart LR
   kobe["kobe (remote)"] -- "OSC52" --> tty["ssh tty"]

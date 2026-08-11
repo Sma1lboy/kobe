@@ -88,31 +88,24 @@ paths against `$PWD` (`~` expanded). Engine vendors: `claude`, `codex`,
 - `collect [--task-ids a,b,c] [--repo PATH]`: read-only comparison
   snapshot of several tasks: identity, branch, `.running`, uncommitted
   `.changes`, and committed `.base` (ahead count + diffstat vs base).
-- `digest --repo PATH [--since-days N]`: aggregate the repo's recent agent
-  work — worker-reported `succeeded` / `failed` / `unreported` task counts,
-  routine run outcomes bucketed by status, and the newest named failures.
-  Purely a read over state kobe already persists (`workerReport` +
-  `AutomationRun.status`), so the numbers report what workers CLAIMED, never
-  what kobe verified. A rising `unreported` share is the honest signal that
-  the fleet is drifting out of the `report` contract. Default window 7 days.
+- `digest --repo PATH [--since-days N]`: the repo's recent agent work —
+  `succeeded` / `failed` / `unreported` task counts, routine outcomes by
+  status, and the newest named failures. Default window 7 days. These are
+  what workers *claimed* via `report`, never what kobe verified; a rising
+  `unreported` share means the fleet is drifting out of the contract.
 - `pty-list` *(offline)*: hosted PTY sessions (key, alive, pid, command,
   live window title). Empty when no PTY host runs.
 - `read-output [--task-id ID] [--source auto|history|terminal] [--cursor C]
-  [--limit N]`: a task's engine output as bounded, cursor-paged JSON: the
-  engine's structured history when available, else a labeled terminal tail
-  (`fallbackReason`). Read-only; the cursor stays pinned to one
-  source/session and returns a typed `SOURCE_CHANGED` error when it moved.
-- `inspect [--task-id ID]` *(offline)*: production diagnostics in one read —
-  `daemon` (the activity registry's RAW per-task/per-tab entries: state,
-  probe vendor, whether a lapse watchdog is armed — via `debug.inspect`),
-  `sessions` (pty-host inventory joined with a live process-tree engine walk
-  per shell: `foreground` is tri-state — `{vendor,pid,argv}` / `null`
-  (walked, engine-free) / `"unknown"` (couldn't look)), and `tabs` (the
-  persisted `terminalTabs.*` snapshots the sidebar names its rows from:
-  `liveVendor`, `lastTitle`, `autoTitle`). Read-only and non-spawning: a
-  missing daemon or PTY host degrades that section to `null`. This is the
-  first thing to run (and paste) when reporting a badge/label/identity bug
-  against a production kobe.
+  [--limit N]`: a task's engine output as bounded, cursor-paged JSON —
+  structured history when the engine has it, else a labeled terminal tail
+  (`fallbackReason`). The cursor is pinned to one source/session and returns
+  `SOURCE_CHANGED` if that moved.
+- `inspect [--task-id ID]` *(offline)*: diagnostics in one read, across three
+  sections — `daemon` (raw per-task/per-tab activity entries), `sessions`
+  (PTY inventory joined with a live process-tree walk), and `tabs` (the
+  snapshots the sidebar names its rows from). Non-spawning: a missing daemon
+  or PTY host degrades that section to `null`. **Run and paste this first**
+  when reporting a badge, label, or engine-identity bug.
 
 ## create
 
@@ -129,22 +122,14 @@ paths against `$PWD` (`~` expanded). Engine vendors: `claude`, `codex`,
 
 - `send [--task-id ID] --prompt TEXT [--tab TAB] [--plain]`: paste a
   follow-up into a task's running engine (one full turn). Defaults to the
-  active task. Invoked from inside another kobe task (`$KOBE_TASK_ID` set,
-  target ≠ sender), the prompt is prefixed with `[KOBE PEER]` provenance —
-  sender title + task id + the exact `kobe api send` command to reply +
-  a pointer at the kobe agent skill / `kobe api schema` for the rest of
-  the coordination verbs — so agents can message each other directly and
-  a receiver that has never seen kobe can still answer and self-teach.
-  `--plain` skips the prefix.
-  `--tab new` mints the next `tab-N` and spawns a fresh engine tab there
-  (visible in the sidebar tree like a TUI-opened tab); `--tab tab-N`
-  delivers to that exact alive tab (`TAB_NOT_FOUND` when dead/absent).
-  Omitted, the canonical engine tab is used. Delivery into an existing tab
-  is gated on a live engine process in that tab's process tree — an engine
-  that exited into the keep-alive shell refuses with `ENGINE_NOT_RUNNING`
-  (plus a `--tab new` recovery hint) instead of pasting the prompt into a
-  shell. Any registered engine passes the gate, so a tab may run a
-  different vendor than the task (cross-vendor send).
+  active task and its canonical engine tab. From another kobe task, the
+  message includes `[KOBE PEER]` provenance and a reply command; `--plain`
+  skips that prefix. `--tab new` spawns a fresh engine tab, while `--tab
+  tab-N` targets that exact tab (`TAB_NOT_FOUND` if it is dead or absent).
+  Delivery needs a live engine in that tab: one that exited into the
+  keep-alive shell refuses with `ENGINE_NOT_RUNNING` and a `--tab new` hint
+  instead of pasting into a shell. Any registered engine passes, so a tab may
+  run a different vendor than its task.
 - `dispatch --task-id ID --prompt TEXT`: route text into a task's live
   session via the daemon's `session.deliver` channel; requires an
   already-hosted session (the dispatcher's messenger; see
