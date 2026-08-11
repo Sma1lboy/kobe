@@ -11,10 +11,12 @@ import { stripEngineStatusPrefix } from "../../src/engine/registry"
 
 describe("stripEngineStatusPrefix", () => {
   it("strips claude's resting and animated prefixes", () => {
-    // `${prefix} ${title}` — ✳ at rest, ⠂/⠐ alternating during a turn.
+    // `${prefix} ${title}` — ✳ at rest, with old and current animated frames.
     expect(stripEngineStatusPrefix("✳ 运行本地Codex处理图片", "claude")).toBe("运行本地Codex处理图片")
     expect(stripEngineStatusPrefix("⠂ fixing the watcher", "claude")).toBe("fixing the watcher")
     expect(stripEngineStatusPrefix("⠐ fixing the watcher", "claude")).toBe("fixing the watcher")
+    expect(stripEngineStatusPrefix("◐ 准备golden test集", "claude")).toBe("准备golden test集")
+    expect(stripEngineStatusPrefix("◑ fixing the watcher", "claude")).toBe("fixing the watcher")
   })
 
   it("strips codex's spinner frame", () => {

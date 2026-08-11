@@ -255,10 +255,10 @@ const BUILTIN_ENGINES: Record<"claude" | "codex" | "copilot" | "kimi", EngineReg
     spinnerFrames: CLAUDE_SPINNER_FRAMES,
     terminalTitle: {
       ownsStatus: true,
-      // `${prefix} ${title}` where prefix is ✳ at rest and cycles ⠂/⠐ every
-      // 960ms while a turn runs (claude-code `AnimatedTerminalTitle`).
-      statusPrefixes: ["✳", "⠂", "⠐"],
-      workingPrefixes: ["⠂", "⠐"],
+      // `${prefix} ${title}` where prefix is ✳ at rest and cycles through
+      // animated frames while a turn runs (`AnimatedTerminalTitle`).
+      statusPrefixes: ["✳", "⠂", "⠐", "◐", "◑"],
+      workingPrefixes: ["⠂", "⠐", "◐", "◑"],
     },
     quotaUsage: () => fetchClaudeQuotaUsage(),
   },
