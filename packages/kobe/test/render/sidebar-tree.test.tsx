@@ -300,14 +300,17 @@ test("a tab row lights from its OWN activity, not just the task rollup", async (
   seedTabs("a", ["tab-1", "tab-2"])
   const idle = await renderComponent(tree(), { width: 28, height: 20 })
   await new Promise((r) => setTimeout(r, SETTLE))
-  const restingWhenIdle = ((await idle.frame()).match(/○/g) ?? []).length
+  // Resting is either glyph since the observer split them: ○ known-idle,
+  // ◌ no-signal-yet (unknown). This harness has no daemon record, so rows
+  // rest as ◌ — the stable fact is still that a live row STOPS resting.
+  const restingWhenIdle = ((await idle.frame()).match(/[○◌]/g) ?? []).length
 
   // tab-2 is NOT the active tab (seedTabs makes tab-1 active) — before the
   // fix this state was unreachable from the tree entirely.
   const engineTabState = new Map([["a", new Map([["tab-2", { state: "running" as const, at: 1 }]])]])
   const live = await renderComponent(tree({ engineTabState }), { width: 28, height: 20 })
   await new Promise((r) => setTimeout(r, SETTLE))
-  const restingWhenLive = ((await live.frame()).match(/○/g) ?? []).length
+  const restingWhenLive = ((await live.frame()).match(/[○◌]/g) ?? []).length
 
   expect(restingWhenIdle).toBeGreaterThan(0)
   expect(restingWhenLive).toBe(restingWhenIdle - 1)
@@ -318,7 +321,9 @@ test("an idle task keeps the resting glyph — running must mean running", async
   seedTabs("a", ["tab-1"])
   const { frame } = await renderComponent(tree(), { width: 28, height: 20 })
   await new Promise((r) => setTimeout(r, SETTLE))
-  expect(await frame()).toContain("○")
+  // No daemon signal in this harness → the unknown resting glyph ◌ (a
+  // spinner here would be the actual bug this test guards against).
+  expect(await frame()).toMatch(/[○◌]/)
 })
 
 test("the Active/Archived row stays hidden until something is archived", async () => {
