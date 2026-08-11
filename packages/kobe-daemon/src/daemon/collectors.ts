@@ -7,6 +7,8 @@
  */
 
 import type { DaemonRpcClient } from "../client/rpc.ts"
+import { createActivityObserverIo, startActivityObserver } from "./activity-observer.ts"
+import type { DaemonActivityRegistry } from "./activity-registry.ts"
 import { DEFAULT_AUTO_TITLE_POLL_MS, startAutoTitlePoller } from "./auto-title-poller.ts"
 import { DEFAULT_AUTOMATION_TICK_MS, startAutomationRunner } from "./automation-runner.ts"
 import type { AutomationsStore } from "./automations-store.ts"
@@ -98,7 +100,17 @@ export function startDaemonCollectors(
   options: DaemonCollectorOptions,
   quotaUsage?: QuotaUsageCache,
   automations?: AutomationCollectorDeps,
+  /** The activity registry — enables the activity observer (issues #11/#16:
+   *  PTY output heartbeat + foreground-walk reconciler + restart seeding).
+   *  Optional so handler-level tests that build collectors without one keep
+   *  working; the real server always passes it. */
+  activity?: DaemonActivityRegistry,
 ): () => void {
+  // Activity observer: first tick immediately (restart seeding), then the
+  // slow poll; gated per-tick on subscribers like every collector here.
+  const stopActivityObserver = activity
+    ? startActivityObserver(activity, createActivityObserverIo(options.homeDir, runtime), hasSubscribers)
+    : () => {}
   const checkUpdate = options.checkUpdate ?? runtime.checkLatestVersion
   const updatePollMs = options.updatePollMs ?? DEFAULT_UPDATE_POLL_MS
   const pollUpdate = (): void => {
@@ -183,6 +195,7 @@ export function startDaemonCollectors(
   // Same teardown order server.ts's close() used before the extraction.
   return () => {
     if (updateTimer) clearInterval(updateTimer)
+    stopActivityObserver()
     stopAutoTitlePoller()
     stopPrStatusPoller()
     stopQuotaResumeRunner()

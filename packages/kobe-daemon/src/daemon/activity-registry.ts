@@ -1,124 +1,24 @@
+import {
+  type ActivityLiveness,
+  type ActivityLivenessProbe,
+  type EngineSessionInfo,
+  STICKY_STATES,
+  reduceActivity,
+  resolveEngineStateTtlMs,
+} from "./activity-reduce.ts"
 import type { EngineActivityDetail, EngineActivityKind, TaskActivityState } from "./contracts.ts"
 import type { DaemonEventBus } from "./event-bus.ts"
 import type { ChannelPayloads } from "./protocol.ts"
 
-function reduceActivity(
-  previous: TaskActivityState | undefined,
-  kind: EngineActivityKind,
-  detail?: EngineActivityDetail,
-): TaskActivityState {
-  switch (kind) {
-    case "session-start":
-    case "session-end":
-    // Kimi fires Interrupt INSTEAD of Stop on a user interrupt.
-    case "turn-interrupted":
-      return "idle"
-    case "turn-start":
-      return "running"
-    case "turn-complete":
-      // Only a TRACKED turn completes: running, or blocked on the user
-      // mid-turn (an approved permission resumes without a new turn-start).
-      // Engines fire Stop on automated wakes too — a background monitor
-      // stream ending "completed" a turn nobody started and lit the ●
-      // lamp (owner bug 2026-08-02); that signature is a Stop on a KNOWN
-      // untracked state (explicit idle/sticky entry) and stays swallowed.
-      // `undefined` is a COLD registry (fresh daemon after a restart) — the
-      // one real way a task's first event is a Stop is a turn that started
-      // before the wipe, so let it complete instead of eating the ● lamp.
-      // Mirrors kobe's hook-events reducer.
-      return previous === "running" || previous === "permission_needed" || previous === undefined
-        ? "turn_complete"
-        : previous
-    case "turn-failed":
-      return detail?.failure === "rate_limit" || detail?.failure === "billing" ? "rate_limited" : "error"
-    case "awaiting-input":
-      // Permission prompt OR a question dialog — either way the engine is
-      // blocked on the user (`detail.waiting` keeps which). Mirrors
-      // kobe/src/engine/hook-events.ts.
-      return "permission_needed"
-    default:
-      // Lifecycle-only kinds never reach the registry (the handler gates on
-      // affectsActivityState); a direct call is a state no-op.
-      return previous ?? "idle"
-  }
-}
-
-/** How long a non-idle, non-complete engine-activity state survives with no
- *  follow-up event before lapsing to idle (safety net for a missed Stop/SessionEnd). */
-export const DEFAULT_ENGINE_STATE_TTL_MS = 10 * 60 * 1000
-
-/**
- * States that persist until the NEXT real hook event clears them, rather than
- * lapsing to idle on a stale liveness probe. `running` is the only state the
- * lapse watchdog polices (a missed Stop pinning it forever); every other
- * non-idle state is terminal-until-next-event:
- *
- *   - `turn_complete` keeps its checkmark until the next activity.
- *   - `permission_needed` / `error` / `rate_limited` are exactly the states a
- *     user leaves the session to attend to. The liveness probe is the transcript
- *     mtime, and an engine BLOCKED on a permission prompt / rate limit / error
- *     writes nothing — so the probe always reads "stale" and the old watchdog
- *     idled precisely the tasks that needed a human, hiding the ? badge after
- *     ~10min. They clear naturally: an approved turn emits Stop → turn_complete,
- *     an exit emits SessionEnd → idle, and clearTask() / task deletion wipe them.
- */
-const STICKY_STATES: ReadonlySet<TaskActivityState> = new Set([
-  "turn_complete",
-  "permission_needed",
-  "error",
-  "rate_limited",
-])
-
-export function resolveEngineStateTtlMs(): number {
-  const raw = process.env.KOBE_ENGINE_STATE_TTL_MS
-  if (raw === undefined) return DEFAULT_ENGINE_STATE_TTL_MS
-  const n = Number(raw)
-  return Number.isFinite(n) && n > 0 ? n : DEFAULT_ENGINE_STATE_TTL_MS
-}
-
-/**
- * Liveness probe: latest engine-transcript mtime (epoch ms) for a task, or
- * `undefined` when it can't be determined (unknown task, no worktree, probe
- * error). Used by the lapse watchdog to tell a genuinely-silent engine (a
- * missed Stop ⇒ idle) apart from a long single turn that is still writing
- * tool output to its transcript (alive ⇒ keep the badge, re-arm). Filesystem-
- * only; never throws (a rejection is treated as `undefined` ⇒ lapse).
- *
- * `completedAt` is the newest turn-COMPLETION marker in the same transcript.
- * Mtime alone answers "is anything still being written", which is NOT the
- * question the watchdog is asking: an engine sitting idle at its prompt keeps
- * touching its transcript, so a missed Stop re-armed the watchdog forever and
- * the spinner never stopped. A completion at/after the last write means the
- * last thing that happened WAS the turn ending, so the badge must drop.
- */
-export interface ActivityLiveness {
-  /** Newest transcript mtime (epoch ms), or undefined when unknown. */
-  readonly mtimeMs?: number
-  /** Newest turn-completion marker timestamp (epoch ms), if any. */
-  readonly completedAt?: number
-}
-
-/**
- * `vendor` is the REPORTING engine's id (the hook's `--engine`), when the
- * entry being policed carries one. A task whose configured vendor is a
- * custom wrapper id (`claudecpa` → cc-switch → claude) has no transcript
- * store under that id — probing by task.vendor read mtime 0 forever, so
- * every long turn lapsed to idle at the TTL while the engine was mid-turn.
- * The hook knows what actually runs; the probe must ask about THAT.
- */
-export type ActivityLivenessProbe = (
-  taskId: string,
-  vendor?: string,
-  /** The policed entry's own session transcript, when the hook piped one —
-   *  lets the probe scope to THIS session instead of the whole worktree. */
-  transcriptPath?: string,
-) => Promise<ActivityLiveness | undefined>
-
-/** The reporting engine's own session identity (from its hook payload). */
-export interface EngineSessionInfo {
-  readonly id: string
-  readonly transcriptPath?: string
-}
+// Pure reducer + policy constants/types live in activity-reduce.ts (file-size
+// cap split); re-exported so this stays the one public entry point.
+export {
+  type ActivityLiveness,
+  type ActivityLivenessProbe,
+  type EngineSessionInfo,
+  DEFAULT_ENGINE_STATE_TTL_MS,
+  resolveEngineStateTtlMs,
+} from "./activity-reduce.ts"
 
 interface ActivityEntry {
   state: TaskActivityState
@@ -130,8 +30,16 @@ interface ActivityEntry {
   /** The reporting engine's id (hook `--engine`) — what the liveness probe
    *  asks about. Carried forward like `session`. */
   vendor?: string
+  /** True for entries written by the activity OBSERVER (PTY output/foreground
+   *  facts, `observeTab`) rather than a hook event. Observed entries are
+   *  managed by the observer's own poll lifecycle — no lapse watchdog — and
+   *  a hook event replacing one drops the flag. */
+  observed?: true
   lapse?: ReturnType<typeof setTimeout>
 }
+
+/** What `observeTab` did — the caller (activity-observer) logs corrections. */
+export type ObserveTabOutcome = "noop" | "observed-running" | "observed-idle" | "corrected-hook-running"
 
 export type EngineStatePayload = ChannelPayloads["engine-state"]
 
@@ -334,6 +242,80 @@ export class DaemonActivityRegistry {
     this.publishIdle(taskId)
   }
 
+  /**
+   * Fold one OBSERVED per-session fact (issue #11/#16 — the activity
+   * observer's PTY output heartbeat + foreground-walk reconciler) into the
+   * per-tab ledger. Precedence is strict: hook events always outrank
+   * observation —
+   *
+   *   - `working`: fills only a hole (no entry, or an observed-idle one).
+   *     A hook entry in ANY non-idle state stands untouched; the daemon
+   *     restart case (#16: registry wiped while engines run) is exactly the
+   *     hole this fills, so a busy session's dot re-lights on the first
+   *     observer pass instead of the next turn boundary.
+   *   - `rest`: retires an observed-running entry, marks a never-signaled
+   *     session as KNOWN-idle (distinguishable from "no signal" — the
+   *     client's unknown state), and — the one place observation overrides
+   *     a hook — idles a hook-claimed `running` older than
+   *     `correctHookRunningAfterMs` (walk/title/silence say the engine is
+   *     not working: the ESC-interrupt and dead-engine gaps). Sticky
+   *     attention states are NEVER touched: they mean "a human is needed"
+   *     and carry no output by nature.
+   *
+   * Observed entries (including idle ones) are STORED so the subscribe-time
+   * replay hands late clients the same known-idle facts; they carry no
+   * lapse watchdog — the observer's own poll retires them.
+   */
+  observeTab(
+    taskId: string,
+    tabId: string,
+    claim: "working" | "rest",
+    opts: { vendor?: string; correctHookRunningAfterMs?: number } = {},
+  ): ObserveTabOutcome {
+    const entry = this.tabActivity.get(taskId)?.get(tabId)
+    if (claim === "working") {
+      if (entry && entry.observed !== true && entry.state !== "idle") return "noop"
+      if (entry?.observed && entry.state === "running") {
+        entry.at = this.now() // quiet refresh — no republish churn
+        return "noop"
+      }
+      this.setObservedTab(taskId, tabId, "running", opts.vendor ?? entry?.vendor)
+      return "observed-running"
+    }
+    if (!entry) {
+      this.setObservedTab(taskId, tabId, "idle", opts.vendor)
+      return "observed-idle"
+    }
+    if (entry.observed) {
+      if (entry.state === "idle") return "noop"
+      this.setObservedTab(taskId, tabId, "idle", opts.vendor ?? entry.vendor)
+      return "observed-idle"
+    }
+    if (entry.state !== "running") return "noop" // sticky states stand
+    const minAgeMs = opts.correctHookRunningAfterMs ?? Number.POSITIVE_INFINITY
+    if (this.now() - entry.at < minAgeMs) return "noop"
+    this.setObservedTab(taskId, tabId, "idle", opts.vendor ?? entry.vendor)
+    return "corrected-hook-running"
+  }
+
+  /** Store + publish one observed per-tab entry (replacing any previous,
+   *  cancelling its watchdog; session lineage carries forward). */
+  private setObservedTab(taskId: string, tabId: string, state: "running" | "idle", vendor?: string): void {
+    const tabs = this.tabActivity.get(taskId) ?? new Map<string, ActivityEntry>()
+    const prev = tabs.get(tabId)
+    if (prev?.lapse) clearTimeout(prev.lapse)
+    const entry: ActivityEntry = {
+      state,
+      at: this.now(),
+      observed: true,
+      ...(vendor ? { vendor } : {}),
+      ...(prev?.session ? { session: prev.session } : {}),
+    }
+    tabs.set(tabId, entry)
+    this.tabActivity.set(taskId, tabs)
+    this.bus.publish("engine-state", this.payload(taskId, entry, tabId))
+  }
+
   clearTask(taskId: string): void {
     const gone = this.activity.get(taskId)
     if (gone?.lapse) clearTimeout(gone.lapse)
@@ -366,7 +348,9 @@ export class DaemonActivityRegistry {
       if (entry.state !== "idle") out.push(this.payload(taskId, entry))
     }
     // Tab entries ride the same replay so a late subscriber rebuilds its
-    // per-tab map too (they're only stored non-idle).
+    // per-tab map too. Hook entries are only stored non-idle; OBSERVED
+    // entries include known-idle ones on purpose — replaying them is what
+    // lets a late client tell "known idle" from "no signal" (unknown).
     for (const [taskId, tabs] of this.tabActivity) {
       for (const [tabId, entry] of tabs) out.push(this.payload(taskId, entry, tabId))
     }
@@ -381,12 +365,16 @@ export class DaemonActivityRegistry {
    */
   debugSnapshot(): {
     tasks: Record<string, { state: TaskActivityState; at: number; vendor?: string; lapseArmed: boolean }>
-    tabs: Record<string, Record<string, { state: TaskActivityState; at: number; vendor?: string; lapseArmed: boolean }>>
+    tabs: Record<
+      string,
+      Record<string, { state: TaskActivityState; at: number; vendor?: string; lapseArmed: boolean; observed?: true }>
+    >
   } {
     const dump = (e: ActivityEntry) => ({
       state: e.state,
       at: e.at,
       ...(e.vendor ? { vendor: e.vendor } : {}),
+      ...(e.observed ? { observed: true as const } : {}),
       lapseArmed: e.lapse !== undefined,
     })
     const tasks: Record<string, ReturnType<typeof dump>> = {}

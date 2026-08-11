@@ -2,9 +2,10 @@
 
 import type { DaemonRuntimeAdapter } from "@sma1lboy/kobe-daemon/daemon/runtime"
 import { availableEngineIds } from "../engine/account-detect.ts"
+import { foregroundEngineIn, parsePsSnapshot, psSnapshot } from "../engine/foreground.ts"
 import { affectsActivityState, isEngineActivityKind } from "../engine/hook-events.ts"
 import { engineDisplayName, kobeApiInvocation } from "../engine/interactive-command.ts"
-import { engineEntry, vendorsWithQuotaProbe } from "../engine/registry.ts"
+import { engineEntry, engineTitleTurnHint, vendorsWithQuotaProbe } from "../engine/registry.ts"
 import { createEngineTurnDetector } from "../engine/turn-detector.ts"
 import { issueAssetsDir } from "../env.ts"
 import { readOnlyGitProcessEnv } from "../lib/git-env.ts"
@@ -17,6 +18,7 @@ import { type Orchestrator, PLACEHOLDER_TASK_TITLE } from "../orchestrator/core.
 import { getPersistedString, getSavedRepos, setPersistedString } from "../state/repos.ts"
 import { parsePorcelain } from "../tui/panes/sidebar/worktree-changes.ts"
 import { DEFAULT_TASK_VENDOR, isTaskStatus } from "../types/task.ts"
+import type { VendorId } from "../types/vendor.ts"
 import { CURRENT_VERSION, checkLatestVersion } from "../version.ts"
 import { handleDiffRequest } from "../web/diff.ts"
 import { handleHistoryRequest } from "../web/history.ts"
@@ -44,6 +46,15 @@ export const daemonRuntime: DaemonRuntimeAdapter = {
   isTaskStatus,
   isEngineActivityKind,
   affectsActivityState,
+  // The activity observer's foreground walk (issues #11/#16): ONE `ps`
+  // snapshot, then the same shallowest-engine walk `kobe api inspect` uses.
+  async foregroundEngines(pids) {
+    const rows = parsePsSnapshot(await psSnapshot())
+    const out = new Map<number, VendorId | null>()
+    for (const pid of pids) out.set(pid, foregroundEngineIn(rows, pid)?.vendor ?? null)
+    return out
+  },
+  titleTurnHint: engineTitleTurnHint,
   checkLatestVersion,
   latestTranscriptMtime,
   deriveTitleFromSession,

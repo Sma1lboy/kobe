@@ -51,8 +51,7 @@ import { type DaemonWebServer, createDirectWebLink, startDaemonWebServer } from 
 import { WorkItemCache } from "./work-items.ts"
 
 // RPC handler registry + per-request dispatch seam — re-exported so consumers
-// (tests, the kobe-web bridge) can reach it via the existing
-// `@sma1lboy/kobe-daemon/daemon/server` export without a package.json change.
+// (tests, kobe-web bridge) keep the existing `daemon/server` import path.
 export {
   createDaemonHandlerRegistry,
   dispatchDaemonRequest,
@@ -305,6 +304,7 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
       // construction settles.
       link: () => selfLink,
     },
+    activity,
   )
 
   // Plugin runtime: startup hooks + channel-derived event hooks (plugins/runtime.ts).

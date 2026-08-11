@@ -44,6 +44,10 @@ export interface TaskEngineState {
   readonly sessionId?: string
   /** The session's transcript file, when the hook payload named it. */
   readonly transcriptPath?: string
+  /** The tab that produced this entry, when the event carried one — on the
+   *  TASK rollup it records which tab last wrote it, so a tab-scoped idle
+   *  only clears a rollup its own tab owns (issue #11). */
+  readonly tabId?: string
   readonly at: number
 }
 

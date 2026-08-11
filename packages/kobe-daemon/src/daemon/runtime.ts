@@ -43,6 +43,20 @@ export interface DaemonRuntimeAdapter {
   /** True for kinds that change the activity badge state; false for
    *  lifecycle-only kinds (tool/compact/subagent) that only feed plugins. */
   affectsActivityState(value: string): boolean
+  /**
+   * Foreground engine per session root pid — ONE `ps` snapshot walked per
+   * pid (kobe's `engine/foreground.ts`, the same primitive `kobe api
+   * inspect` uses). Vendor id, or null for "no engine in this tree".
+   * Consumed by the daemon activity observer's reconciler (issues #11/#16).
+   */
+  foregroundEngines(pids: readonly number[]): Promise<ReadonlyMap<number, VendorId | null>>
+  /**
+   * Engine-owned verdict on a live OSC title (`engineTitleTurnHint`):
+   * "working" while the vendor's animated frame prefixes it, "rest" when a
+   * status-owning vendor wrote a title without one, null when the vendor
+   * declares no vocabulary (or the title is empty) — never guessed.
+   */
+  titleTurnHint(vendor: VendorId, title: string): "working" | "rest" | null
   checkLatestVersion(): Promise<UpdateInfo | null>
   latestTranscriptMtime(vendor: VendorId, worktreePath: string): Promise<number>
   deriveTitleFromSession(worktreePath: string, vendor: VendorId): Promise<string>
