@@ -58,7 +58,7 @@ export type StatusKeyHintItem = {
  * binding stack, so an open modal or a context with no reachable prefix
  * commands reshapes it automatically.
  */
-export function useStatusKeyHintItems(opts?: { onOpenSettings?: () => void }): StatusKeyHintItem[] {
+export function useStatusKeyHintItems(opts?: { onOpenSettings?: () => void; compact?: boolean }): StatusKeyHintItem[] {
   const t = useT()
   const kv = useOptionalKV()
   // Reachability is a function of the focused pane, the live keymap, and
@@ -117,8 +117,10 @@ export function useStatusKeyHintItems(opts?: { onOpenSettings?: () => void }): S
         sidebar: focus ? () => focus.setFocused("sidebar") : undefined,
         help: dialog ? () => HelpDialog.show(dialog, focus?.focused ?? "sidebar") : undefined,
       }
+  // Compact (narrow footer, issue #14): the chord caps alone — `⌃ A · F1` —
+  // still clickable, no verbs, and no [settings] segment below.
   const items: StatusKeyHintItem[] = snapshot.tokens.map((tok) => ({
-    text: t(`hints.status.${tok.msg}`, { key: formatChord(tok.chord) }),
+    text: opts?.compact ? formatChord(tok.chord) : t(`hints.status.${tok.msg}`, { key: formatChord(tok.chord) }),
     onPress: actions[tok.msg],
   }))
   // Bracketed like the other clickable chips ([~] Zen, [enter] Send) — and
@@ -126,7 +128,7 @@ export function useStatusKeyHintItems(opts?: { onOpenSettings?: () => void }): S
   // terminals disagree on whether it takes 1 or 2 cells and the row
   // misaligns per OS/font. Stays on screen while a modal owns input, but
   // inert — Settings must not open under a dialog.
-  if (opts?.onOpenSettings && keyHintsEnabled(kv?.get(KEY_HINTS_ENABLED_KEY, true))) {
+  if (opts?.onOpenSettings && !opts.compact && keyHintsEnabled(kv?.get(KEY_HINTS_ENABLED_KEY, true))) {
     items.push({
       text: `[${t("hints.status.settings")}]`,
       onPress: snapshot.modal ? undefined : opts.onOpenSettings,
@@ -136,9 +138,9 @@ export function useStatusKeyHintItems(opts?: { onOpenSettings?: () => void }): S
 }
 
 /** The footer's hint row: muted key captions, each mouse-activatable. */
-export function StatusKeyHintBar(props: { onOpenSettings?: () => void }) {
+export function StatusKeyHintBar(props: { onOpenSettings?: () => void; compact?: boolean }) {
   const { theme } = useTheme()
-  const items = useStatusKeyHintItems({ onOpenSettings: props.onOpenSettings })
+  const items = useStatusKeyHintItems({ onOpenSettings: props.onOpenSettings, compact: props.compact })
   if (items.length === 0) return null
   return (
     <box flexDirection="row" flexShrink={0}>

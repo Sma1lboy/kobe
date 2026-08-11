@@ -47,6 +47,8 @@ export const en = {
   },
   /** Inline chip while move/reorder mode is active */
   moveChip: " move",
+  /** Narrow mode's top-of-sidebar jump row back into the last-entered task */
+  recentJump: "Recent: {title}",
   /** Empty-state messages */
   empty: {
     noMatchSearch: "No matching tasks — esc to clear.",
@@ -144,6 +146,7 @@ export const zh: typeof en = {
     delete: "删除",
   },
   moveChip: " 移动",
+  recentJump: "最近:{title}",
   empty: {
     noMatchSearch: "无匹配任务——按 esc 清除。",
     noActiveProject: "该项目暂无活跃任务。",

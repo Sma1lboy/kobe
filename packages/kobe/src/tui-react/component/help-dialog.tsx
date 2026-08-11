@@ -24,7 +24,7 @@ import { KobeKeymap, useKeymapVersion } from "../context/keybindings"
 import { useTheme } from "../context/theme"
 import { tKeys, useT } from "../i18n"
 import { currentBindingReachability, useBindings } from "../lib/keymap"
-import { type DialogContext, useDialog } from "../ui/dialog"
+import { type DialogContext, useDialog, useDialogPaddingX } from "../ui/dialog"
 
 function scopeCategory(scope: HelpGrammarSection["scope"]): string {
   if (!scope) return "Global"
@@ -57,6 +57,7 @@ export function HelpDialog(props: {
   const dialog = useDialog()
   const { theme } = useTheme()
   const t = useT()
+  const padX = useDialogPaddingX()
   const keymapVersion = useKeymapVersion()
   const pureTuiPrefix = currentPrefixConfiguration()
   // biome-ignore lint/correctness/useExhaustiveDependencies: keymapVersion is the invalidation key — the table is mutated in place.
@@ -98,7 +99,7 @@ export function HelpDialog(props: {
   }))
 
   return (
-    <box paddingLeft={2} paddingRight={2} gap={1} flexShrink={1}>
+    <box paddingLeft={padX} paddingRight={padX} gap={1} flexShrink={1}>
       <box flexDirection="row" justifyContent="space-between" flexShrink={0}>
         <box flexDirection="column" gap={0}>
           <text attributes={TextAttributes.BOLD} fg={theme.text}>

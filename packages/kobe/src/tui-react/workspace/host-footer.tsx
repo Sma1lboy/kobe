@@ -16,20 +16,44 @@
  * file-size cap — same extraction reason as `host-sidebar.tsx`.
  */
 
+import { useTerminalDimensions } from "@opentui/react"
 import type { ReactNode } from "react"
 import type { RemoteOrchestrator } from "../../client/remote-orchestrator"
 import { engineDisplayName } from "../../engine/interactive-command"
 import { StatusKeyHintBar, useStatusKeyHintItems } from "../component/keyboard-hints"
-import { usageChips } from "../component/settings-dialog/usage-core"
+import { narrowUsageChip, usageChips } from "../component/settings-dialog/usage-core"
 import { useTheme } from "../context/theme"
+import { isNarrowWidth } from "../lib/narrow-mode"
 import { useAccessor } from "../lib/use-accessor"
 
-function UsageChips(props: { orchestrator: RemoteOrchestrator }) {
+function UsageChips(props: { orchestrator: RemoteOrchestrator; narrow: boolean }) {
   const { theme } = useTheme()
   const usage = useAccessor(props.orchestrator.usageSnapshotSignal())
   if (!usage || usage.size === 0) return null
   const toneColor = { ok: theme.success, warn: theme.warning, crit: theme.error } as const
   const now = Date.now()
+  if (props.narrow) {
+    // Narrow footer (issue #14): one session-window chip per vendor —
+    // `CLAUDE 42%` — tone color kept, label/reset dropped for the cells.
+    return (
+      <box flexDirection="row" gap={2}>
+        {[...usage.entries()].flatMap(([vendor, snapshot]) => {
+          const chip = narrowUsageChip(snapshot, now)
+          if (!chip) return []
+          return [
+            <box key={vendor} flexDirection="row" gap={1}>
+              <text fg={theme.textMuted} wrapMode="none">
+                {engineDisplayName(vendor).toUpperCase()}
+              </text>
+              <text fg={toneColor[chip.tone]} wrapMode="none">
+                {chip.percentText}
+              </text>
+            </box>,
+          ]
+        })}
+      </box>
+    )
+  }
   return (
     <box flexDirection="row" gap={2}>
       {[...usage.entries()].map(([vendor, snapshot]) => (
@@ -66,6 +90,8 @@ export function WorkspaceFrame(props: {
   children: ReactNode
 }) {
   const { theme } = useTheme()
+  const dims = useTerminalDimensions()
+  const narrow = isNarrowWidth(dims.width)
   const usage = useAccessor(props.orchestrator.usageSnapshotSignal())
   const hintItems = useStatusKeyHintItems({ onOpenSettings: props.onOpenSettings })
   const footerVisible = (usage != null && usage.size > 0) || hintItems.length > 0
@@ -77,9 +103,10 @@ export function WorkspaceFrame(props: {
       {footerVisible ? (
         <box flexDirection="row" flexShrink={0} height={1} paddingLeft={1} paddingRight={1} gap={2}>
           <box flexGrow={1} flexDirection="row">
-            <UsageChips orchestrator={props.orchestrator} />
+            <UsageChips orchestrator={props.orchestrator} narrow={narrow} />
           </box>
-          <StatusKeyHintBar onOpenSettings={props.onOpenSettings} />
+          {/* Narrow drops the verbs and the [settings] chip: `⌃A · F1`. */}
+          <StatusKeyHintBar onOpenSettings={narrow ? undefined : props.onOpenSettings} compact={narrow} />
         </box>
       ) : null}
     </box>

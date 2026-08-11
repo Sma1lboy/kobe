@@ -12,7 +12,7 @@ import { useState } from "react"
 import { useTheme } from "../context/theme"
 import { useT } from "../i18n"
 import { useBindings } from "../lib/keymap"
-import { type DialogContext, showDialog, useDialog } from "./dialog"
+import { type DialogContext, showDialog, useDialog, useDialogPaddingX } from "./dialog"
 
 function titlecase(s: string): string {
   if (!s) return s
@@ -41,6 +41,7 @@ export function DialogConfirm(props: DialogConfirmProps) {
   const dialog = useDialog()
   const { theme } = useTheme()
   const t = useT()
+  const padX = useDialogPaddingX()
   const [active, setActive] = useState<"confirm" | "cancel">(props.initialActive ?? "confirm")
 
   useBindings(() => ({
@@ -61,7 +62,7 @@ export function DialogConfirm(props: DialogConfirmProps) {
   // Tight vertical layout — same rationale as the Solid original: title
   // row, message right under it, buttons row right under that.
   return (
-    <box paddingLeft={2} paddingRight={2} paddingBottom={1} gap={0}>
+    <box paddingLeft={padX} paddingRight={padX} paddingBottom={1} gap={0}>
       <box flexDirection="row" justifyContent="space-between">
         <text attributes={TextAttributes.BOLD} fg={theme.text}>
           {props.title}

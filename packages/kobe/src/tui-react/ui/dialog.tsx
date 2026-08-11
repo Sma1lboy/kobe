@@ -19,7 +19,19 @@ import { useRenderer, useTerminalDimensions } from "@opentui/react"
 import { type ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react"
 import { useTheme } from "../context/theme"
 import { ModalScopeContext, useBindings } from "../lib/keymap"
+import { isNarrowWidth } from "../lib/narrow-mode"
 import { useLatest } from "../lib/use-latest"
+
+/**
+ * Horizontal padding for a dialog BODY's root box (issue #14, 3A): the
+ * desktop's 2 cells halve to 1 below the narrow breakpoint, so a 44-cell
+ * card keeps its columns for content. One hook so every dialog body agrees
+ * — and follows a live resize.
+ */
+export function useDialogPaddingX(): number {
+  const dims = useTerminalDimensions()
+  return isNarrowWidth(dims.width) ? 1 : 2
+}
 
 export type DialogSize = "small" | "medium" | "large" | "xlarge"
 export type DialogPlacement = "center" | "upper-fifth"
@@ -47,7 +59,10 @@ export function Dialog(props: {
   // Vertical headroom around the card so it never lands flush against
   // the terminal's top/bottom edge.
   const VERTICAL_MARGIN = 2
-  const upperFifth = props.placement === "upper-fifth"
+  // Narrow (issue #14, 3A): every dialog is a centered clamp — the card's
+  // maxWidth (width-2) already owns the width, and upper-fifth anchoring
+  // gives away rows a 70-row phone screen doesn't have spare.
+  const upperFifth = props.placement === "upper-fifth" && !isNarrowWidth(dimensions.width)
   // The content's first row sits one cell below the card top because the card
   // owns paddingTop=1. Back the card up by that cell so an upper-fifth
   // dialog's header lands at exactly one fifth of the viewport.

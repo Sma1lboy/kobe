@@ -22,7 +22,7 @@ import { sidebarEmptyStateKey } from "../../../tui/panes/sidebar/view-core"
 import { useTheme } from "../../context/theme"
 import { useT } from "../../i18n"
 import { SectionHeader } from "./chrome"
-import { TabTreeRow, type TreeRowShared, WorktreeTreeRow } from "./tree-rows"
+import { RecentJumpRow, TabTreeRow, type TreeRowShared, WorktreeTreeRow } from "./tree-rows"
 
 export function SidebarTreeBody(props: {
   readonly rows: readonly TreeRow[]
@@ -62,6 +62,17 @@ export function SidebarTreeBody(props: {
                 onContextMenu={
                   props.onProjectContextMenu ? (x, y) => props.onProjectContextMenu?.(row.id, x, y) : undefined
                 }
+              />
+            )
+          }
+          if (row.kind === "recent") {
+            return (
+              <RecentJumpRow
+                key={row.id}
+                rowId={row.id}
+                flatIndex={props.flatIndexOf.get(row.id) ?? -1}
+                task={row.task}
+                shared={props.shared}
               />
             )
           }

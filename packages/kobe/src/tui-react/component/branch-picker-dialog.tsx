@@ -28,7 +28,7 @@ import { listLocalBranches } from "../../tui/lib/git-snapshot"
 import { useTheme } from "../context/theme"
 import { useT } from "../i18n"
 import { useBindings } from "../lib/keymap"
-import { type DialogContext, showDialog, useDialog } from "../ui/dialog"
+import { type DialogContext, showDialog, useDialog, useDialogPaddingX } from "../ui/dialog"
 import { PickerList } from "./new-task-dialog/picker-list"
 
 export function BranchPickerDialogView(props: {
@@ -42,6 +42,7 @@ export function BranchPickerDialogView(props: {
   const dialog = useDialog()
   const { theme } = useTheme()
   const t = useT()
+  const padX = useDialogPaddingX()
 
   const [value, setValue] = useState(props.currentBranch)
   const [cursor, setCursor] = useState(0)
@@ -79,7 +80,7 @@ export function BranchPickerDialogView(props: {
   }))
 
   return (
-    <box paddingLeft={2} paddingRight={2} gap={1}>
+    <box paddingLeft={padX} paddingRight={padX} gap={1}>
       <box flexDirection="row" justifyContent="space-between">
         <text attributes={TextAttributes.BOLD} fg={theme.text}>
           {t("tasks.reBranch.title")}

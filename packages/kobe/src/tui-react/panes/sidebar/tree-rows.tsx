@@ -19,6 +19,7 @@ import { type TreeTab, tabRowActivity } from "../../../tui/panes/sidebar/tree-co
 import { toneColor, truncateBranchLabel } from "../../../tui/panes/sidebar/view-core"
 import type { WorktreeChanges } from "../../../tui/panes/sidebar/worktree-changes"
 import { useTheme } from "../../context/theme"
+import { useT } from "../../i18n"
 import { resolveRowSelectionChrome } from "../../ui/row-selection-chrome"
 import { ChangeStats, JumpDigit, completionSeenFor, useChanges, useSpinnerFrame } from "./row-cards"
 
@@ -245,6 +246,31 @@ export function TabTreeRow(props: {
         </text>
         <JumpDigit flatIndex={props.flatIndex} dim={!isCursor} />
       </box>
+    </RowShell>
+  )
+}
+
+/**
+ * Narrow mode's "↩ Recent: <task>" jump row (issue #14, 2A) — the first
+ * navigable row of the narrow sidebar. ⏎ re-enters the named task's
+ * workspace; it answers to nothing else (no menu, no per-task verbs).
+ */
+export function RecentJumpRow(props: {
+  readonly rowId: string
+  readonly flatIndex: number
+  readonly task: Task
+  readonly shared: TreeRowShared
+}) {
+  const { theme } = useTheme()
+  const t = useT()
+  return (
+    <RowShell rowId={props.rowId} flatIndex={props.flatIndex} depth={1} shared={props.shared}>
+      <text fg={theme.accent} wrapMode="none" width={2} flexShrink={0}>
+        {"↩ "}
+      </text>
+      <text fg={theme.text} wrapMode="none" flexShrink={1}>
+        {t("tasks.recentJump", { title: props.task.title })}
+      </text>
     </RowShell>
   )
 }

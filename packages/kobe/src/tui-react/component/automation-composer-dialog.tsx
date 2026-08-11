@@ -40,7 +40,7 @@ import { sidebarProjectLabel } from "../../tui/panes/sidebar/groups"
 import { useTheme } from "../context/theme"
 import { useT } from "../i18n"
 import { useBindings } from "../lib/keymap"
-import { type DialogContext, showDialog, useDialog } from "../ui/dialog"
+import { type DialogContext, showDialog, useDialog, useDialogPaddingX } from "../ui/dialog"
 import { PickerList } from "./new-task-dialog/picker-list"
 
 export interface AutomationComposerResult extends ComposerDraft {}
@@ -54,6 +54,7 @@ function AutomationComposerView(props: {
   const { theme } = useTheme()
   const dialog = useDialog()
   const t = useT()
+  const padX = useDialogPaddingX()
 
   const [draft, setDraft] = useState<ComposerDraft>(() => ({
     ...EMPTY_DRAFT,
@@ -186,7 +187,7 @@ function AutomationComposerView(props: {
   )
 
   return (
-    <box paddingLeft={2} paddingRight={2} gap={1}>
+    <box paddingLeft={padX} paddingRight={padX} gap={1}>
       <box flexDirection="row" justifyContent="space-between">
         <text attributes={TextAttributes.BOLD} fg={theme.text}>
           {t("automations.newTitle")}

@@ -39,7 +39,7 @@ import { FOCUS_ACCENT_SLOTS, type FocusAccentSlot, useTheme } from "../../contex
 import { type LocaleId, currentLang, setLocaleLang, useT } from "../../i18n"
 import { useBindings } from "../../lib/keymap"
 import { useAccessor } from "../../lib/use-accessor"
-import { type DialogContext, useDialog } from "../../ui/dialog"
+import { type DialogContext, useDialog, useDialogPaddingX } from "../../ui/dialog"
 import { confirmResetState, confirmRestartDaemon, hasRestartableDaemon } from "./actions"
 import { SettingsCursorElContext } from "./rows"
 import { AccountsSettingsSection, EngineSettingsSection } from "./sections-engines"
@@ -79,6 +79,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
   const renderer = useRenderer()
   const { theme } = themeCtx
   const t = useT()
+  const padX = useDialogPaddingX()
   const [level, setLevel] = useState<NavLevel>("sidebar")
   const [section, setSection] = useState<SectionId>("general")
   const [cursor, setCursor] = useState(0)
@@ -338,7 +339,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
 
   const cursorProps = { level, bodyRow, setLevel, setBodyRow }
   const body = (
-    <box paddingLeft={2} paddingRight={2} paddingBottom={1} gap={1}>
+    <box paddingLeft={padX} paddingRight={padX} paddingBottom={1} gap={1}>
       <box flexDirection="row" justifyContent="space-between">
         <text attributes={TextAttributes.BOLD} fg={theme.text}>
           {t("settings.title")}

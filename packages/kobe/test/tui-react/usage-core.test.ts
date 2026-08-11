@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest"
-import { USAGE_BAR_WIDTH, formatReset, usageRows } from "../../src/tui-react/component/settings-dialog/usage-core.ts"
+import {
+  USAGE_BAR_WIDTH,
+  formatReset,
+  narrowUsageChip,
+  usageRows,
+} from "../../src/tui-react/component/settings-dialog/usage-core.ts"
 import { ratioBar } from "../../src/tui/lib/progress-bar.ts"
 
 const NOW = Date.parse("2026-07-27T12:00:00.000Z")
@@ -67,5 +72,33 @@ describe("usageRows", () => {
       NOW,
     )
     expect(rows[0]?.label).toBe("Extremel")
+  })
+})
+
+describe("narrowUsageChip", () => {
+  it("pins the session window regardless of its order", () => {
+    const chip = narrowUsageChip(
+      {
+        windows: [
+          { kind: "weekly_all", label: "7d", percent: 80, resetsAt: null },
+          { kind: "session", label: "5h", percent: 43, resetsAt: NOW + 1000 * 60 },
+        ],
+        capturedAt: NOW,
+      },
+      NOW,
+    )
+    expect(chip).toMatchObject({ label: "5h", percentText: "43%", tone: "ok" })
+  })
+
+  it("falls back to the first window when no session window exists", () => {
+    const chip = narrowUsageChip(
+      { windows: [{ kind: "primary", label: "7d", percent: 96, resetsAt: null }], capturedAt: NOW },
+      NOW,
+    )
+    expect(chip).toMatchObject({ label: "7d", percentText: "96%", tone: "crit" })
+  })
+
+  it("returns null for a vendor with no windows", () => {
+    expect(narrowUsageChip({ windows: [], capturedAt: NOW }, NOW)).toBeNull()
   })
 })

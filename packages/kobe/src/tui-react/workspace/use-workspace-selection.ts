@@ -115,7 +115,16 @@ export function useWorkspaceSelection(args: {
 
   function selectTask(id: string): void {
     userPickedRef.current = true
-    if (selectedId === id) return
+    if (selectedId === id) {
+      // Entering the already-selected task must still publish it as active:
+      // a fresh home boots with a fallback-selected task but a null active
+      // record, and without this the first Enter never wrote lastActive —
+      // so narrow mode's "↩ recent" row (and every lastActive consumer)
+      // stayed empty until the user switched tasks once.
+      if (orch.activeTaskSignal()() !== id)
+        void orch.setActiveTask(id).catch((error) => console.error("[kobe workspace] setActiveTask failed:", error))
+      return
+    }
     setSelectedId(id)
     void orch.setActiveTask(id).catch((error) => console.error("[kobe workspace] setActiveTask failed:", error))
     // Plugin UI events: entering a task/project is an observable moment.

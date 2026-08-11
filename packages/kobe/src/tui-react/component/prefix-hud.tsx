@@ -17,6 +17,7 @@ import { PREFIX_GUIDE_DELAY_MS, PREFIX_HUD_TTL_MS, prefixHudState } from "../../
 import { truncateEnd } from "../../tui/lib/truncate"
 import { useTheme } from "../context/theme"
 import { tKeys, useT } from "../i18n"
+import { isNarrowWidth } from "../lib/narrow-mode"
 import { useAccessor } from "../lib/use-accessor"
 
 const BOTTOM_MARGIN = 1
@@ -162,10 +163,18 @@ export function PrefixHud(props: { left: number; width: number }) {
     )
   }
 
+  // Narrow (issue #14): no sidebar column to sit over — go full width just
+  // above the footer, where the bottom-most covered row is the workspace
+  // frame's own border, not terminal content. NOT over the footer row
+  // itself: the footer paints after the pane children, so an "overlay"
+  // there loses the paint order and the two texts interleave per cell.
+  const narrow = isNarrowWidth(dims.width)
+  const left = narrow ? 0 : props.left
+  const width = narrow ? dims.width : props.width
   const top = Math.max(0, dims.height - BOTTOM_MARGIN - lineCount)
 
   return (
-    <box position="absolute" zIndex={2400} left={props.left} top={top} width={props.width} flexDirection="column">
+    <box position="absolute" zIndex={2400} left={left} top={top} width={width} flexDirection="column">
       {fresh.map((entry) => (
         <box key={entry.id} paddingLeft={1} paddingRight={1} backgroundColor={theme.backgroundDialog}>
           <text fg={theme.textMuted} wrapMode="none">
@@ -173,7 +182,7 @@ export function PrefixHud(props: { left: number; width: number }) {
               `${entry.prefixKey ? `${entry.prefixKey} + ` : ""}${entry.stroke} ${
                 entry.action ? `→ ${actionLabel(entry.action)}` : "∅"
               }`,
-              props.width - 2,
+              width - 2,
             )}
           </text>
         </box>

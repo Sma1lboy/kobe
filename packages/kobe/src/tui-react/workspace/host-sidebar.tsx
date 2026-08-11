@@ -52,6 +52,8 @@ export interface HostSidebarProps {
   readonly zenActive: boolean
   readonly onZenClick: () => void
   readonly onFocusRequest: () => void
+  /** Narrow mode's "↩ recent" jump row target (issue #14, 2A). */
+  readonly recentTask?: Task | null
 }
 
 export function HostSidebar(props: HostSidebarProps) {
@@ -114,6 +116,7 @@ export function HostSidebar(props: HostSidebarProps) {
         selectedTabId={props.selectedTabId}
         onSelectTab={props.onSelectTab}
         onCloseTab={closeTab}
+        recentTask={props.recentTask ?? null}
       />
       {/* First-use key hint (component/keyboard-hints.tsx): renders until
           the sidebar's own keys have been used, then never again. */}

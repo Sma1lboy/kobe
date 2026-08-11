@@ -28,6 +28,7 @@ import {
   parseRowId,
   tabRowId,
   treeFlatIds,
+  withRecentRow,
 } from "../../../tui/panes/sidebar/tree-core"
 import { getDefaultLiveEngines } from "../../../tui/workspace/live-engine"
 import { tabTitleStable } from "../../../tui/workspace/terminal-tab-split"
@@ -47,6 +48,10 @@ export interface TreeStateOpts {
   readonly selectedTabId: string | null
   /** Live `/` query. Non-empty prunes the tree to matches + their ancestors. */
   readonly query?: string
+  /** Narrow mode's "↩ recent" jump target — prepended as the first navigable
+   *  row. Hidden while a search query is open (you are hunting, not going
+   *  back). Absent/null = no row. */
+  readonly recentTask?: Task | null
 }
 
 export interface TreeState {
@@ -137,11 +142,12 @@ export function useTreeState(opts: TreeStateOpts): TreeState {
     return map
   }, [tasks, kv, liveEngines, liveTick, hostSessions])
 
+  const recentTask = opts.recentTask ?? null
   const { rows, totalCount } = useMemo(() => {
     const all = buildTreeRows({ tasks, tabsByTask })
     const total = treeFlatIds(all).length
-    return { rows: searching ? filterTreeRows(all, query) : all, totalCount: total }
-  }, [tasks, tabsByTask, searching, query])
+    return { rows: searching ? filterTreeRows(all, query) : withRecentRow(all, recentTask), totalCount: total }
+  }, [tasks, tabsByTask, searching, query, recentTask])
   const flatIds = useMemo(() => treeFlatIds(rows), [rows])
 
   // The active row is the selected task's ACTIVE TAB, else the worktree row
