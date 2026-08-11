@@ -61,7 +61,7 @@ Commands:
   config [--path]         Open kobe's config file (state.json) in your editor
   reset [--hard]          Stop runtimes; optionally wipe task/UI state
   theme <verb>            Manage user themes (list|add|remove)
-  skill <verb>            Install the kobe agent skill (install|status|command)
+  skill <verb>            Install the kobe agent skill (install|status|command|print)
   plugin <verb>           Install and run plugins (install|link|list|action|…)
   feedback                Send feedback to GitHub Discussions
   update [version|list]   Self-update kobe, or browse versions with `list`
@@ -69,6 +69,7 @@ Commands:
 Options:
   -v, --version           Print version
   -h, --help              Print this help
+  --skill                 Print the agent skill file and exit
 ```
 
 ## Managing projects
@@ -165,6 +166,7 @@ current directory. `unset` with no flag clears both.
 kobe skill install [--agent NAME]…
 kobe skill status
 kobe skill command [--agent NAME]…   # print the command without running it
+kobe skill print                     # print the SKILL.md itself
 ```
 
 Installs the kobe agent skill — what teaches a coding agent to drive
@@ -173,6 +175,11 @@ name them yourself, repeat the flag (`--agent claude-code --agent codex`); a
 comma-joined list is rejected rather than silently using only the first.
 
 The skill ships inside the npm package, so nothing is downloaded.
+
+`kobe --skill` (top-level flag) is shorthand for `kobe skill print`: it dumps
+the bundled SKILL.md to stdout so an agent can learn the `kobe api` surface in
+one command — e.g. prompt your agent with ``read `kobe --skill` then fan out
+tasks``, no pre-installed skill required.
 
 ## plugin
 

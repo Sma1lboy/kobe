@@ -32,7 +32,7 @@ export function topLevelUsage(): string {
     "  config [--path]          Open kobe's config file (state.json) in your editor",
     "  reset [--hard]           Stop runtimes; optionally wipe task/UI state",
     "  theme <verb>            Manage user themes (list|add|remove)",
-    "  skill <verb>            Install the kobe agent skill (install|status|command)",
+    "  skill <verb>            Install the kobe agent skill (install|status|command|print)",
     "  plugin <verb>           Install and run plugins (install|link|list|action|…)",
     "  feedback                Send feedback to GitHub Discussions",
     "  update [version|list]   Self-update kobe, or browse versions with `list`",
@@ -40,5 +40,6 @@ export function topLevelUsage(): string {
     "Options:",
     "  -v, --version           Print version",
     "  -h, --help              Print this help",
+    "  --skill                 Print the agent skill file and exit",
   ].join("\n")
 }
