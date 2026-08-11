@@ -3,7 +3,7 @@ name: kobe
 description: Use when controlling kobe tasks, parallel coding attempts, hosted agent sessions, task lifecycle, or the daemon-owned issue tracker from a shell.
 ---
 
-<!-- kobe-skill-version: 11 — bump in lockstep with KOBE_SKILL_VERSION (src/lib/skill-install.ts). -->
+<!-- kobe-skill-version: 12 — bump in lockstep with KOBE_SKILL_VERSION (src/lib/skill-install.ts). -->
 
 # kobe shell control
 
@@ -108,6 +108,10 @@ kobe api pane-open --placement tab --title logs --command "tail -f app.log"
 
 # Close panes you opened, by their --title (engine panes are never closed).
 kobe api pane-close --title logs
+
+# Toast a one-liner in every attached kobe UI — surface "done / needs input /
+# error" moments without touching any session (kinds get severity styling).
+kobe api notify --title "build green, artifacts in dist/" --kind done
 ```
 
 Defaults: the caller's own task (`$KOBE_TASK_ID`, then the active task),
