@@ -1,18 +1,10 @@
 /**
- * kobe daemon server (v0.6).
- *
- * v0.5 was a chat-stream broker on top of a Unix socket: clients
- * subscribed to per-tab event buses, the daemon hosted the engine
- * subprocess and forwarded `assistant.delta` / `tool.start` / etc.
- * v0.6 has none of that — claude lives in tmux, so the daemon's
- * only job is to be the single writer for the task index.
- *
- * The RPC surface is now: hello / daemon.status / daemon.stop +
- * task CRUD + subscribe. Everything else (chat.*, pr.*, merge.*,
- * rcBridge.*, plan-usage poll) is gone with the chat pane.
+ * kobe daemon server: the single writer for the task index, plus the
+ * push-channel bus every attached TUI/pane/web client subscribes to. RPC
+ * surface: hello / daemon.status / daemon.stop + handlers.ts + subscribe.
  */
 
-import { mkdir, readFile, unlink, writeFile } from "node:fs/promises"
+import { mkdir, unlink, writeFile } from "node:fs/promises"
 import { type Server, createServer } from "node:net"
 import { dirname } from "node:path"
 import { StringDecoder } from "node:string_decoder"
@@ -52,6 +44,7 @@ import { type DaemonFrame, normalizeChannelFilter, serializeTask } from "./proto
 import { PtyLiveHold } from "./pty-live-hold.ts"
 import { QuotaUsageCache } from "./quota-usage-cache.ts"
 import type { DaemonRuntimeAdapter } from "./runtime.ts"
+import { createSocketOwnershipGuard, listenOnUnixSocket } from "./socket-guard.ts"
 import { handleSubscribe } from "./subscribe.ts"
 import { TaskDeletionRunner } from "./task-deletion-runner.ts"
 import { type DaemonWebServer, createDirectWebLink, startDaemonWebServer } from "./web-server.ts"
@@ -67,6 +60,7 @@ export {
   type DaemonHandlerContext,
   type DaemonRequestHandler,
 } from "./handlers.ts"
+export { readPidFile } from "./socket-guard.ts"
 export { IssuesStore, defaultIssuesStorePath } from "./issues-store.ts"
 export { NotesStore, defaultNotesStorePath } from "./notes-store.ts"
 export type { DaemonClientConnection } from "./client-connection.ts"
@@ -103,6 +97,8 @@ export interface DaemonServerOptions {
   readonly webStaticDir?: string
   /** Enable the plugin runtime; `binPath` becomes plugins' KOBE_BIN_PATH. Omitted in tests. */
   readonly plugins?: { readonly binPath: string }
+  /** Socket-ownership watch interval in ms; `0` disables the periodic check. */
+  readonly socketWatchMs?: number
 }
 
 export interface DaemonServer {
@@ -112,11 +108,6 @@ export interface DaemonServer {
   readonly webPort?: number
   readonly clients: ReadonlySet<DaemonClientConnection>
   close(): Promise<void>
-}
-
-type EventedServer = Server & {
-  once(event: "error", listener: (err: Error) => void): void
-  removeListener(event: "error", listener: (err: Error) => void): void
 }
 
 export async function startDaemonServer(orch: DaemonOrchestrator, options: DaemonServerOptions): Promise<DaemonServer> {
@@ -327,6 +318,20 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
   // via daemon.status so `kobe daemon status` reports the real reason instead
   // of the TUI's misleading "daemon did not start".
   let webError: string | null = null
+
+  // Ownership watch (issue #10, rationale in socket-guard.ts): a daemon whose
+  // socket path was taken over is unreachable for every NEW connection and
+  // must not linger as a split-brain island — stop, so the attached clients'
+  // reconnect loops migrate them to the new owner.
+  const sockGuard = createSocketOwnershipGuard({
+    socketPath,
+    pidPath,
+    ...(options.socketWatchMs !== undefined ? { watchMs: options.socketWatchMs } : {}),
+    onLost: () => {
+      logDaemonInfo("sock", "socket path was taken over or removed — stopping so clients reconnect to the new owner")
+      void stopSoon().catch((err) => logDaemonError("daemon-socket-lost-shutdown", err))
+    },
+  })
   const serverApi: DaemonServer = {
     socketPath,
     pidPath,
@@ -355,21 +360,15 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
       for (const client of Array.from(clients)) {
         client.socket.destroy()
       }
-      await new Promise<void>((resolve) => server.close(() => resolve()))
-      await unlink(socketPath).catch(() => {})
-      await unlink(pidPath).catch(() => {})
+      // Ownership-aware teardown: a superseded daemon must neither close the
+      // listener nor unlink files another daemon owns — see socket-guard.ts.
+      await sockGuard.release(server)
     },
   }
 
-  await new Promise<void>((resolve, reject) => {
-    const evented = server as EventedServer
-    evented.once("error", reject)
-    server.listen(socketPath, () => {
-      evented.removeListener("error", reject)
-      resolve()
-    })
-  })
+  await listenOnUnixSocket(server, socketPath)
   await writeFile(pidPath, `${process.pid}\n`, "utf8")
+  await sockGuard.arm()
 
   async function stopSoon(): Promise<void> {
     if (lifetime.isStopping()) return
@@ -498,14 +497,4 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
   }
 
   return serverApi
-}
-
-export async function readPidFile(pidPath: string): Promise<number | null> {
-  try {
-    const raw = await readFile(pidPath, "utf8")
-    const pid = Number(raw.trim())
-    return Number.isFinite(pid) ? pid : null
-  } catch {
-    return null
-  }
 }

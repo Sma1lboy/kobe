@@ -1,5 +1,5 @@
 import { type StdioOptions, spawn } from "node:child_process"
-import { closeSync, existsSync, mkdirSync, openSync } from "node:fs"
+import { closeSync, existsSync, mkdirSync, openSync, statSync, unlinkSync } from "node:fs"
 import { dirname, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { stopDaemonProcess } from "../daemon/lifecycle.ts"
@@ -95,6 +95,43 @@ export function autospawnDaemonEnv(env: NodeJS.ProcessEnv = process.env): NodeJS
 }
 
 /**
+ * Cross-process autospawn mutex (issue #10). Concurrent clients that all
+ * find the daemon unreachable — a TUI gui plus its helper pane reconnecting
+ * after the same daemon drop (the 2026-08-11 twin autospawn, 45ms apart) —
+ * must not EACH run the stop+spawn sequence: stacked `stopDaemonProcess`
+ * calls SIGKILL each other's freshly-spawned daemons and unlink the live
+ * socket, which is how split-brain succession starts. One `wx` lockfile
+ * next to the pidfile serializes them; losers wait for the winner's daemon
+ * instead of spawning their own. Stale threshold covers the winner's worst
+ * case (stop escalation ~7s + spawn poll 5s) so a crashed winner never
+ * blocks recovery for long.
+ */
+const SPAWN_LOCK_STALE_MS = 20_000
+const SPAWN_LOCK_WAIT_MS = 15_000
+
+/** Try to take the spawn lock; returns false when a fresh lock is held by
+ *  someone else. Reclaims stale locks. Exported for tests. */
+export function tryAcquireSpawnLock(lockPath: string, staleMs: number = SPAWN_LOCK_STALE_MS): boolean {
+  const create = (): boolean => {
+    closeSync(openSync(lockPath, "wx"))
+    return true
+  }
+  try {
+    return create()
+  } catch {
+    try {
+      if (Date.now() - statSync(lockPath).mtimeMs <= staleMs) return false
+      unlinkSync(lockPath)
+      return create()
+    } catch {
+      // Lost the stale-reclaim race (or the lock vanished and reappeared) —
+      // treat as held; the caller's wait loop covers us.
+      return false
+    }
+  }
+}
+
+/**
  * If the daemon socket already answers, do nothing. Otherwise spawn a
  * detached `kobe daemon start` (session-scrubbed env, autospawn-flagged —
  * see {@link autospawnDaemonEnv}) and poll until the socket is reachable
@@ -120,23 +157,48 @@ export async function ensureDaemonReachable(): Promise<string> {
     )
   }
 
-  // Absent, or wedged outside a session: kill any wedged process FIRST —
-  // `stopDaemonProcess` is idempotent (just clears stale socket/pidfile
-  // when nothing is alive) and prevents a fresh spawn from racing a
-  // still-alive wedged daemon onto the same tasks.json (split-brain).
-  await stopDaemonProcess(socketPath, defaultDaemonPidPath()).catch(() => {})
-
-  const [command, ...args] = resolveKobeSpawn(DAEMON_START_ARGS)
-  spawnDetachedDaemon(command, args, autospawnDaemonEnv(), defaultDaemonLogPath())
-
-  const deadline = Date.now() + 5000
-  while (Date.now() < deadline) {
-    if (await testDaemonResponds(socketPath)) return socketPath
-    await new Promise((resolveTimer) => setTimeout(resolveTimer, 100))
+  const lockPath = `${defaultDaemonPidPath()}.spawn-lock`
+  if (!tryAcquireSpawnLock(lockPath)) {
+    // Another client is mid stop+spawn — wait for ITS daemon rather than
+    // stacking a second kill+spawn on top.
+    const deadline = Date.now() + SPAWN_LOCK_WAIT_MS
+    while (Date.now() < deadline) {
+      if (await testDaemonResponds(socketPath)) return socketPath
+      await new Promise((resolveTimer) => setTimeout(resolveTimer, 150))
+    }
+    throw new Error(
+      `kobe: another process is starting the daemon but it never became reachable at ${socketPath}; check ${defaultDaemonLogPath()} or run \`kobe doctor\``,
+    )
   }
-  throw new Error(
-    `kobe: daemon did not start (or stayed wedged) at ${socketPath}; check ${defaultDaemonLogPath()} or run \`kobe doctor\``,
-  )
+  try {
+    // Re-probe under the lock: the previous holder may have brought a
+    // daemon up between our probe above and the lock acquisition.
+    if ((await probeDaemonSocket(socketPath)) === "alive") return socketPath
+
+    // Absent, or wedged outside a session: kill any wedged process FIRST —
+    // `stopDaemonProcess` is idempotent (just clears stale socket/pidfile
+    // when nothing is alive) and prevents a fresh spawn from racing a
+    // still-alive wedged daemon onto the same tasks.json (split-brain).
+    await stopDaemonProcess(socketPath, defaultDaemonPidPath()).catch(() => {})
+
+    const [command, ...args] = resolveKobeSpawn(DAEMON_START_ARGS)
+    spawnDetachedDaemon(command, args, autospawnDaemonEnv(), defaultDaemonLogPath())
+
+    const deadline = Date.now() + 5000
+    while (Date.now() < deadline) {
+      if (await testDaemonResponds(socketPath)) return socketPath
+      await new Promise((resolveTimer) => setTimeout(resolveTimer, 100))
+    }
+    throw new Error(
+      `kobe: daemon did not start (or stayed wedged) at ${socketPath}; check ${defaultDaemonLogPath()} or run \`kobe doctor\``,
+    )
+  } finally {
+    try {
+      unlinkSync(lockPath)
+    } catch {
+      /* already reclaimed as stale by a peer — fine */
+    }
+  }
 }
 
 export async function connectOrStartDaemon(): Promise<KobeDaemonClient> {

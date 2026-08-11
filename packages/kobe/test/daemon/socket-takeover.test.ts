@@ -9,13 +9,15 @@
  * leftover file is still cleared like before.
  */
 
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
+import { unlink } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { startDaemonServer } from "@sma1lboy/kobe-daemon/daemon/server"
+import { KobeDaemonClient } from "@sma1lboy/kobe-daemon/client"
+import { type DaemonServerOptions, startDaemonServer } from "@sma1lboy/kobe-daemon/daemon/server"
 import { describe, expect, it } from "vitest"
 import { daemonRuntime } from "../../src/core/daemon-runtime.ts"
-import { bootDaemonHarness, fakeOrchestrator } from "./harness.ts"
+import { bootDaemonHarness, fakeOrchestrator, waitFor } from "./harness.ts"
 
 const ZERO_POLLS = {
   updatePollMs: 0,
@@ -26,6 +28,33 @@ const ZERO_POLLS = {
   worktreeChangesTickMs: 0,
   transcriptActivityTickMs: 0,
 } as const
+
+/** Temp home + isolated socket/pid paths + KOBE_HOME_DIR pinned for the test's
+ *  duration, with base server options ready to spread. */
+function tempDaemonDir(prefix: string): {
+  dir: string
+  socketPath: string
+  pidPath: string
+  base: DaemonServerOptions
+  cleanup: () => void
+} {
+  const dir = mkdtempSync(join(tmpdir(), prefix))
+  const saved = process.env.KOBE_HOME_DIR
+  process.env.KOBE_HOME_DIR = dir
+  const socketPath = join(dir, "daemon.sock")
+  const pidPath = join(dir, "daemon.pid")
+  return {
+    dir,
+    socketPath,
+    pidPath,
+    base: { runtime: daemonRuntime, socketPath, pidPath, homeDir: dir, ...ZERO_POLLS },
+    cleanup: () => {
+      if (saved === undefined) Reflect.deleteProperty(process.env, "KOBE_HOME_DIR")
+      else process.env.KOBE_HOME_DIR = saved
+      rmSync(dir, { recursive: true, force: true })
+    },
+  }
+}
 
 describe("daemon socket takeover guard", () => {
   it("refuses to boot onto a socket a live daemon is serving, leaving the incumbent intact", async () => {
@@ -45,6 +74,61 @@ describe("daemon socket takeover guard", () => {
       expect(status).toBeTruthy()
     } finally {
       await h.close()
+    }
+  })
+
+  it("a daemon whose socket path was clobbered and rebound self-stops so clients can migrate", async () => {
+    // The client-side clobber the boot guard can't see: the path is unlinked
+    // FIRST (stopDaemonProcess cleanup), so the usurper's boot probe reads
+    // "absent" and binds. The incumbent must notice and stop itself — its
+    // attached clients' reconnect loops then land on the new owner.
+    const { socketPath, pidPath, base, cleanup } = tempDaemonDir("kobe-sock-tko-")
+    try {
+      let stopped = false
+      const incumbent = await startDaemonServer(fakeOrchestrator(), {
+        ...base,
+        socketWatchMs: 25,
+        onStop: async () => {
+          stopped = true
+        },
+      })
+      await unlink(socketPath)
+      const usurper = await startDaemonServer(fakeOrchestrator(), { ...base, socketWatchMs: 0 })
+      expect(await waitFor(() => stopped, 3000)).toBe(true)
+      // The superseded daemon's shutdown left the new owner fully intact.
+      expect(await waitFor(() => existsSync(socketPath), 3000)).toBe(true)
+      expect(existsSync(pidPath)).toBe(true)
+      const probe = new KobeDaemonClient(socketPath)
+      await probe.connect()
+      expect(await probe.request<Record<string, unknown>>("daemon.status")).toBeTruthy()
+      probe.close()
+      await usurper.close()
+      await incumbent.close()
+    } finally {
+      cleanup()
+    }
+  })
+
+  it("shutdown cleanup leaves a socket it no longer owns untouched, but still cleans an owned one", async () => {
+    const { socketPath, pidPath, base, cleanup } = tempDaemonDir("kobe-sock-own-")
+    try {
+      const superseded = await startDaemonServer(fakeOrchestrator(), { ...base, socketWatchMs: 0 })
+      await unlink(socketPath)
+      const owner = await startDaemonServer(fakeOrchestrator(), { ...base, socketWatchMs: 0 })
+      await superseded.close()
+      // The late close of the superseded daemon deleted NOTHING of the owner's.
+      expect(existsSync(socketPath)).toBe(true)
+      expect(existsSync(pidPath)).toBe(true)
+      const probe = new KobeDaemonClient(socketPath)
+      await probe.connect()
+      expect(await probe.request<Record<string, unknown>>("daemon.status")).toBeTruthy()
+      probe.close()
+      // A daemon that still owns its socket cleans up like always.
+      await owner.close()
+      expect(existsSync(socketPath)).toBe(false)
+      expect(existsSync(pidPath)).toBe(false)
+    } finally {
+      cleanup()
     }
   })
 

@@ -194,6 +194,17 @@ TUI may show any task at any time.
 > activity registry and little else. This is the live behavior
 > — there is no separate AGENTS.md section for it; CLAUDE.md's own "Daemon" bullet
 > summarizes it and points back to this doc.
+>
+> **Socket succession (issue #10, 2026-08-11):** exactly one daemon may serve
+> `daemon.sock`, and losing the path ends residency. A running daemon watches
+> its socket's inode (`socket-guard.ts`); if the path is removed or rebound by
+> another daemon it stops itself — attached clients' reconnect loops then land
+> on the new owner, so a TUI never has to be re-entered to see current state.
+> Shutdown cleanup is ownership-checked: a superseded daemon neither closes its
+> listener by name (node/Bun unlink the socket PATH inside `server.close()`)
+> nor unlinks the socket/pidfile another daemon now owns. Client-side,
+> `ensureDaemonReachable`'s stop+spawn sequence is serialized by a
+> `daemon.pid.spawn-lock` file so concurrent clients can't twin-spawn daemons.
 
 ```bash
 $ kobed start            # binds ~/.kobe/daemon.sock, writes pidfile
