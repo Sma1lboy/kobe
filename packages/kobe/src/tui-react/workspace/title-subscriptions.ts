@@ -176,7 +176,7 @@ export function useTitleSubscriptions(ptyKeys: ReadonlyMap<string, string>): Rea
         // Same rule as use-turn-polls' projection: the engine's own status
         // decoration is stripped before anything renders it, so kobe's glyph
         // column stays the one place turn state is drawn.
-        next.set(id, stripEngineStatusPrefix(title, liveEngines.resolve(key) ?? null))
+        next.set(id, stripEngineStatusPrefix(title, liveEngines.resolve(key)))
       }
       if (next.size === prev.size && [...next].every(([id, v]) => prev.get(id) === v)) return prev
       return next

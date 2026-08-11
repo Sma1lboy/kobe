@@ -33,9 +33,16 @@ describe("stripEngineStatusPrefix", () => {
     expect(stripEngineStatusPrefix("✳ literal", "codex")).toBe("✳ literal")
   })
 
-  it("leaves the title alone when there is no vendor at all", () => {
-    expect(stripEngineStatusPrefix("✳ 运行本地Codex处理图片", null)).toBe("✳ 运行本地Codex处理图片")
-    expect(stripEngineStatusPrefix("✳ whatever", undefined)).toBe("✳ whatever")
+  // `vendor` narrows the vocabulary; it never gates the strip. The probe is a
+  // ~2s ps walk, so gating on it let a raw `✳ …` through on every tick it
+  // could not answer — and that title is what gets RECORDED, which is why the
+  // prefix kept coming back (owner report 2026-08-10).
+  it("strips without a vendor too — an unanswered probe must not leak the prefix", () => {
+    expect(stripEngineStatusPrefix("✳ 运行本地Codex处理图片", null)).toBe("运行本地Codex处理图片")
+    expect(stripEngineStatusPrefix("✳ whatever", undefined)).toBe("whatever")
+    // Plain titles and decoration-only names are still untouched.
+    expect(stripEngineStatusPrefix("vim", undefined)).toBe("vim")
+    expect(stripEngineStatusPrefix("✳", undefined)).toBe("✳")
   })
 
   // A vendor that declares NO vocabulary falls back to the union of every

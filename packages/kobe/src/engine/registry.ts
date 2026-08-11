@@ -367,28 +367,6 @@ const ALL_STATUS_PREFIXES: readonly string[] = [
 ]
 
 /**
- * Strip the engine's own STATUS decoration from a live OSC title.
- *
- * Engines that own their title write their turn state into it — claude's
- * `✳`/`⠂`/`⠐`, codex's braille spinner frame. Kobe draws that same state in
- * its own glyph column, so rendering the prefix too says it twice, and the
- * animated frames make a resting tab look busy. The vocabulary is declared
- * per engine (`terminalTitle.statusPrefixes`); this stays a lookup so no
- * neutral layer hard-codes a vendor's glyphs.
- *
- * A vendor with no vocabulary of its own falls back to the union of every
- * built-in's glyphs. That case is the norm, not an edge: a user wrapper
- * (`claudecpa` — a zsh function that ends up running the real `claude`)
- * registers as a CUSTOM engine, which carries no `terminalTitle` at all, so a
- * per-vendor-only lookup left its titles wearing the prefix. The union is
- * safe precisely because these glyphs are decoration in any vendor's title:
- * nothing writes a leading `⠹` it wants kept.
- *
- * Conservative at the edges: no vendor at all, or a prefix that would consume
- * the whole title, returns it unchanged — a session genuinely named after one
- * of these glyphs keeps its name.
- */
-/**
  * The status-glyph vocabulary to judge a vendor's title by: its own when it
  * declares one, else the union of every built-in's (see
  * {@link stripEngineStatusPrefix} for why the union is the right default).
@@ -398,9 +376,32 @@ export function engineStatusPrefixes(vendor: VendorId): readonly string[] {
   return declared && declared.length > 0 ? declared : ALL_STATUS_PREFIXES
 }
 
+/**
+ * Strip the engine's own STATUS decoration from a live OSC title.
+ *
+ * Engines that own their title write their turn state into it — claude's
+ * `✳`/`⠂`/`⠐`, codex's braille spinner frame. Kobe draws that same state in
+ * its own glyph column, so rendering the prefix too says it twice, and the
+ * animated frames make a resting tab look busy. The vocabulary is declared
+ * per engine (`terminalTitle.statusPrefixes`), so no neutral layer hard-codes
+ * a vendor's glyphs.
+ *
+ * `vendor` NARROWS the vocabulary; it never gates the strip. Anything
+ * unknown — a custom wrapper (`claudecpa`, a zsh function that ends up
+ * running the real claude), or simply a process-tree probe that has not
+ * answered yet — falls back to the union of every built-in's glyphs. This is
+ * the common case, not an edge: the probe is a ~2s `ps` walk, so gating on it
+ * let a raw `✳ …` through on every tick it could not answer, and that title
+ * is what gets RECORDED (owner report 2026-08-10: the prefix kept coming
+ * back). The union is safe precisely because these glyphs are decoration in
+ * any vendor's title — nothing writes a leading `⠹` it wants kept.
+ *
+ * Still conservative where it matters: a prefix that would consume the whole
+ * title is returned unchanged, so a session genuinely named after one of
+ * these glyphs keeps its name.
+ */
 export function stripEngineStatusPrefix(title: string, vendor: VendorId | null | undefined): string {
-  if (!vendor) return title
-  const prefixes = engineStatusPrefixes(vendor)
+  const prefixes = vendor ? engineStatusPrefixes(vendor) : ALL_STATUS_PREFIXES
   // Longest-first so a multi-char prefix isn't shadowed by a shorter one.
   for (const prefix of [...prefixes].sort((a, b) => b.length - a.length)) {
     if (!title.startsWith(prefix)) continue

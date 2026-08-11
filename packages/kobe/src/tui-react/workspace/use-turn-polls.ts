@@ -120,7 +120,7 @@ export function useTurnPolls(deps: {
         // with the name alone, and kobe's glyph column is the single place
         // that draws turn state. Engine-declared vocabulary — see
         // `stripEngineStatusPrefix`.
-        next.set(tabId, stripEngineStatusPrefix(title, liveEngines.resolve(key) ?? null))
+        next.set(tabId, stripEngineStatusPrefix(title, liveEngines.resolve(key)))
       }
       if (next.size === prev.size && [...next].every(([id, v]) => prev.get(id) === v)) return prev
       return next
