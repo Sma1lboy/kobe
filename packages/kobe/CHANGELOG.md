@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.64
+
+### Patch Changes
+
+- c894e59: Inbox rows (ATTENTION and RECENT) now name tabs with the same stable rule as the sidebar tree. Previously the Inbox fell back to a tab's frozen engine status line ("✳ Claude Code", a stale turn summary) or a raw `tab-1` id for tasks without a tab snapshot — so after jumping between chattabs the RECENT list didn't match anything else on screen.
+- 496c46e: Tabs pinned to a user's engine wrapper keep wearing the engine's status glyph no more. A wrapper like `claudecpa` (a zsh function that ends up running real claude) registers as a custom engine, which declares no glyph vocabulary — so the per-vendor lookup found nothing and the prefix survived. A vendor with no vocabulary of its own now falls back to the union of every built-in's glyphs, and cleaning is no longer gated on the engine claiming its title, since a status glyph is not part of a name whoever wrote it.
+
 ## 0.8.63
 
 ### Patch Changes
