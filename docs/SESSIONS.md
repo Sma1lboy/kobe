@@ -47,7 +47,12 @@ flowchart TB
 - **TUI and web** are pure attach clients. Closing one touches nothing else.
 - **The daemon** owns your task index, worktree records, and the event bus.
   It starts on first launch and stops after the last attached GUI disconnects,
-  unless an enabled routine holds it alive. Restarting it is routine:
+  unless an enabled routine or a live session in the PTY host holds it alive —
+  while an engine or shell tab is still running, the daemon stays up to
+  collect its activity events, so the sidebar status dots survive a detach.
+  In practice that makes the daemon resident as long as any task has an open
+  tab (a task's last tab can't be closed, so "no live sessions" means every
+  task archived or torn down). Restarting it is routine:
   `kobe daemon restart`.
 - **The PTY host** owns every engine and shell process, plus their
   scrollback. It's deliberately a *separate* process from the daemon, so a

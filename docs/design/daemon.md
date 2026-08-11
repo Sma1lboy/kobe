@@ -181,7 +181,17 @@ TUI may show any task at any time.
 > the idle-stop: an enabled scheduled automation, and a **live Hosted PTY
 > session** (`pty-live-hold.ts`) — the daemon is the sole collector of engine
 > hook events, and hooks never spawn a daemon, so idle-stopping while engines
-> run would drop their events and blank the activity dots. This is the live behavior
+> run would drop their events and blank the activity dots. "Live" is the PTY
+> Host's own `alive` (child not yet exited) — and note an engine tab's child
+> is a shell wrapper that `exec`s into a fallback shell when the engine exits
+> (`session-launch.ts` `keepAlive`), so a tab stays live until it is closed,
+> not until the engine quits. Combined with the "a task's last tab can't be
+> closed" contract (`terminal-tabs-core.ts` `closeTab`), this makes the daemon
+> effectively RESIDENT while any task has an open workspace: zero live
+> sessions means every task archived/deleted (janitor sweep), children exited
+> by hand, or `kobe reset`. That residency is accepted — a parked daemon with
+> no subscribers pauses its collectors, so it holds the socket and the
+> activity registry and little else. This is the live behavior
 > — there is no separate AGENTS.md section for it; CLAUDE.md's own "Daemon" bullet
 > summarizes it and points back to this doc.
 

@@ -82,7 +82,8 @@ flowchart LR
 
 - **Daemon** — owns your task list, worktrees, and the issue store. Starts on
   its own, then stops after the last attached GUI disconnects unless an
-  enabled routine holds it alive.
+  enabled routine — or any live tab session in the PTY host — holds it alive
+  (it must stay up to collect engine activity, or the status dots go stale).
 - **PTY host** — owns the running engine and shell processes. Survives both
   the TUI *and* a daemon restart.
 - **The TUI** — just a viewport. Quitting it kills nothing.
