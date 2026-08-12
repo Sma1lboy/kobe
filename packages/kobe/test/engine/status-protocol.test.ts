@@ -86,7 +86,7 @@ describe("statusReportProtocol", () => {
     // the coordination verbs are named so the agent knows they exist, and the
     // schema/skill are named as where to learn them — nothing more.
     const text = noteFilingProtocol("t9", "kobe api")
-    expect(text).toContain("fan-out / add --prompt / send / await / dispatch")
+    expect(text).toContain("fan-out / add --prompt / send / dispatch")
     expect(text).toContain("kobe api schema")
     // Guard the "pointer" property itself: the whole protocol must stay a
     // handful of lines, not absorb the skill's verb tables over time.
