@@ -17,6 +17,7 @@
  */
 
 import { getDefaultPtyRegistry } from "../../tui/panes/terminal/registry"
+import { noteClosedPtyKey } from "../../tui/workspace/closed-tab-suppress"
 import {
   type TabsState,
   type TerminalTab,
@@ -69,6 +70,9 @@ export function useTabClose(deps: TabCloseDeps): TabClose {
       const key = closing ? tabPtyKeyFor(taskId(), closing) : tabPtyKey(taskId(), closedId)
       releaseSplitLeaves(key, closing?.splitTree ?? null)
       getDefaultPtyRegistry().release(key)
+      // Keep the orphan backstop from adopting the dying session back
+      // before its next poll observes the exit (closed-tab-suppress.ts).
+      noteClosedPtyKey(key)
     }
     deps.updateRef.current(next)
   }
