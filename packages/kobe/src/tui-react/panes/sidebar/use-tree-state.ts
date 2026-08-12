@@ -132,12 +132,19 @@ export function useTreeState(opts: TreeStateOpts): TreeState {
         }),
       )
     }
-    // Backstop: a task with a LIVE pty session but no snapshot renders from
-    // the session itself, so a headless-started engine is never an empty
-    // worktree row. Only fills holes — a task already in `map` keeps its
-    // richer snapshot projection. See `orphan-tabs.ts`.
-    for (const [taskId, tabs] of orphanTabsByTask(hostSessions, new Set(map.keys()))) {
-      if (tasks.some((t) => t.id === taskId)) map.set(taskId, tabs)
+    // Backstop: any LIVE pty session the snapshots don't answer for renders
+    // as an explicit unregistered row — tab-granular, so a task whose
+    // snapshot lists tab-2 while tab-1 is alive still shows tab-1 (issue
+    // #20's invisible engine). A registered tab keeps its richer snapshot
+    // projection. See `orphan-tabs.ts`.
+    const registered = new Set<string>()
+    for (const [taskId, tabs] of map) for (const tab of tabs) registered.add(tabRowId(taskId, tab.id))
+    for (const [taskId, orphans] of orphanTabsByTask(hostSessions, registered)) {
+      if (!tasks.some((t) => t.id === taskId)) continue
+      const existing = map.get(taskId)
+      // Appended under a task with snapshot tabs, an orphan is never the
+      // active one — the snapshot's activeId owns that.
+      map.set(taskId, existing ? [...existing, ...orphans.map((tab) => ({ ...tab, active: false }))] : orphans)
     }
     return map
   }, [tasks, kv, liveEngines, liveTick, hostSessions])

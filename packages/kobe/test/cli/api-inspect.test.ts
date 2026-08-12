@@ -12,6 +12,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { invokeVerb } from "../../src/cli/api-cmd.ts"
+import { tabsSection } from "../../src/cli/api/handlers-inspect.ts"
 
 let home: string
 const saved: Record<string, string | undefined> = {}
@@ -108,5 +109,40 @@ describe("kobe api inspect (offline)", () => {
     const res = (await invokeVerb("inspect", [], { client: null })) as InspectResult
     expect(res.sessionExits).toEqual([])
     expect(res.tabs).toEqual({})
+  })
+})
+
+/**
+ * The `tabs` section reconciled against the live session inventory (issue
+ * #20): a live `<taskId>::tab-N` session the snapshot does not list must be
+ * called out as `unregistered`, never silently dropped — that silence is how
+ * a writable engine stayed invisible for 1h44m.
+ */
+describe("inspect tabs section reconciliation (issue #20)", () => {
+  type TabsOut = Record<string, { activeId: string | null; tabs: { id: string }[]; unregistered?: string[] }>
+
+  it("flags an alive session missing from the task's snapshot", () => {
+    seedHome() // snapshot for t1: tab-1 only
+    const out = tabsSection("t1", [
+      { key: "t1::tab-1", alive: true },
+      { key: "t1::tab-9", alive: true }, // alive on the host, unknown to the snapshot
+    ]) as TabsOut
+    expect(out.t1?.tabs.map((t) => t.id)).toEqual(["tab-1"])
+    expect(out.t1?.unregistered).toEqual(["tab-9"])
+  })
+
+  it("reports a task with live sessions but no snapshot at all", () => {
+    seedHome()
+    const out = tabsSection(undefined, [{ key: "ghost::tab-1", alive: true }]) as TabsOut
+    expect(out.ghost).toEqual({ activeId: null, tabs: [], unregistered: ["tab-1"] })
+  })
+
+  it("stays quiet when snapshot and sessions agree (and when sessions are unknowable)", () => {
+    seedHome()
+    const agreed = tabsSection("t1", [{ key: "t1::tab-1", alive: true }]) as TabsOut
+    expect(agreed.t1?.unregistered).toBeUndefined()
+    // Offline inspect passes the degraded sessions section (null) through.
+    const offline = tabsSection("t1", null) as TabsOut
+    expect(offline.t1?.unregistered).toBeUndefined()
   })
 })

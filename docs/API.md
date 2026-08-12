@@ -89,7 +89,9 @@ paths against `$PWD` (`~` expanded). Engine vendors: `claude`, `codex`,
   terminal tabs (`id`/`kind`/`title`/`vendor`/`liveVendor`/`lastTitle`/
   `autoTitle` + per-tab `alive`) — the discovery read for `send --tab tab-N`.
   A dead tab whose session ended abnormally also carries `exit`
-  (`code`/`signal`/`at`); clean exits stay `exit: null`.
+  (`code`/`signal`/`at`); clean exits stay `exit: null`. A live PTY session
+  the persisted snapshot does not list still gets a row, marked
+  `unregistered: true` — an alive engine is never invisible here.
 - `collect [--task-ids a,b,c] [--repo PATH]`: read-only comparison
   snapshot of several tasks: identity, branch, `.running`, uncommitted
   `.changes`, and committed `.base` (ahead count + diffstat vs base).
@@ -111,7 +113,11 @@ paths against `$PWD` (`~` expanded). Engine vendors: `claude`, `codex`,
   `exit`), `sessionExits` (durable death records — exit `code`/`signal`/`at`
   plus a plain-text output `tail`, kept in `pty-exits.json` so they survive
   the PTY host's idle-exit; abnormal exits only), and `tabs` (the
-  snapshots the sidebar names its rows from). Non-spawning: a missing daemon
+  snapshots the sidebar names its rows from, reconciled against the live
+  session inventory: a task whose snapshot is missing an alive
+  `<taskId>::tab-N` session reports those tab ids under `unregistered`,
+  and a task with live sessions but no snapshot at all still gets an
+  entry). Non-spawning: a missing daemon
   or PTY host degrades that section to `null`. **Run and paste this first**
   when reporting a badge, label, engine-identity, or engine-crash bug.
 

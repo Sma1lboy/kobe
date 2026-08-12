@@ -213,8 +213,55 @@ describe("joinTaskTabs", () => {
     ])
   })
 
-  it("returns [] for a task with no snapshot", () => {
-    expect(joinTaskTabs(undefined, "t1", [{ key: "t1::tab-1", alive: true }])).toEqual([])
+  it("a task with no snapshot still lists its live sessions as unregistered rows", () => {
+    // Before issue #20 this returned [] — an alive engine invisible to the
+    // discovery read.
+    expect(joinTaskTabs(undefined, "t1", [{ key: "t1::tab-1", alive: true }])).toEqual([
+      {
+        id: "tab-1",
+        kind: "engine",
+        title: null,
+        vendor: null,
+        liveVendor: null,
+        lastTitle: null,
+        autoTitle: null,
+        alive: true,
+        exit: null,
+        unregistered: true,
+      },
+    ])
+  })
+
+  it("surfaces an alive session the snapshot does not list — the issue-#20 invisible engine", () => {
+    // The incident replay: snapshot holds only tab-2, yet the pty host has
+    // tab-1 + tab-2 alive. tab-1 ran for 1h44m with zero UI presence.
+    const snap = {
+      tabs: [{ kind: "engine", id: "tab-2", title: null, ordinal: 2 }],
+      activeId: "tab-2",
+      nextOrdinal: 3,
+    } as unknown as TabsState
+    const rows = joinTaskTabs(snap, "t1", [
+      { key: "t1::tab-1", alive: true },
+      { key: "t1::tab-2", alive: true },
+    ])
+    expect(rows.map((r) => ({ id: r.id, alive: r.alive, unregistered: r.unregistered ?? false }))).toEqual([
+      { id: "tab-2", alive: true, unregistered: false },
+      { id: "tab-1", alive: true, unregistered: true },
+    ])
+  })
+
+  it("dead sessions and split leaves never mint unregistered rows", () => {
+    const snap = {
+      tabs: [{ kind: "engine", id: "tab-2", title: null, ordinal: 2 }],
+      activeId: "tab-2",
+      nextOrdinal: 3,
+    } as unknown as TabsState
+    const rows = joinTaskTabs(snap, "t1", [
+      { key: "t1::tab-1", alive: false }, // dead — the exit records answer for it
+      { key: "t1::tab-2::leaf-1", alive: true }, // split leaf — belongs to tab-2
+      { key: "t1::tab-2", alive: true },
+    ])
+    expect(rows.map((r) => r.id)).toEqual(["tab-2"])
   })
 
   const oneTabSnap = (id: string): TabsState =>

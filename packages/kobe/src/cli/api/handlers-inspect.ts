@@ -25,6 +25,7 @@ import { loadStateFile } from "../../state/store.ts"
 import { terminalTabsKey } from "../../tui-react/workspace/terminal-tabs-persist.ts"
 import type { TabsState } from "../../tui/workspace/terminal-tabs-core.ts"
 import { F } from "./flags.ts"
+import { type TaskSessionRow, unregisteredTabIds } from "./tab-snapshot.ts"
 import type { VerbContext, VerbSpec } from "./types.ts"
 
 type PtySessionRow = {
@@ -112,8 +113,18 @@ async function sessionExitsSection(taskId: string | undefined): Promise<unknown>
   }
 }
 
-/** Persisted tab snapshots (what the sidebar tree names its rows from). */
-function tabsSection(taskId: string | undefined): unknown {
+/**
+ * Persisted tab snapshots (what the sidebar tree names its rows from),
+ * RECONCILED against the live session inventory (issue #20): each task also
+ * reports `unregistered` — alive `<taskId>::tab-N` sessions its snapshot
+ * does not list — and a task with live sessions but no snapshot at all still
+ * gets an entry. A live engine must never be invisible in this read.
+ * Exported for tests; production callers go through the `inspect` verb.
+ */
+export function tabsSection(taskId: string | undefined, sessions: unknown): unknown {
+  const live: TaskSessionRow[] = Array.isArray(sessions)
+    ? sessions.filter((s): s is TaskSessionRow => typeof (s as { key?: unknown })?.key === "string")
+    : []
   try {
     const state = loadStateFile()
     const out: Record<string, unknown> = {}
@@ -124,6 +135,7 @@ function tabsSection(taskId: string | undefined): unknown {
       if (taskId && id !== taskId) continue
       const snap = value as TabsState
       if (!snap || !Array.isArray(snap.tabs)) continue
+      const unregistered = unregisteredTabIds(snap, id, live)
       out[id] = {
         activeId: snap.activeId,
         tabs: snap.tabs.map((t) => ({
@@ -135,7 +147,15 @@ function tabsSection(taskId: string | undefined): unknown {
           lastTitle: t.lastTitle ?? null,
           autoTitle: t.autoTitle ?? null,
         })),
+        ...(unregistered.length > 0 ? { unregistered } : {}),
       }
+    }
+    // Tasks with live sessions but NO snapshot: every session is unregistered.
+    for (const s of live) {
+      const id = s.key.split("::")[0] ?? ""
+      if (!id || out[id] !== undefined || (taskId && id !== taskId)) continue
+      const unregistered = unregisteredTabIds(undefined, id, live)
+      if (unregistered.length > 0) out[id] = { activeId: null, tabs: [], unregistered }
     }
     return out
   } catch (err) {
@@ -150,7 +170,7 @@ async function inspect(ctx: VerbContext): Promise<unknown> {
     sessionsSection(taskId),
     sessionExitsSection(taskId),
   ])
-  return { daemon, sessions, sessionExits, tabs: tabsSection(taskId), at: new Date().toISOString() }
+  return { daemon, sessions, sessionExits, tabs: tabsSection(taskId, sessions), at: new Date().toISOString() }
 }
 
 /** Spec half — spread into {@link VERBS} in `verbs.ts`. */
