@@ -21,7 +21,7 @@
 # docs-site builds packages/kobe-docs (the public Fumadocs site at
 # docs.kobe.sma1lboy.me). Its content is synced from docs/, so this job is
 # what keeps a Markdown edit from silently breaking the site — deployment is
-# still a manual `bun --filter @sma1lboy/kobe-docs deploy`.
+# automatic on main via deploy-docs.yml.
 #
 # changeset-cap (PR only, KOB-10) is the changeset sibling of file-size-cap:
 # a PR that touches published-package source (packages/kobe/src or

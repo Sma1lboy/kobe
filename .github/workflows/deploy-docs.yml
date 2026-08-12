@@ -1,0 +1,82 @@
+# Docs-site auto-deploy.
+#
+# Deploys the public docs site (`packages/kobe-docs`, Fumadocs/Next.js static
+# export at docs.kobe.sma1lboy.me) to Vercel production whenever the docs
+# content (`docs/**`, synced by scripts/sync-docs.mjs) or the site itself
+# changes on `main`. Replaces the old hand-run `bun run deploy` from a
+# laptop — same reasoning as deploy-landing.yml: CI has a clean network and
+# doesn't depend on anyone remembering to deploy.
+#
+# Trigger: a push to `main` that touches `docs/**` or `packages/kobe-docs/**`
+# (or this workflow), plus a manual `workflow_dispatch`. No docs change → no
+# deploy.
+#
+# Required repo secret: VERCEL_TOKEN (shared with deploy-landing.yml; same
+# Vercel team owns both projects). The org/project IDs below are not secrets
+# (identifiers from the gitignored `.vercel/project.json`).
+
+name: Deploy Docs
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "packages/kobe-docs/**"
+      - ".github/workflows/deploy-docs.yml"
+  workflow_dispatch:
+
+# One production deploy at a time; cancel an older in-flight deploy when a
+# newer docs change lands.
+concurrency:
+  group: deploy-docs
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  VERCEL_ORG_ID: team_n5to97TvbHckLXmLCO4UgWfr
+  VERCEL_PROJECT_ID: prj_XMSnN8kpDkZuqD8jBUPJG7KdVazL
+
+jobs:
+  deploy:
+    name: Deploy to Vercel (production)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.13
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # Mirrors the package's `deploy` script (sync + next build, then
+      # vercel build/deploy --prebuilt), split into steps for CI logs.
+      - name: Build docs site (sync + next build)
+        run: bun run --filter @sma1lboy/kobe-docs build
+
+      - name: Install Vercel CLI
+        run: npm install -g vercel@latest
+
+      - name: Pull Vercel project settings
+        run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+        working-directory: packages/kobe-docs
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+
+      - name: Build (vercel)
+        run: vercel build --prod --yes --token="$VERCEL_TOKEN"
+        working-directory: packages/kobe-docs
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+
+      - name: Deploy (prebuilt) to production
+        run: vercel deploy --prebuilt --prod --yes --token="$VERCEL_TOKEN"
+        working-directory: packages/kobe-docs
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}

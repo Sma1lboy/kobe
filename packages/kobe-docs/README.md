@@ -29,8 +29,14 @@ bun run sync     # regenerate content/docs from ../../docs
 bun run dev      # sync + next dev
 bun run build    # sync + static export to out/
 bun run start    # serve out/ locally
-bun run deploy   # build + vercel build --prod + vercel deploy --prebuilt --prod
+bun run deploy   # manual fallback: build + vercel build/deploy --prebuilt --prod
 ```
+
+## Deployment
+
+Automatic: a push to `main` touching `docs/**` or `packages/kobe-docs/**`
+triggers `.github/workflows/deploy-docs.yml` (Vercel prebuilt flow). No docs
+change → no deploy. `bun run deploy` remains as a manual fallback.
 
 Deploy uses the prebuilt flow because Vercel remote builds cannot see
 `../../docs/` outside this package's root. The `.vercel/` directory holds the
