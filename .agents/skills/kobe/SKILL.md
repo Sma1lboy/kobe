@@ -3,7 +3,7 @@ name: kobe
 description: Use when controlling kobe tasks, parallel coding attempts, hosted agent sessions, task lifecycle, or the daemon-owned issue tracker from a shell.
 ---
 
-<!-- kobe-skill-version: 17 — bump in lockstep with KOBE_SKILL_VERSION (src/lib/skill-install.ts). -->
+<!-- kobe-skill-version: 18 — bump in lockstep with KOBE_SKILL_VERSION (src/lib/skill-install.ts). -->
 
 # kobe shell control
 
@@ -61,6 +61,79 @@ in a kobe task. Do not recursively fan out from a spawned task.
 When the check fails, none of this applies — use `kobe api` only if the
 user asks for kobe by name.
 
+## Vocabulary — what the user's words map to
+
+| Term | What it is | Isolation it gives | Users also say |
+|---|---|---|---|
+| **Task** | one Worktree + branch + the Terminal Tabs inside it — one sidebar row | its own files AND its own branch | "a task", "a new one", "a separate attempt" |
+| **Worktree** | that task's file tree on disk (`.task.worktreePath`) | — | "workspace", "this checkout", "this branch", "here" |
+| **Terminal Tab** | one engine session inside a task | its own conversation, SAME files | "tab", "chattab", "another chat", "a second agent on this" |
+| **Split** | the tree that divides ONE Terminal Tab into several regions (the `pane-open` verb's unit; a leaf is not called a pane) | none — same session's screen, same files | "split it", "side by side", "put the logs next to it" |
+
+Two of those colloquialisms are traps, so read them as INTENT, not as
+product terms: in kobe's own vocabulary **Workspace** is the center Terminal
+Tab region of the UI (CONTEXT.md), not a checkout, and **ChatTab** is
+retired vocabulary for Terminal Tab. A user saying "in this workspace" means
+the worktree they are looking at — answer the intent, keep writing the real
+term.
+
+They nest — **Task ⊃ Terminal Tab ⊃ Split** — and isolation drops at every
+level down:
+
+```text
+new Task   → own worktree + own branch     (parallel work can't collide)
+new Tab    → own engine session, SAME files (a helper in the same checkout)
+new Split  → same session's screen, one tab divided (a monitor beside the work)
+```
+
+The distinction that decides every routing call: **a new tab shares the
+worktree and branch; only a new task gets its own.** Two tabs in one task
+edit the same files, so they can collide — that is a feature when the user
+wants a helper in the same checkout, and a bug when they wanted parallel
+attempts. A split isolates nothing at all: it is a layout, for watching
+something (logs, `btop`, a test loop) next to the work — never the answer to
+"do this work".
+
+### Where does this work land?
+
+Inside a kobe session (`$KOBE_TASK_ID` non-empty — check first: it is what
+makes the tab/split rows addressable at all), match top to bottom and take
+the first row that fits:
+
+| The user says | Lands in | Command |
+|---|---|---|
+| "you do it", "just fix it", "change X to Y" | you, right here | no kobe verb — edit the files yourself |
+| "try it N ways", "compare approaches" | N new tasks | `kobe api fan-out --repo "$PWD" --count N --prompt "…"` |
+| "split", "side by side", "keep an eye on X while…" | a new region in the CURRENT tab | `kobe api pane-open --command "…"` |
+| names a tab: "tell the agent in tab 3" | that exact tab | `kobe api send --task-id <id> --tab tab-3 --prompt "…"` |
+| a LOCATION word: "in this workspace/worktree/checkout", "on this branch", "here", "same task" | THIS task, a NEW Terminal Tab | `kobe api send --task-id "$KOBE_TASK_ID" --tab new --prompt "…"` |
+| **anything else — no row above matched** | a NEW task — new worktree + branch | `kobe api add --repo "$PWD" --prompt "…"` |
+
+Order is the tiebreak: a count ("3 ways in this workspace") beats a location
+word, and delegation language loses to "you do it" — the user asking YOU is
+not asking for a fleet. Two more rules the table can't show:
+
+- No location word at all ⇒ new task. It is the only routing whose isolation
+  cannot corrupt work-in-progress, so it is the safe default.
+- "this repo" / "this project" are NOT location words — they name the repo,
+  not the checkout. Only worktree-scoped words route to a tab.
+
+Outside a kobe session none of this applies: there is no "this task" to add
+a tab to, so `add` / `fan-out` are the only routings available.
+
+### Know where you are before you route
+
+```bash
+echo "$KOBE_TASK_ID / $KOBE_TAB_ID"          # who you are (empty = not a kobe session)
+kobe api get-task --task-id "$KOBE_TASK_ID"  # .task.worktreePath, .task.branch, .running, .tabs[]
+```
+
+`get-task` is the per-task read that answers "what is my worktree, my
+branch, and which sibling tabs exist" — `.tabs[]` carries each tab's `id`, `kind`,
+`vendor`, `lastTitle` and `alive`, which is exactly the target list for
+`send --tab`. A tab flagged `unregistered: true` is a live session the tab
+snapshot lost; it is addressable like any other.
+
 ## Discover before calling
 
 ```bash
@@ -95,8 +168,9 @@ kobe api send --task-id <id> --prompt "<complete next turn>"
 # Reply home: no --task-id inside a dispatched task = the dispatcher's tab.
 kobe api send --prompt "succeeded: <one line> (branch <final branch>)"
 
-# A task can hold several chat tabs. Enumerate them first (inspect's .tabs is
-# the sidebar's tab snapshot: id, kind, vendor, lastTitle), then address one:
+# A task can hold several Terminal Tabs. `get-task` lists ONE task's tabs (the
+# usual read before addressing one); `inspect` is the wider diagnostic — every
+# task's snapshot plus daemon activity and live pty sessions.
 kobe api inspect --task-id <id>
 kobe api send --task-id <id> --tab tab-3 --prompt "<turn>"  # exact alive tab
 kobe api send --task-id <id> --tab new --prompt "<turn>"    # fresh engine tab
