@@ -3,7 +3,7 @@ name: kobe
 description: Use when controlling kobe tasks, parallel coding attempts, hosted agent sessions, task lifecycle, or the daemon-owned issue tracker from a shell.
 ---
 
-<!-- kobe-skill-version: 17 — bump in lockstep with KOBE_SKILL_VERSION (src/lib/skill-install.ts). -->
+<!-- kobe-skill-version: 18 — bump in lockstep with KOBE_SKILL_VERSION (src/lib/skill-install.ts). -->
 
 # kobe shell control
 
@@ -60,6 +60,50 @@ in a kobe task. Do not recursively fan out from a spawned task.
 
 When the check fails, none of this applies — use `kobe api` only if the
 user asks for kobe by name.
+
+## Vocabulary — what the user's words map to
+
+| Term (and the words users use for it) | What it is | Isolation it gives |
+|---|---|---|
+| **Task** ("task", "a new one", "separate attempt") | one Worktree + branch + the chat tabs inside it — one sidebar row | its own files AND its own branch |
+| **Worktree** ("workspace", "this checkout", "this branch", "here") | that task's file tree on disk (`.task.worktreePath`) | — |
+| **Chattab / tab** ("another chat", "a second agent on this", "new tab") | one engine session inside a task | its own conversation, SAME files |
+
+The distinction that decides every routing call: **a new tab shares the
+worktree and branch; only a new task gets its own.** Two tabs in one task
+edit the same files, so they can collide — that is a feature when the user
+wants a helper in the same checkout, and a bug when they wanted parallel
+attempts.
+
+### Where does this work land?
+
+Read the user's words for a LOCATION first, then route:
+
+| The user says | Lands in | Command |
+|---|---|---|
+| nothing about location (**default**) | a NEW task — new worktree + branch | `kobe api add --repo "$PWD" --prompt "…"` |
+| "in this workspace/worktree/checkout", "on this branch", "here", "same task" | THIS task, a NEW chat tab | `kobe api send --task-id "$KOBE_TASK_ID" --tab new --prompt "…"` |
+| names a tab, or "tell the agent in tab 3" | that exact tab | `kobe api send --task-id <id> --tab tab-3 --prompt "…"` |
+| "try it N ways", "compare approaches" | N new tasks | `kobe api fan-out --repo "$PWD" --count N --prompt "…"` |
+| "you do it", "just fix it" | you, right here | no kobe verb — edit the files yourself |
+
+Ambiguity rule: an instruction with NO location word is a new task, because
+that is the only routing whose isolation can't corrupt someone else's
+work-in-progress. Never infer "same worktree" from "this repo" or "this
+project" — those name the repo, not the checkout.
+
+### Know where you are before you route
+
+```bash
+echo "$KOBE_TASK_ID / $KOBE_TAB_ID"          # who you are (empty = not a kobe session)
+kobe api get-task --task-id "$KOBE_TASK_ID"  # .task.worktreePath, .task.branch, .running, .tabs[]
+```
+
+`get-task` is the one read that answers "what is my worktree, my branch, and
+which sibling tabs exist" — `.tabs[]` carries each tab's `id`, `kind`,
+`vendor`, `lastTitle` and `alive`, which is exactly the target list for
+`send --tab`. A tab flagged `unregistered: true` is a live session the tab
+snapshot lost; it is addressable like any other.
 
 ## Discover before calling
 
