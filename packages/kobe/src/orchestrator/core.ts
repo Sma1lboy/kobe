@@ -8,7 +8,7 @@ import { type ReadableState, type StateCell, createStateCell } from "../lib/exte
 import { readLastActiveTaskId, writeLastActiveTaskId } from "../state/last-active.ts"
 import { getRemoteRepoConfig, getSavedRepos, removeSavedRepo } from "../state/repos.ts"
 import { resolvePreferredVendor } from "../state/vendor-prefs.ts"
-import type { Task, TaskId, TaskPRStatus, TaskStatus, VendorId } from "../types/task.ts"
+import type { Task, TaskDispatcher, TaskId, TaskPRStatus, TaskStatus, VendorId } from "../types/task.ts"
 import { DEFAULT_TASK_VENDOR } from "../types/task.ts"
 import type { AdoptableWorktree } from "../types/worktree.ts"
 import { canonPath, normalizeMainRepo, randomDirTaskSuffix, titleFromRepo } from "./core-helpers.ts"
@@ -45,6 +45,8 @@ export interface CreateTaskInput {
   readonly modelEffort?: string
   /** Fan-out round marker shared by all siblings of one fan-out call. */
   readonly groupId?: string
+  /** The kobe session (task + tab) dispatching this create, when one is. */
+  readonly dispatcher?: TaskDispatcher
 }
 
 export type Unsubscribe = () => void
@@ -213,6 +215,7 @@ export class Orchestrator {
       vendor: input.vendor ?? DEFAULT_TASK_VENDOR,
       ...(input.modelEffort ? { modelEffort: input.modelEffort } : {}),
       ...(input.groupId ? { groupId: input.groupId } : {}),
+      ...(input.dispatcher ? { dispatcher: input.dispatcher } : {}),
     })
     // Remember the optional baseRef on a side-map so `ensureWorktree`
     // can use it. Not on the Task itself: base-ref is one-shot input

@@ -49,6 +49,14 @@ export interface TaskPRStatus {
   readonly lastError?: string
 }
 
+/** The kobe session (task + tab) that dispatched a task's creation — the
+ *  reply address a sub-task's bare `send` routes back to (mirrors
+ *  kobe/types/task.ts). Absent when created outside a kobe session. */
+export interface TaskDispatcher {
+  readonly taskId: string
+  readonly tabId: string
+}
+
 /** Pointer back to the external issue a task was started from. Snapshot for
  *  display; `url` is the durable way to the live item. Never synced. */
 export interface TaskLinkedWorkItem {
@@ -78,6 +86,8 @@ export interface DaemonTask {
   readonly quotaResume?: TaskQuotaResumeState
   /** The external tracker item this task was started from, when it was. */
   readonly linkedWorkItem?: TaskLinkedWorkItem
+  /** The kobe session (task + tab) that dispatched this task, when one did. */
+  readonly dispatcher?: TaskDispatcher
   readonly createdAt: string
   readonly updatedAt: string
 }
@@ -114,6 +124,7 @@ export interface DaemonOrchestrator {
     vendor?: VendorId
     modelEffort?: string
     groupId?: string
+    dispatcher?: TaskDispatcher
   }): Promise<DaemonTask>
   ensureMainTask(repo: string): Promise<DaemonTask>
   /** Open an existing directory as a standalone `kind:"dir"` task (`kobe .`). */

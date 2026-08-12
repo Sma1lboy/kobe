@@ -20,6 +20,7 @@ import { copyFile } from "node:fs/promises"
 import type {
   Task,
   TaskDeletionState,
+  TaskDispatcher,
   TaskLinkedWorkItem,
   TaskPRStatus,
   TaskQuotaResumeState,
@@ -159,6 +160,7 @@ function coerceTask(value: unknown): Task | null {
   const deletion = coerceDeletion(v.deletion)
   const quotaResume = coerceQuotaResume(v.quotaResume)
   const linkedWorkItem = coerceLinkedWorkItem(v.linkedWorkItem)
+  const dispatcher = coerceDispatcher(v.dispatcher)
 
   return {
     id: toTaskId(v.id),
@@ -189,9 +191,21 @@ function coerceTask(value: unknown): Task | null {
     // lost the tracker item it was started from.
     ...(quotaResume ? { quotaResume } : {}),
     ...(linkedWorkItem ? { linkedWorkItem } : {}),
+    // Reply address for the collaboration loop (issue #21) — must survive the
+    // load coercion or a daemon restart severs every sub-task's route home.
+    // Records that predate the field normalize to undefined.
+    ...(dispatcher ? { dispatcher } : {}),
     createdAt: v.createdAt,
     updatedAt: v.updatedAt,
   }
+}
+
+function coerceDispatcher(value: unknown): TaskDispatcher | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined
+  const v = value as Record<string, unknown>
+  if (typeof v.taskId !== "string" || v.taskId.length === 0) return undefined
+  if (typeof v.tabId !== "string" || v.tabId.length === 0) return undefined
+  return { taskId: v.taskId, tabId: v.tabId }
 }
 
 function coerceQuotaResume(value: unknown): TaskQuotaResumeState | undefined {

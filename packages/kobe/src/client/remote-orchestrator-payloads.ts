@@ -391,6 +391,7 @@ export function deserializeTask(s: SerializedTask): Task {
     modelEffort: s.modelEffort,
     groupId: s.groupId,
     deletion: s.deletion,
+    dispatcher: s.dispatcher,
     createdAt: s.createdAt,
     updatedAt: s.updatedAt,
   }

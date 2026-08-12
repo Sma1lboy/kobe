@@ -3,7 +3,7 @@ name: kobe
 description: Use when controlling kobe tasks, parallel coding attempts, hosted agent sessions, task lifecycle, or the daemon-owned issue tracker from a shell.
 ---
 
-<!-- kobe-skill-version: 16 — bump in lockstep with KOBE_SKILL_VERSION (src/lib/skill-install.ts). -->
+<!-- kobe-skill-version: 17 — bump in lockstep with KOBE_SKILL_VERSION (src/lib/skill-install.ts). -->
 
 # kobe shell control
 
@@ -30,15 +30,21 @@ lifecycle tracking, and an explicit outcome contract.
 - Delegating a scoped piece of work → `add --prompt`, not a raw `claude -p`
   child the user cannot see or manage.
 - Following up on a task you started → `send`; comparing → `collect`;
-  finished your own task and were spawned by another → `send` your outcome
-  back to the spawner (the first-prompt coda carries the exact command).
+  finished your own task and were spawned by another → a bare `send`
+  (no `--task-id`) replies to the DISPATCHER — the exact task + tab that
+  created you, recorded at creation (`.task.dispatcher` on `get-task`).
+  If that tab died it falls back to the dispatcher task's live canonical
+  engine tab; nothing alive fails loud (`DISPATCHER_UNREACHABLE`) — it
+  never spawns a new engine, so a failed reply is visible, not fake-ok.
 - Messaging another task's agent → `send`, and ONLY `send` — never relay
   through the user, a side file, or a generic peer channel. Sent from
   inside a kobe task, the prompt arrives prefixed `[KOBE PEER] from
   "<title>" (task <id> — load the kobe agent skill FIRST …)`, so the
   receiver knows who is talking, that this skill is required reading, and
-  how to answer — peer conversations need no coordinator and no human
-  relay. That prefix is the contract: do not strip it with `--plain` for
+  how to answer — the baked-in reply command is tab-precise
+  (`--task-id <sender> --tab <sender's tab>`), so peer conversations need
+  no coordinator and no human relay. That prefix is the contract: do not
+  strip it with `--plain` for
   coordination messages (`--plain` is only for a verbatim paste the
   receiver should treat as content, not conversation). Received a
   `[KOBE PEER]` message yourself? Load this skill first — required, not
@@ -86,6 +92,9 @@ kobe api fan-out --repo "$PWD" --agents claude:2,codex:1 --prompt "<prompt>"
 # (sender + reply command); --plain sends verbatim.
 kobe api send --task-id <id> --prompt "<complete next turn>"
 
+# Reply home: no --task-id inside a dispatched task = the dispatcher's tab.
+kobe api send --prompt "succeeded: <one line> (branch <final branch>)"
+
 # A task can hold several chat tabs. Enumerate them first (inspect's .tabs is
 # the sidebar's tab snapshot: id, kind, vendor, lastTitle), then address one:
 kobe api inspect --task-id <id>
@@ -98,8 +107,10 @@ kobe api list --pretty
 ```
 
 `.running` means the task's canonical Hosted PTY engine session is alive.
-Omitting `--tab` targets a live engine tab (`tab-1` first, then any surviving
-engine tab). Only when the task has NO live session at all does `send`
+Omitting BOTH `--task-id` and `--tab` inside a task that has a dispatcher
+targets that dispatcher's tab (see the reply rule above); otherwise the
+target is the active task. Omitting only `--tab` targets a live engine tab
+(`tab-1` first, then any surviving engine tab). Only when the task has NO live session at all does `send`
 auto-start the canonical engine in the task's worktree (`started: true` in
 the result marks that fresh session). If live tabs exist but none resolves
 as an engine, it refuses with `NO_ENGINE_TAB` — address one with `--tab
@@ -190,11 +201,12 @@ engine turn.
 Outcomes are explicit, never inferred — and they travel as a MESSAGE to the
 spawning agent's chat tab, not as stored state nobody reads.
 
-**Worker side** — a task created from inside another kobe task gets a coda
-on its first prompt naming its spawner; when the work is finished, run the
-baked-in command: `kobe api send --task-id <spawner> --prompt
-"<succeeded|failed>: <one line> (branch <final branch>)"`. Include the final
-branch name — the spawner needs it to `land`.
+**Worker side** — a task created from inside another kobe task records its
+dispatcher (the creating task + tab); when the work is finished, a bare
+`kobe api send --prompt "<succeeded|failed>: <one line> (branch <final
+branch>)"` routes the outcome back to that exact tab. Include the final
+branch name — the spawner needs it to `land`. The first-prompt coda still
+names the spawner for an explicit `--task-id` send.
 
 **Coordinator side** — do NOT block or poll. Keep working (or end your
 turn); each worker's outcome arrives in your chat as a `[KOBE PEER]` message

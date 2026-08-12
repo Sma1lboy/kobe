@@ -32,12 +32,12 @@ kobe api fan-out --repo "$PWD" \
 ```
 
 **Completion** — a worker spawned from another kobe task sends its outcome
-back to the spawner's chat tab (the first-prompt coda carries the exact
-command); no stored report, no blocking wait. Silence is a checkpoint,
-never a verdict:
+back to the dispatching chat tab: creation records the dispatcher
+(task + tab), so a bare `send` routes home without any id in hand; no
+stored report, no blocking wait. Silence is a checkpoint, never a verdict:
 
 ```bash
-kobe api send --task-id <spawner> --prompt "succeeded: auth flow simplified (branch kobe/auth-flow)"
+kobe api send --prompt "succeeded: auth flow simplified (branch kobe/auth-flow)"
 ```
 
 **Observe** — read the engine's own structured session, never scrape a TUI
@@ -92,9 +92,12 @@ paths against `$PWD` (`~` expanded). Engine vendors: `claude`, `codex`,
   (`code`/`signal`/`at`); clean exits stay `exit: null`. A live PTY session
   the persisted snapshot does not list still gets a row, marked
   `unregistered: true` — an alive engine is never invisible here.
+  `.task.dispatcher` (`{taskId, tabId}`) = the kobe session that created the
+  task, when one did — the lineage read for a fan-out round's parent.
 - `collect [--task-ids a,b,c] [--repo PATH]`: read-only comparison
-  snapshot of several tasks: identity, branch, `.running`, uncommitted
-  `.changes`, and committed `.base` (ahead count + diffstat vs base).
+  snapshot of several tasks: identity, branch, lineage (`.dispatcher`,
+  `.groupId`), `.running`, uncommitted `.changes`, and committed `.base`
+  (ahead count + diffstat vs base).
 - `digest --repo PATH [--since-days N]`: the repo's recent agent work —
   tasks touched in the window plus routine outcomes by status. Default
   window 7 days. Task outcomes are deliberately absent: completion travels
@@ -132,6 +135,11 @@ paths against `$PWD` (`~` expanded). Engine vendors: `claude`, `codex`,
   [--vendor V] [--title T] [--base-branch B]`: spawn N tasks of one prompt
   in a single call (parallel attempts). Capped at 10.
 
+A create issued from inside a kobe engine tab (`add`, `fan-out`) records
+the caller as the new task's `dispatcher` (`{taskId, tabId}` from
+`$KOBE_TASK_ID`/`$KOBE_TAB_ID`) — the reply address the worker's bare
+`send` routes back to. Creates from a plain shell or the TUI record none.
+
 A new task's FIRST prompt (`add --prompt`, `fan-out`, quick-fork) gets a
 short coda appended asking the agent to `set-branch` the auto-generated
 placeholder branch to a descriptive name. Prompts into existing sessions
@@ -140,10 +148,15 @@ placeholder branch to a descriptive name. Prompts into existing sessions
 ## drive
 
 - `send [--task-id ID] --prompt TEXT [--tab TAB] [--plain]`: paste a
-  follow-up into a task's running engine (one full turn). Defaults to the
-  active task and its canonical engine tab. From another kobe task, the
-  message includes `[KOBE PEER]` provenance and a reply command; `--plain`
-  skips that prefix. `--tab new` spawns a fresh engine tab, while `--tab
+  follow-up into a task's running engine (one full turn). Without
+  `--task-id`, a task that has a `dispatcher` on record replies to that
+  exact tab — falling back to the dispatcher task's live canonical engine
+  tab when the tab died, and failing loud (`DISPATCHER_UNREACHABLE`) when
+  nothing on that task is alive, never silently spawning a new engine.
+  Otherwise the default is the active task and its canonical engine tab.
+  From another kobe task, the message includes `[KOBE PEER]` provenance and
+  a tab-precise reply command (`--task-id <sender> --tab <sender's tab>`);
+  `--plain` skips that prefix. `--tab new` spawns a fresh engine tab, while `--tab
   tab-N` targets that exact tab (`TAB_NOT_FOUND` if it is dead or absent).
   Delivery needs a live engine in that tab: one that exited into the
   keep-alive shell refuses with `ENGINE_NOT_RUNNING` and a `--tab new` hint
