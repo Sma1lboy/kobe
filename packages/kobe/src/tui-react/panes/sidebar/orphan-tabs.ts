@@ -9,16 +9,18 @@
  *   - a session started by an older kobe, before the CLI wrote snapshots;
  *   - a snapshot reclaimed by the orphan sweep while its PTY lived on;
  *   - anything that opens a `<taskId>::<tabId>` session without going
- *     through either writer.
+ *     through either writer (issue #20: a canonical-spawn fallback ran a
+ *     live engine for 1h44m that the sidebar never showed).
  *
- * In every one of those the engine is alive and the sidebar showed the
- * worktree with nothing under it. So: derive rows from live sessions for
- * tasks the snapshot has no answer for. Snapshot wins whenever it HAS one —
- * it carries titles, ordinals, kinds and split state that a session key
- * can't, and a live session is only ever used to fill a hole.
+ * In every one of those the engine is alive and the sidebar showed either
+ * nothing or a tab list missing the session. So: reconcile at TAB
+ * granularity — any live session whose exact `<taskId>::<tabId>` key the
+ * snapshots don't answer for becomes an explicit "unregistered" row (⚠).
+ * A registered tab keeps its snapshot projection, which carries titles,
+ * ordinals, kinds and split state a session key can't.
  */
 
-import { type TreeTab, parseRowId } from "../../../tui/panes/sidebar/tree-core"
+import { type TreeTab, parseRowId, tabRowId } from "../../../tui/panes/sidebar/tree-core"
 
 /** One live pty-host session, as this module needs it. */
 export interface LiveSession {
@@ -29,29 +31,37 @@ export interface LiveSession {
 }
 
 /**
- * Group live sessions into tab projections per task, skipping every task in
- * `known` (the snapshot already answered for those).
+ * Group live sessions into UNREGISTERED tab rows per task, skipping every
+ * exact `<taskId>::<tabId>` key in `registered` (a snapshot answered for
+ * those tabs). Tab-granular on purpose: a task whose snapshot lists tab-2
+ * while tab-1 is alive must still surface tab-1 — that divergence is issue
+ * #20's invisible engine, and skipping whole tasks is what hid it.
  *
  * The label is the live process title when the host has one, else the tab
- * id — a headless `<taskId>::tab-1` has no recorded title anywhere, and
- * showing the id beats showing a row with no name.
+ * id, prefixed ⚠ — the row exists because the snapshot does NOT know this
+ * session, and that is worth a glance.
  */
 export function orphanTabsByTask(
   sessions: readonly LiveSession[],
-  known: ReadonlySet<string>,
+  registered: ReadonlySet<string>,
 ): Map<string, readonly TreeTab[]> {
   const byTask = new Map<string, TreeTab[]>()
   for (const session of sessions) {
     if (session.alive === false) continue
     // A pty key IS a tab row id (`<taskId>::<tabId>`) — same separator, same
     // parse rule, so the two can never disagree about what a key means.
-    const { taskId, tabId } = parseRowId(session.key)
-    if (!tabId || known.has(taskId)) continue
+    const { taskId, tabId: rawTabId } = parseRowId(session.key)
+    if (!rawTabId) continue
+    // A split's extra shell leaf (`<tabId>::leaf-N`) belongs to its tab.
+    const tabId = rawTabId.split("::")[0] as string
+    if (registered.has(tabRowId(taskId, tabId))) continue
     const tabs = byTask.get(taskId) ?? []
+    if (tabs.some((tab) => tab.id === tabId)) continue
     tabs.push({
       id: tabId,
-      label: session.title?.trim() || tabId,
-      // The sole tab of an orphaned task is necessarily its active one.
+      label: `⚠ ${session.title?.trim() || tabId}`,
+      // The first unregistered tab of a snapshot-less task reads active; the
+      // caller demotes this when merging under a task that has snapshot tabs.
       active: tabs.length === 0,
       // Assume engine: the headless launch path only ever starts engines,
       // and the state glyph is the reason these rows are worth showing.

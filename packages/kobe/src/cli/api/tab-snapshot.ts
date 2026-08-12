@@ -45,6 +45,11 @@ export interface TaskTabRow {
    *  null, per issue #9's no-noise rule); null while alive/unknown. Joined
    *  from the live host when present, else the durable exit records. */
   readonly exit: PtySessionExit | null
+  /** Present (true) only on rows derived from a LIVE pty session the
+   *  persisted snapshot does not list — issue #20's invisible engine. The
+   *  snapshot is a record of intent; the pty host holds the truth, and a
+   *  divergence must render as a row, not vanish. */
+  readonly unregistered?: true
 }
 
 /** The slice of a `pty.list` row the liveness joins below need. */
@@ -67,6 +72,30 @@ export function readTabsSnapshot(taskId: string): TabsState | undefined {
 const aliveKeysOf = (sessions: readonly TaskSessionRow[]): Set<string> =>
   new Set(sessions.filter((s) => s.alive).map((s) => s.key))
 
+/**
+ * Tab ids with a LIVE `<taskId>::<tabId>` pty session the snapshot does not
+ * list — the reconciliation read behind issue #20 (a canonical-spawn
+ * fallback, an older kobe, any future path that opens a session without
+ * writing the snapshot). Split leaves (`::leaf-N` suffix) belong to their
+ * tab and never count on their own, matching `joinTaskTabs`' exact-key rule.
+ */
+export function unregisteredTabIds(
+  snapshot: TabsState | undefined,
+  taskId: string,
+  sessions: readonly TaskSessionRow[],
+): string[] {
+  const known = new Set((snapshot?.tabs ?? []).map((t) => t.id))
+  const prefix = `${taskId}::`
+  const out: string[] = []
+  for (const s of sessions) {
+    if (!s.alive || !s.key.startsWith(prefix)) continue
+    const tabId = s.key.slice(prefix.length)
+    if (tabId.includes("::")) continue // split leaf — its tab is the row
+    if (!known.has(tabId) && !out.includes(tabId)) out.push(tabId)
+  }
+  return out
+}
+
 /** Abnormal death only — exit 0 without a signal is not worth surfacing. */
 const abnormalExit = (exit: PtySessionExit | null | undefined): PtySessionExit | null =>
   exit && (exit.code !== 0 || exit.signal !== null) ? exit : null
@@ -87,7 +116,7 @@ export function joinTaskTabs(
 ): TaskTabRow[] {
   const alive = aliveKeysOf(sessions)
   const sessionExits = new Map(sessions.map((s) => [s.key, s.exit]))
-  return (snapshot?.tabs ?? []).map((t) => {
+  const rows: TaskTabRow[] = (snapshot?.tabs ?? []).map((t) => {
     const key = `${taskId}::${t.id}`
     const isAlive = alive.has(key)
     return {
@@ -102,6 +131,25 @@ export function joinTaskTabs(
       exit: isAlive ? null : abnormalExit(sessionExits.get(key) ?? persistedExits[key]),
     }
   })
+  // Live sessions the snapshot doesn't know still get a row — the discovery
+  // read must show every engine that exists, not just the registered ones.
+  // "engine" is the same assumption the sidebar's orphan backstop documents:
+  // headless paths only ever start engines.
+  for (const tabId of unregisteredTabIds(snapshot, taskId, sessions)) {
+    rows.push({
+      id: tabId,
+      kind: "engine",
+      title: null,
+      vendor: null,
+      liveVendor: null,
+      lastTitle: null,
+      autoTitle: null,
+      alive: true,
+      exit: null,
+      unregistered: true,
+    })
+  }
+  return rows
 }
 
 /**
