@@ -142,7 +142,13 @@ placeholder branch to a descriptive name. Prompts into existing sessions
   Delivery needs a live engine in that tab: one that exited into the
   keep-alive shell refuses with `ENGINE_NOT_RUNNING` and a `--tab new` hint
   instead of pasting into a shell. Any registered engine passes, so a tab may
-  run a different vendor than its task.
+  run a different vendor than its task. Without `--tab`, the canonical target
+  is a live engine tab (`tab-1` first, then any surviving engine tab); when
+  live tabs exist but none resolves as an engine, `send` refuses with
+  `NO_ENGINE_TAB` rather than silently spawning a duplicate engine. Only a
+  task with no live session at all auto-starts its canonical engine tab, in
+  the task's worktree — `started: true` in the result marks that fresh
+  session (vs. delivery into an existing one).
 - `dispatch --task-id ID --prompt TEXT`: route text into a task's live
   session via the daemon's `session.deliver` channel; requires an
   already-hosted session (the dispatcher's messenger; see

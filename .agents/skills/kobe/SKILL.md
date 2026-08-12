@@ -3,7 +3,7 @@ name: kobe
 description: Use when controlling kobe tasks, parallel coding attempts, hosted agent sessions, task lifecycle, or the daemon-owned issue tracker from a shell.
 ---
 
-<!-- kobe-skill-version: 15 — bump in lockstep with KOBE_SKILL_VERSION (src/lib/skill-install.ts). -->
+<!-- kobe-skill-version: 16 — bump in lockstep with KOBE_SKILL_VERSION (src/lib/skill-install.ts). -->
 
 # kobe shell control
 
@@ -98,8 +98,13 @@ kobe api list --pretty
 ```
 
 `.running` means the task's canonical Hosted PTY engine session is alive.
-`send` reuses it or auto-starts it when absent; omitting `--tab` targets that
-canonical engine tab.
+Omitting `--tab` targets a live engine tab (`tab-1` first, then any surviving
+engine tab). Only when the task has NO live session at all does `send`
+auto-start the canonical engine in the task's worktree (`started: true` in
+the result marks that fresh session). If live tabs exist but none resolves
+as an engine, it refuses with `NO_ENGINE_TAB` — address one with `--tab
+tab-N` or spawn one with `--tab new`; it never silently spawns a duplicate
+engine.
 
 ## Terminal panes
 

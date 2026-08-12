@@ -1,3 +1,4 @@
+import { basename } from "node:path"
 import { KobeDaemonClient } from "@sma1lboy/kobe-daemon/client"
 import { ensurePtyHostReachable } from "@sma1lboy/kobe-daemon/client/pty-process"
 import { defaultPtyHostSocketPath } from "@sma1lboy/kobe-daemon/daemon/paths"
@@ -61,10 +62,29 @@ export async function killHostedSessions(rpc: HostedSessionRpc, keys: readonly s
 }
 
 /**
+ * True when a session's spawn argv contains `engineBin` as a standalone
+ * word. Hosted engine tabs launch via `<shell> -ilc '…<engineBin> …'`
+ * (`buildEngineSessionLaunch`), so `command[0]` is ALWAYS the shell — an
+ * argv[0] comparison against the engine binary never matches in production
+ * (issue #19: that dead fallback made delivery silently spawn a duplicate
+ * engine). Bare shell tabs (`[shell, "-il"]`) carry no engine word.
+ */
+export function commandHasEngineWord(command: readonly string[], engineBin: string): boolean {
+  for (const part of command) {
+    for (const token of part.split(/\s+/)) {
+      const bare = token.replace(/^['"]+|['"]+$/g, "")
+      if (bare && basename(bare) === engineBin) return true
+    }
+  }
+  return false
+}
+
+/**
  * Pick the ALIVE engine session key for `taskId`, or `null` when none.
- * Preference order: the deterministic `<taskId>::tab-1` engine tab, then a
- * session whose `command[0]` matches `engineBin` (a reattached/renumbered
- * engine). Bare shell tabs never match — they must never receive a prompt.
+ * Preference order: the deterministic `<taskId>::tab-1` engine tab, then any
+ * alive tab whose launch argv contains `engineBin` as a word (a renumbered
+ * or `--tab new` engine surviving tab-1's death). Bare shell tabs never
+ * match — they must never receive a prompt.
  */
 export function findHostedEngineKey(
   sessions: readonly PtySessionInfo[],
@@ -75,7 +95,7 @@ export function findHostedEngineKey(
   const tab1 = mine.find((s) => s.key === `${taskId}::tab-1`)
   if (tab1) return tab1.key
   if (engineBin) {
-    const byCommand = mine.find((s) => s.command[0] === engineBin)
+    const byCommand = mine.find((s) => commandHasEngineWord(s.command, engineBin))
     if (byCommand) return byCommand.key
   }
   return null
