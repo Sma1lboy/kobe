@@ -52,9 +52,9 @@ export function handleSubscribe(
   // (UiPrefsSync wants only ui-prefs + keybindings) stops receiving —
   // and deserializing — the full task.snapshot fan-out it never reads.
   client.channels = normalizeChannelFilter(payload.channels)
-  // First-time subscribe with zero prior subscribers → a collector that
-  // had paused (gui-less daemon) repopulates on its NEXT tick; nothing
-  // to kick synchronously since the interval keeps running.
+  // A collector paused while gui-less normally repopulates on its next tick.
+  // Latency-sensitive collectors may also be kicked by server.ts after this
+  // handler makes the zero-subscriber → one-subscriber transition visible.
   const firstSubscriber = !wasSubscribed
   // A GUI (re)attached → cancel any pending lazy-shutdown grace. A
   // pane subscribing must NOT cancel it: panes alone never keep the
