@@ -1,22 +1,31 @@
 name: Claude Code Review
 
+# This review is the slowest thing in the pipeline by far (~4-5 min against
+# ~1.5 min for every other job, which all run in parallel), so it is the only
+# gate worth being able to skip. Two exits, both deliberate:
+#
+#   1. `paths-ignore` — a PR that changes ONLY prose (Markdown, changesets,
+#      the agent skill) has no code for a code review to read. GitHub applies
+#      this only when EVERY changed file matches, so one .ts file brings the
+#      review back.
+#   2. `skip-review: <reason>` in the PR body — the author judged this diff
+#      too small to be worth five minutes. Same convention as the existing
+#      `coverage-exemption:` / `file-size-exemption:` escape hatches: cheap
+#      to use, but it leaves the reason in the PR for whoever reads it later.
+#
+# The hard gates (typecheck/test, behavior, file-size, coverage, changeset)
+# are NOT skippable — they are fast, and they are what protects a release.
 on:
   pull_request:
     types: [opened, synchronize, ready_for_review, reopened]
-    # Optional: Only run on specific file changes
-    # paths:
-    #   - "src/**/*.ts"
-    #   - "src/**/*.tsx"
-    #   - "src/**/*.js"
-    #   - "src/**/*.jsx"
+    paths-ignore:
+      - "**/*.md"
+      - ".changeset/**"
+      - ".agents/skills/**"
 
 jobs:
   claude-review:
-    # Optional: Filter by PR author
-    # if: |
-    #   github.event.pull_request.user.login == 'external-contributor' ||
-    #   github.event.pull_request.user.login == 'new-developer' ||
-    #   github.event.pull_request.author_association == 'FIRST_TIME_CONTRIBUTOR'
+    if: "!contains(github.event.pull_request.body, 'skip-review:')"
 
     runs-on: ubuntu-latest
     permissions:
