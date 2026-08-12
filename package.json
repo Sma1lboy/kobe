@@ -26,6 +26,7 @@
     "lint:fix": "biome check biome.json package.json docs packages/kobe packages/kobe-daemon packages/kobe-plugin-sdk --config-path ./biome.json --write",
     "changeset": "changeset",
     "changeset:status": "changeset status",
+    "ci:version": "changeset version && bun install && bun run lint:fix",
     "release": "scripts/release.sh",
     "preview:install": "scripts/preview-install.sh",
     "issues:archive": "node scripts/issues-archive.mjs"

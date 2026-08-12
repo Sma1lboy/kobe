@@ -1,7 +1,11 @@
 # Release pipeline.
 #
 # Trigger: pushing a `vX.Y.Z` tag, OR a prerelease tag `vX.Y.Z-<id>.<n>`
-# (e.g. `v0.6.1-experimental.0`). A plain semver tag publishes to the npm
+# (e.g. `v0.6.1-experimental.0`), OR a workflow_dispatch ON a tag ref —
+# that's how changesets.yml starts this pipeline, because a tag pushed
+# with GITHUB_TOKEN never fires the tag trigger (GitHub's recursion
+# guard). Dispatched on a tag ref, GITHUB_REF_NAME is the tag name, so
+# every step below works identically for both triggers. A plain semver tag publishes to the npm
 # `latest` dist-tag and a normal GitHub release; a prerelease tag
 # publishes to a dist-tag named after the prerelease identifier (the
 # `experimental` in `0.6.1-experimental.0`) and marks the GitHub release
@@ -32,6 +36,7 @@ on:
     tags:
       - "v[0-9]+.[0-9]+.[0-9]+"
       - "v[0-9]+.[0-9]+.[0-9]+-*"
+  workflow_dispatch:
 
 # Default permissions are set to read-only for security; the publish
 # job re-grants only what it actually needs.
