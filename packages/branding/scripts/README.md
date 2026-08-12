@@ -20,10 +20,9 @@ cp out/quicklook-replay.mp4 ../../docs/assets/demo.mp4
 
 - `KOBE_REPLAY_CLAUDE_COMMAND` points the claude engine at
   `scripts/fixtures/claude-demo`, a stub that does REAL work in the task
-  worktree (rewrites `src/session.ts`, commits, files a worker report via
-  `kobe api report`) so every frame is the product's own rendering with no
-  real-engine auth/quota/nondeterminism. Without it the capture launches the
-  installed Claude binary from `PATH`.
+  worktree (rewrites `src/session.ts`, commits) so every frame is the
+  product's own rendering with no real-engine auth/quota/nondeterminism.
+  Without it the capture launches the installed Claude binary from `PATH`.
 - `SHELL=/bin/sh` keeps shell tabs on a bland `sh-3.2$` prompt (the
   `shellPrompt` wait pattern) instead of the user's zsh setup.
 - The typed `kobe` in shell tabs resolves through `bun run`'s

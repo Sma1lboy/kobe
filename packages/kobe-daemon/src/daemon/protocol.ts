@@ -132,11 +132,6 @@ export type DaemonRequestName =
   // fractional `position` keys for per-status column order. ONE snapshot
   // push per batch; the TUI never reads `position`.
   | "task.reorder"
-  // Worker-side outcome self-report (`kobe api report`): store an explicit
-  // `succeeded`/`failed` verdict on the task, verbatim, as `workerReport` —
-  // worker report, not kobe-verified. The task-snapshot fan-out then lets a
-  // coordinator's `kobe api await` settle without polling.
-  | "task.report"
   | "task.ensureMain"
   // Open an existing directory as a standalone `kind:"dir"` task (`kobe .`).
   | "task.openDir"
@@ -386,8 +381,6 @@ export interface SerializedTask {
   readonly modelEffort?: string
   /** Fan-out round marker shared by the siblings of one fan-out call. */
   readonly groupId?: string
-  /** The worker's self-reported outcome (worker report, not kobe-verified). */
-  readonly workerReport?: DaemonTask["workerReport"]
   /** Durable daemon-owned background deletion state. */
   readonly deletion?: DaemonTask["deletion"]
   /** Durable rate-limit auto-resume schedule. */
@@ -413,7 +406,6 @@ export function serializeTask(task: DaemonTask): SerializedTask {
     position: task.position,
     modelEffort: task.modelEffort,
     groupId: task.groupId,
-    workerReport: task.workerReport,
     deletion: task.deletion,
     quotaResume: task.quotaResume,
     linkedWorkItem: task.linkedWorkItem,

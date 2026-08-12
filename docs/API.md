@@ -31,12 +31,13 @@ kobe api fan-out --repo "$PWD" \
   --prompt "Try independent approaches to simplify the auth flow."
 ```
 
-**Supervise** — workers file an explicit outcome; the coordinator blocks
-until the round settles. Silence is a checkpoint, never a verdict:
+**Completion** — a worker spawned from another kobe task sends its outcome
+back to the spawner's chat tab (the first-prompt coda carries the exact
+command); no stored report, no blocking wait. Silence is a checkpoint,
+never a verdict:
 
 ```bash
-kobe api report --outcome succeeded --summary "auth flow simplified"   # inside an attempt
-kobe api await --task-ids a,b,c --timeout-secs 900                     # from the orchestrator
+kobe api send --task-id <spawner> --prompt "succeeded: auth flow simplified (branch kobe/auth-flow)"
 ```
 
 **Observe** — read the engine's own structured session, never scrape a TUI
@@ -93,10 +94,9 @@ paths against `$PWD` (`~` expanded). Engine vendors: `claude`, `codex`,
   snapshot of several tasks: identity, branch, `.running`, uncommitted
   `.changes`, and committed `.base` (ahead count + diffstat vs base).
 - `digest --repo PATH [--since-days N]`: the repo's recent agent work —
-  `succeeded` / `failed` / `unreported` task counts, routine outcomes by
-  status, and the newest named failures. Default window 7 days. These are
-  what workers *claimed* via `report`, never what kobe verified; a rising
-  `unreported` share means the fleet is drifting out of the contract.
+  tasks touched in the window plus routine outcomes by status. Default
+  window 7 days. Task outcomes are deliberately absent: completion travels
+  to the spawning agent's chat tab (`send`), not into kobe state.
 - `pty-list` *(offline)*: hosted PTY sessions (key, alive, pid, command,
   live window title). Empty when no PTY host runs.
 - `read-output [--task-id ID] [--source auto|history|terminal] [--cursor C]
@@ -170,17 +170,6 @@ placeholder branch to a descriptive name. Prompts into existing sessions
   title it was opened with. Engine panes are never closed. Broadcast over
   the daemon's `tab.close` channel; an attached TUI performs the close
   (headless, nothing happens).
-
-## supervise
-
-- `report --outcome succeeded|failed [--task-id ID] [--summary TEXT]`:
-  worker-side. Files an EXPLICIT outcome for a task, stored verbatim as its
-  `workerReport` (worker report, not kobe-verified; kobe never infers an
-  outcome). Task defaults to `$KOBE_TASK_ID`, then the cwd's worktree.
-- `await --task-ids a,b,c [--timeout-secs N]`: coordinator-side. Blocks
-  (poll-free, on daemon push) until every listed task has a worker report,
-  then returns all outcomes as JSON. A timeout is a checkpoint, not a
-  failure: exit 0 with `{ timedOut: true, ... }` (default 900 s).
 
 ## edit
 

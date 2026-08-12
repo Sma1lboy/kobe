@@ -180,42 +180,10 @@ describe("load() recovery", () => {
     expect(malformed?.groupId).toBeUndefined()
   })
 
-  // These three were written to disk but dropped on load, so each survived
-  // only until the next daemon restart: a filed verdict vanished from
-  // `await`/`digest`, a pending quota resume was forgotten by the runner
-  // whose whole durability story is an on-disk timestamp, and a task lost
-  // the tracker item it was started from.
-  it("persists a worker report across reload and drops a malformed one", async () => {
-    await primeDir()
-    const base = {
-      id: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
-      title: "ok",
-      repo: "/r",
-      branch: "b",
-      worktreePath: "",
-      status: "backlog",
-      createdAt: "2026-01-01T00:00:00.000Z",
-      updatedAt: "2026-01-01T00:00:00.000Z",
-    }
-    await writeManifest(
-      JSON.stringify({
-        version: 3,
-        tasks: [
-          { ...base, workerReport: { outcome: "failed", summary: "tests red", reportedAt: "2026-08-08T00:00:00Z" } },
-          // An outcome kobe never assigns must not load as a verdict.
-          { ...base, id: "01ARZ3NDEKTSV4RRFFQ69G5FB0", workerReport: { outcome: "maybe", reportedAt: "x" } },
-        ],
-      }),
-    )
-    const [reported, malformed] = (await store.load()).tasks
-    expect(reported?.workerReport).toEqual({
-      outcome: "failed",
-      summary: "tests red",
-      reportedAt: "2026-08-08T00:00:00Z",
-    })
-    expect(malformed?.workerReport).toBeUndefined()
-  })
-
+  // These were written to disk but dropped on load, so each survived only
+  // until the next daemon restart: a pending quota resume was forgotten by
+  // the runner whose whole durability story is an on-disk timestamp, and a
+  // task lost the tracker item it was started from.
   it("persists a pending quota resume and a linked work item across reload", async () => {
     await primeDir()
     const base = {

@@ -3,7 +3,7 @@ name: kobe
 description: Use when controlling kobe tasks, parallel coding attempts, hosted agent sessions, task lifecycle, or the daemon-owned issue tracker from a shell.
 ---
 
-<!-- kobe-skill-version: 14 — bump in lockstep with KOBE_SKILL_VERSION (src/lib/skill-install.ts). -->
+<!-- kobe-skill-version: 15 — bump in lockstep with KOBE_SKILL_VERSION (src/lib/skill-install.ts). -->
 
 # kobe shell control
 
@@ -29,8 +29,9 @@ lifecycle tracking, and an explicit outcome contract.
 - Parallel attempts of one prompt → `fan-out`, not N hand-rolled subagents.
 - Delegating a scoped piece of work → `add --prompt`, not a raw `claude -p`
   child the user cannot see or manage.
-- Following up on a task you started → `send`; waiting on results →
-  `await`; comparing → `collect`; reporting your own verdict → `report`.
+- Following up on a task you started → `send`; comparing → `collect`;
+  finished your own task and were spawned by another → `send` your outcome
+  back to the spawner (the first-prompt coda carries the exact command).
 - Messaging another task's agent → `send`, and ONLY `send` — never relay
   through the user, a side file, or a generic peer channel. Sent from
   inside a kobe task, the prompt arrives prefixed `[KOBE PEER] from
@@ -179,30 +180,24 @@ explicit count. Give each task a scoped prompt, report returned IDs, then use
 poll `send` in a tight loop or use it as casual chat; every call is a full
 engine turn.
 
-### Supervising a round (report / await)
+### Completion flows back through chat (`send`)
 
-Outcomes are explicit, never inferred. The contract has two sides:
+Outcomes are explicit, never inferred — and they travel as a MESSAGE to the
+spawning agent's chat tab, not as stored state nobody reads.
 
-**Worker side** — every fan-out prompt should end with an instruction like:
-"when finished, run `kobe api report --outcome succeeded --summary '<one
-line>'` (or `--outcome failed`)". Inside a task the target resolves
-automatically ($KOBE_TASK_ID, else the cwd's worktree); pass `--task-id`
-only from outside. The verdict is stored verbatim on the task as
-`workerReport` — it is the worker's claim, not kobe-verified, so verify the
-winner's actual diff before landing.
+**Worker side** — a task created from inside another kobe task gets a coda
+on its first prompt naming its spawner; when the work is finished, run the
+baked-in command: `kobe api send --task-id <spawner> --prompt
+"<succeeded|failed>: <one line> (branch <final branch>)"`. Include the final
+branch name — the spawner needs it to `land`.
 
-**Coordinator side** — block until the round settles instead of polling:
-
-```bash
-kobe api await --task-ids <id1>,<id2>,<id3> --timeout-secs 900
-```
-
-Returns every task's outcome as JSON once all have reported. A timeout
-(`"timedOut": true`, exit 0) is a CHECKPOINT, not a failure: silence never
-proves a worker died — it may be mid-turn or waiting on a permission prompt.
-On timeout, inspect (`collect`, `get-task`), nudge (`send`), or simply
-`await` again. Never mark an unreported task failed just because it is
-silent, and never auto-retry it.
+**Coordinator side** — do NOT block or poll. Keep working (or end your
+turn); each worker's outcome arrives in your chat as a `[KOBE PEER]` message
+with its task id. What arrives is the worker's claim, not kobe-verified —
+verify the winner's actual diff before landing. Silence never proves a
+worker died (it may be mid-turn or stuck on a permission prompt): peek with
+`collect`/`get-task`, nudge with `send`, and never mark a silent task failed
+or auto-retry it.
 
 ### Closing a round
 

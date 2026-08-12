@@ -141,4 +141,20 @@ describe("resolveEngineLaunchInit", () => {
     const msg = resolveEngineLaunchInit(wt, wt, { kind: "new-task", prompt: "fix the bug" }).firstMessage
     expect(msg?.text).toContain('set-branch --task-id "$KOBE_TASK_ID" --branch')
   })
+
+  // Why: outcomes travel as chat back to the spawner, not stored reports —
+  // the coda bakes in the exact send command so the channel needs no
+  // coordinator discipline to work.
+  test("new-task with a spawner appends the send-back coda; without one it does not", () => {
+    const wt = makeWorktree()
+    const spawned = resolveEngineLaunchInit(
+      wt,
+      wt,
+      { kind: "new-task", prompt: "fix the bug", spawnerTaskId: "spawner-1" },
+      "task-9",
+    ).firstMessage
+    expect(spawned?.text).toContain("send --task-id spawner-1 --prompt")
+    const solo = resolveEngineLaunchInit(wt, wt, { kind: "new-task", prompt: "fix the bug" }, "task-9").firstMessage
+    expect(solo?.text).not.toContain("send --task-id")
+  })
 })

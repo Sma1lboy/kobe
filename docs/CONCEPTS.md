@@ -129,9 +129,9 @@ kobe api fan-out --repo "$PWD" \
   --prompt "Try independent approaches to simplify the auth flow."
 ```
 
-Each attempt is its own Task with its own worktree. Supervise with
-`kobe api await`, compare with `kobe api collect`, merge with
-`kobe api land`.
+Each attempt is its own Task with its own worktree. Workers message their
+outcome back to the spawning agent's chat tab (`kobe api send`); compare
+with `kobe api collect`, merge with `kobe api land`.
 
 **Over SSH, on the machine your code lives on.** The daemon and PTY host run
 on that machine, so closing your laptop kills nothing. SSH back in, run

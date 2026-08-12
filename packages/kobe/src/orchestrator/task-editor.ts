@@ -18,7 +18,6 @@ import type {
   TaskPRStatus,
   TaskQuotaResumeState,
   TaskStatus,
-  TaskWorkerReport,
   VendorId,
 } from "../types/task.ts"
 import { IllegalTransitionError, TaskNotFoundError } from "./errors.ts"
@@ -230,17 +229,6 @@ export class TaskEditor {
     const task = this.requireTask(id)
     if (samePrStatus(task.prStatus, prStatus ?? undefined)) return
     await this.store.update(task.id, { prStatus: prStatus ?? undefined })
-  }
-
-  /**
-   * Store a worker's self-reported terminal outcome (`kobe api report`)
-   * verbatim — worker report, not kobe-verified; kobe never derives or
-   * second-guesses it. A later report overwrites an earlier one (a worker
-   * may fail, be re-prompted, and then succeed within the same task).
-   */
-  async setWorkerReport(id: TaskId | string, report: TaskWorkerReport): Promise<void> {
-    const task = this.requireTask(id)
-    await this.store.update(task.id, { workerReport: report })
   }
 
   /**

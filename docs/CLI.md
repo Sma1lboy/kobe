@@ -263,7 +263,7 @@ Not in `--help`, listed so they aren't a mystery if you see them:
 ## Exit codes
 
 - **0** — success, including "already in that state" (`daemon stop` with no
-  daemon) and `kobe api await` timeouts.
+  daemon).
 - **1** — runtime failure: `kobe add` on a non-repo, no editor found, no
   daemon for `daemon status`, plugin errors.
 - **2** — bad invocation: unknown command, verb, or flag; missing value.
@@ -282,7 +282,7 @@ without a daemon, use `kobe export --json`.
 | `KOBE_DAEMON_WEB_PORT` | Web dashboard port (default 45174; `0`/`off` disables) |
 | `KOBE_DEV=1` | Mark a developer checkout — hides the update chip |
 | `KOBE_DEBUG=1` | Print full startup errors instead of one line |
-| `KOBE_TASK_ID` / `KOBE_TAB_ID` | Set inside engine tabs; how `kobe api report` finds its task |
+| `KOBE_TASK_ID` / `KOBE_TAB_ID` | Set inside engine tabs; how `kobe api` verbs resolve the calling task |
 
 `KOBE_OPEN_EDITOR` wins over kobe's auto-detection, and it's separate from the
 `editor.*` settings, which pick your TTY editor.

@@ -2,10 +2,9 @@
 # Demo stub engine for the README replay capture. Select it with
 # KOBE_REPLAY_CLAUDE_COMMAND so a capture is deterministic and free of
 # real-engine auth/quota. It looks like an engine session but does REAL
-# work in the task worktree: rewrites src/session.ts, commits, and files a
-# genuine worker report through `kobe api report` (KOBE_TASK_ID is exported
-# into every engine tab), so sidebar state and diffs in the capture are the
-# product's own rendering, never mocked frames.
+# work in the task worktree: rewrites src/session.ts and commits, so
+# sidebar state and diffs in the capture are the product's own rendering,
+# never mocked frames.
 trap 'exit 0' INT TERM HUP
 
 C='\033[1;38;2;204;120;92m'
@@ -50,10 +49,7 @@ EOF
   sleep 2
   git add -A >/dev/null 2>&1
   git commit -q -m "refactor: simplify session refresh" >/dev/null 2>&1
-  if command -v kobe >/dev/null 2>&1 && [ -n "$KOBE_TASK_ID" ]; then
-    kobe api report --outcome succeeded --summary "session refresh simplified, tests green" >/dev/null 2>&1
-  fi
-  printf "\n${G}\xe2\x9c\x93${R} committed ${B}refactor: simplify session refresh${R} ${D}\xc2\xb7 outcome reported${R}\n"
+  printf "\n${G}\xe2\x9c\x93${R} committed ${B}refactor: simplify session refresh${R}\n"
 }
 
 # The launch argv carries engine flags (--session-id <id>,

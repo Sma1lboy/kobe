@@ -9,7 +9,6 @@ import { handlePtyList, simpleRpc } from "./handler-helpers.ts"
 import { DIGEST_VERB } from "./handlers-digest.ts"
 import { collect, fanOut, feedback } from "./handlers-fanout.ts"
 import { INSPECT_VERB } from "./handlers-inspect.ts"
-import { OUTCOME_VERBS } from "./handlers-outcome.ts"
 import { PANE_CLOSE_VERB, PANE_VERB } from "./handlers-pane.ts"
 import {
   add,
@@ -74,7 +73,6 @@ export const VERB_GROUPS: Readonly<Record<string, readonly string[]>> = {
   read: ["list", "get-task", "collect", "digest", "pty-list", "read-output", "inspect"],
   create: ["add", "fan-out"],
   drive: ["send", "dispatch", "note", "note-list", "set-active", "pane-open", "pane-close", "notify"],
-  supervise: ["report", "await"],
   edit: ["rename", "set-branch", "set-vendor", "set-status"],
   issues: ["issue-list", "issue-create", "issue-set-status", "issue-update"],
   workitems: ["workitem-list", "workitem-start"],
@@ -338,16 +336,13 @@ export const VERBS: readonly VerbSpec[] = [
     ],
     handler: collect,
   },
-  // The ruler: an aggregate read over worker reports + routine runs. Spec +
+  // The ruler: an aggregate read over recent tasks + routine runs. Spec +
   // handler in ./handlers-digest.ts.
   DIGEST_VERB,
   // Production diagnostics aggregate (daemon activity registry + pty
   // sessions with live foreground walk + persisted tab snapshots). Spec +
   // handler in ./handlers-inspect.ts.
   INSPECT_VERB,
-  // Supervision (worker `report` / coordinator `await`) — specs + handlers
-  // live in ./handlers-outcome.ts; spread keeps this table the single index.
-  ...OUTCOME_VERBS,
   READ_OUTPUT_VERB,
   {
     name: "rename",
