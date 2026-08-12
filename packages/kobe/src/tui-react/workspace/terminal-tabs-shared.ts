@@ -187,6 +187,34 @@ export function takeUnclaimedTabClose(): { taskId: string; tabId: string } | nul
   return pending
 }
 
+/**
+ * Cross-component "adopt these live tab ids" request — same claim protocol as
+ * {@link requestTabClose}: a mounted TerminalTabs owns its task's state and
+ * must do the write itself, and only an UNCLAIMED request may be written in
+ * the background. See `terminal-tabs-adopt.ts` for what adoption is for.
+ */
+let pendingTabAdopt: { taskId: string; tabIds: readonly string[] } | null = null
+
+export function requestTabAdopt(taskId: string, tabIds: readonly string[]): void {
+  pendingTabAdopt = { taskId, tabIds }
+  for (const listener of tabActivationListeners) listener()
+}
+
+/** Consume a pending adoption for this task, or null. */
+export function takeTabAdopt(taskId: string): readonly string[] | null {
+  if (pendingTabAdopt?.taskId !== taskId) return null
+  const tabIds = pendingTabAdopt.tabIds
+  pendingTabAdopt = null
+  return tabIds
+}
+
+/** The twin of {@link takeUnclaimedTabClose} for adoption. */
+export function takeUnclaimedTabAdopt(): { taskId: string; tabIds: readonly string[] } | null {
+  const pending = pendingTabAdopt
+  pendingTabAdopt = null
+  return pending
+}
+
 /** Consume a pending tab-open for this task, or null. */
 export function takeTabOpen(
   taskId: string,

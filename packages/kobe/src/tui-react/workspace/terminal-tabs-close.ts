@@ -18,6 +18,7 @@
  * surface — this one reaches into the PTY registry and the split helper.
  */
 
+import { getSharedPtyClient } from "../../tui/panes/terminal/pty-hosted-client"
 import { getDefaultPtyRegistry } from "../../tui/panes/terminal/registry"
 import {
   type TabsState,
@@ -41,7 +42,28 @@ export function releaseClosedTabPtys(taskId: string, closing: TerminalTab | unde
   const key = closing ? tabPtyKeyFor(taskId, closing) : tabPtyKey(taskId, closedId)
   releaseSplitLeaves(key, closing?.splitTree ?? null)
   if (closing?.kind === "engine" && closing.ptyTask) return
-  getDefaultPtyRegistry().release(key)
+  const registry = getDefaultPtyRegistry()
+  // `release()` can only kill what THIS process holds a handle for, and the
+  // sidebar closes tabs of tasks it never attached to (a task not mounted
+  // since the TUI started owns no local handle). Its hosted session then
+  // outlived the row that named it — an engine running with no UI presence,
+  // which is exactly the divergence `tabs-adopt.ts` has to clean up after.
+  // So when there is no handle, tell the host directly.
+  const local = registry.get(key)
+  registry.release(key)
+  if (!local) void killHostedSession(key)
+}
+
+/** Best-effort `pty.kill` for a key with no local handle. Every failure mode
+ *  (no host, no verb, dead socket) means the session is already unreachable
+ *  from here, which is the same outcome as the kill succeeding. */
+function killHostedSession(key: string): Promise<void> {
+  return getSharedPtyClient()
+    .then((client) => client.request("pty.kill", { key }))
+    .then(
+      () => undefined,
+      () => undefined,
+    )
 }
 
 /** The tab state a non-mounted task has: its live module entry, else the

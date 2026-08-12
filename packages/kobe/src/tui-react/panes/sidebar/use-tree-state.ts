@@ -33,6 +33,7 @@ import {
 import { getDefaultLiveEngines } from "../../../tui/workspace/live-engine"
 import { tabTitleStable } from "../../../tui/workspace/terminal-tab-split"
 import { tabPtyKeyFor } from "../../../tui/workspace/terminal-tabs-core"
+import { adoptTaskTabs } from "../../workspace/terminal-tabs-adopt"
 import type { TabsSnapshotKv } from "../../workspace/terminal-tabs-persist"
 import { knownTaskTabs } from "../../workspace/terminal-tabs-shared"
 import { orphanTabsByTask } from "./orphan-tabs"
@@ -90,7 +91,7 @@ export function useTreeState(opts: TreeStateOpts): TreeState {
   // Tab projection. `tasks` identity changes on every daemon snapshot echo,
   // which is also exactly when a tab's live title may have moved — so this
   // recomputing with it is correct, not wasteful.
-  const tabsByTask = useMemo<ReadonlyMap<string, readonly TreeTab[]>>(() => {
+  const snapshotTabs = useMemo<ReadonlyMap<string, readonly TreeTab[]>>(() => {
     void liveTick
     const map = new Map<string, readonly TreeTab[]>()
     for (const task of tasks) {
@@ -132,22 +133,50 @@ export function useTreeState(opts: TreeStateOpts): TreeState {
         }),
       )
     }
-    // Backstop: any LIVE pty session the snapshots don't answer for renders
-    // as an explicit unregistered row — tab-granular, so a task whose
-    // snapshot lists tab-2 while tab-1 is alive still shows tab-1 (issue
-    // #20's invisible engine). A registered tab keeps its richer snapshot
-    // projection. See `orphan-tabs.ts`.
+    return map
+  }, [tasks, kv, liveEngines, liveTick])
+
+  // Backstop: any LIVE pty session the snapshots don't answer for becomes an
+  // explicit unregistered row — tab-granular, so a task whose snapshot lists
+  // tab-2 while tab-1 is alive still shows tab-1 (issue #20's invisible
+  // engine). See `orphan-tabs.ts`.
+  const orphansByTask = useMemo<ReadonlyMap<string, readonly TreeTab[]>>(() => {
     const registered = new Set<string>()
-    for (const [taskId, tabs] of map) for (const tab of tabs) registered.add(tabRowId(taskId, tab.id))
+    for (const [taskId, tabs] of snapshotTabs) for (const tab of tabs) registered.add(tabRowId(taskId, tab.id))
+    const map = new Map<string, readonly TreeTab[]>()
     for (const [taskId, orphans] of orphanTabsByTask(hostSessions, registered)) {
-      if (!tasks.some((t) => t.id === taskId)) continue
+      if (tasks.some((task) => task.id === taskId)) map.set(taskId, orphans)
+    }
+    return map
+  }, [snapshotTabs, hostSessions, tasks])
+
+  // …and then it stops being unregistered: a row nobody can open or close is
+  // worse than the divergence it reports (the owner watched a live engine he
+  // could neither read nor end). Adoption writes the session into the task's
+  // tab state, so the ⚠ row turns into an ordinary tab on the next tick —
+  // idempotent, so the poll driving it costs nothing once reconciled.
+  useEffect(() => {
+    if (!kv) return
+    for (const [taskId, orphans] of orphansByTask) {
+      adoptTaskTabs(
+        kv,
+        taskId,
+        orphans.map((tab) => tab.id),
+      )
+    }
+  }, [orphansByTask, kv])
+
+  const tabsByTask = useMemo<ReadonlyMap<string, readonly TreeTab[]>>(() => {
+    if (orphansByTask.size === 0) return snapshotTabs
+    const map = new Map<string, readonly TreeTab[]>(snapshotTabs)
+    for (const [taskId, orphans] of orphansByTask) {
       const existing = map.get(taskId)
       // Appended under a task with snapshot tabs, an orphan is never the
       // active one — the snapshot's activeId owns that.
       map.set(taskId, existing ? [...existing, ...orphans.map((tab) => ({ ...tab, active: false }))] : orphans)
     }
     return map
-  }, [tasks, kv, liveEngines, liveTick, hostSessions])
+  }, [snapshotTabs, orphansByTask])
 
   const recentTask = opts.recentTask ?? null
   const { rows, totalCount } = useMemo(() => {

@@ -46,7 +46,6 @@ import { buildDiffReview } from "../../tui/ops/diff-comments"
 import { warmHostedShell } from "../../tui/panes/terminal/pty-hosted"
 import { defaultShell } from "../../tui/panes/terminal/pty-types"
 import { getDefaultPtyRegistry } from "../../tui/panes/terminal/registry"
-import { closePluginPanes, openPluginPane } from "../../tui/workspace/pane-split"
 import { shellIdentityInput } from "../../tui/workspace/terminal-tab-spawn"
 import {
   type EngineTab,
@@ -87,19 +86,12 @@ import { noteEngineInput } from "./optimistic-activity"
 import { TabStrip, tabTitle } from "./tab-strip"
 import { releaseClosedTabPtys } from "./terminal-tabs-close"
 import { terminalTabsKey } from "./terminal-tabs-persist"
-import {
-  reportTabsDelta,
-  tabActivationListeners,
-  tabsByTask,
-  takePaneClose,
-  takeTabActivation,
-  takeTabClose,
-  takeTabOpen,
-} from "./terminal-tabs-shared"
+import { reportTabsDelta, tabsByTask } from "./terminal-tabs-shared"
 import { useTabClose } from "./use-tab-close"
 import { useTabDialogs } from "./use-tab-dialogs"
 import { useTabHandoffs } from "./use-tab-handoffs"
 import { useTabHydration, useTabNaming } from "./use-tab-lifecycle"
+import { useTabRequests } from "./use-tab-requests"
 import { useTabTurnState } from "./use-tab-turn-state"
 
 export interface TerminalTabsProps {
@@ -199,10 +191,8 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
     kv.set(persistKey, next)
   }
 
-  // Attention-jump tab activation (F7): consume a pending request for this
-  // task — on mount (the host just selected the task, then TerminalTabs
-  // mounted) and on requests fired while already mounted. A request naming a
-  // tab that no longer exists is dropped. Mount-only; reads via refs.
+  // Cross-component tab requests (activation / pane open+close / close /
+  // adopt) are consumed by `useTabRequests` below — it needs these refs.
   const updateRef = useLatest(update)
 
   /** The active tab's focused-leaf emulator cells — feeds split-core's size
@@ -215,49 +205,8 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
     const key = splitLeafPtyKey(tabPtyKeyFor(propsRef.current.taskId, tab), leafId)
     return getDefaultPtyRegistry().get(key)?.size ?? null
   }
-  // Latest-render mirror for the mount-once consume() closure (as updateRef).
+  // Latest-render mirror for the mount-once request-consume closure.
   const activeLeafSizeRef = useLatest(activeLeafSize)
-
-  useEffect(() => {
-    const consume = (): void => {
-      const tabId = takeTabActivation(propsRef.current.taskId)
-      if (tabId) {
-        const s = stateRef.current
-        if (s.activeId !== tabId && s.tabs.some((tab) => tab.id === tabId)) updateRef.current(selectTab(s, tabId))
-      }
-      // Plugin panes (`tab.open`): split the focused chattab (default) or
-      // open a separate command tab — pane-split.ts owns the policy.
-      const open = takeTabOpen(propsRef.current.taskId)
-      if (open) {
-        const size = activeLeafSizeRef.current()
-        updateRef.current(openPluginPane(stateRef.current, open.argv, open.title, open.placement, open.direction, size))
-      }
-      // Pane-close (`tab.close` — the inverse of tab.open): prune matching
-      // titled leaves (state first, then release), close whole matching
-      // command tabs via the normal close path.
-      const paneClose = takePaneClose(propsRef.current.taskId)
-      if (paneClose) {
-        const prev = stateRef.current
-        const { next, closedLeaves, closedTabIds } = closePluginPanes(prev, paneClose.title)
-        if (next !== prev) updateRef.current(next)
-        for (const { tabId, leafId } of closedLeaves) {
-          const tab = prev.tabs.find((x) => x.id === tabId)
-          if (tab) getDefaultPtyRegistry().release(splitLeafPtyKey(tabPtyKeyFor(propsRef.current.taskId, tab), leafId))
-        }
-        for (const id of closedTabIds) tabCloseRef.current.closeById(id)
-      }
-      // Close-from-elsewhere (the sidebar tree's menu): claiming it here is
-      // what keeps `closeTaskTab` from ALSO writing the background state —
-      // this component owns the state while it is mounted.
-      const closeId = takeTabClose(propsRef.current.taskId)
-      if (closeId) tabCloseRef.current.closeById(closeId)
-    }
-    consume()
-    tabActivationListeners.add(consume)
-    return () => {
-      tabActivationListeners.delete(consume)
-    }
-  }, [])
 
   /** Engine-tab spawn: the composition (shell wrap + resume-vs-pin +
    *  first-spawn initial prompt, issue #17) is pure — `engineTabSpawnFor`;
@@ -376,6 +325,10 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
   // The pending-close listener is mount-only, so it reaches the CURRENT hook
   // through a ref rather than the one from its first render.
   const tabCloseRef = useLatest(tabClose)
+
+  // Cross-component requests aimed at this task: F7 activation, plugin-pane
+  // open/close, sidebar close, adoption of unregistered live sessions.
+  useTabRequests({ stateRef, propsRef, updateRef, tabCloseRef, activeLeafSizeRef })
 
   // Rename + the unified new-conversation dialog (issue #7) — extracted
   // (file-size cap split); recreated per render for state freshness.
