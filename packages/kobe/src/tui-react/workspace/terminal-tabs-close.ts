@@ -20,6 +20,7 @@
 
 import { peekSharedPtyClient } from "../../tui/panes/terminal/pty-hosted-client"
 import { getDefaultPtyRegistry } from "../../tui/panes/terminal/registry"
+import { noteClosedPtyKey } from "../../tui/workspace/closed-tab-suppress"
 import {
   type TabsState,
   type TerminalTab,
@@ -42,6 +43,11 @@ export function releaseClosedTabPtys(taskId: string, closing: TerminalTab | unde
   const key = closing ? tabPtyKeyFor(taskId, closing) : tabPtyKey(taskId, closedId)
   releaseSplitLeaves(key, closing?.splitTree ?? null)
   if (closing?.kind === "engine" && closing.ptyTask) return
+  // The sidebar's orphan backstop polls the host on a 2s tick; until it
+  // observes this kill it still lists the session as live, and would adopt
+  // it right back into the state (ctrl+w needing two presses). Note the key
+  // so orphan detection skips it while the death propagates.
+  noteClosedPtyKey(key)
   const registry = getDefaultPtyRegistry()
   // `release()` can only kill what THIS process holds a handle for, and the
   // sidebar closes tabs of tasks it never attached to (a task not mounted

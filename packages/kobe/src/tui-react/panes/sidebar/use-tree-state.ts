@@ -30,6 +30,7 @@ import {
   treeFlatIds,
   withRecentRow,
 } from "../../../tui/panes/sidebar/tree-core"
+import { isRecentlyClosedPtyKey } from "../../../tui/workspace/closed-tab-suppress"
 import { getDefaultLiveEngines } from "../../../tui/workspace/live-engine"
 import { tabTitleStable } from "../../../tui/workspace/terminal-tab-split"
 import { tabPtyKeyFor } from "../../../tui/workspace/terminal-tabs-core"
@@ -144,7 +145,11 @@ export function useTreeState(opts: TreeStateOpts): TreeState {
     const registered = new Set<string>()
     for (const [taskId, tabs] of snapshotTabs) for (const tab of tabs) registered.add(tabRowId(taskId, tab.id))
     const map = new Map<string, readonly TreeTab[]>()
-    for (const [taskId, orphans] of orphanTabsByTask(hostSessions, registered)) {
+    // A just-closed tab's session can outlive its state in the 2s poll —
+    // treating it as an orphan would adopt it right back (see
+    // closed-tab-suppress.ts).
+    const sessions = hostSessions.filter((session) => !isRecentlyClosedPtyKey(session.key))
+    for (const [taskId, orphans] of orphanTabsByTask(sessions, registered)) {
       if (tasks.some((task) => task.id === taskId)) map.set(taskId, orphans)
     }
     return map
