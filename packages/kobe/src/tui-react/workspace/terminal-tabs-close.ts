@@ -18,7 +18,7 @@
  * surface — this one reaches into the PTY registry and the split helper.
  */
 
-import { getSharedPtyClient } from "../../tui/panes/terminal/pty-hosted-client"
+import { peekSharedPtyClient } from "../../tui/panes/terminal/pty-hosted-client"
 import { getDefaultPtyRegistry } from "../../tui/panes/terminal/registry"
 import {
   type TabsState,
@@ -51,19 +51,18 @@ export function releaseClosedTabPtys(taskId: string, closing: TerminalTab | unde
   // So when there is no handle, tell the host directly.
   const local = registry.get(key)
   registry.release(key)
-  if (!local) void killHostedSession(key)
+  if (!local) killHostedSession(key)
 }
 
-/** Best-effort `pty.kill` for a key with no local handle. Every failure mode
- *  (no host, no verb, dead socket) means the session is already unreachable
- *  from here, which is the same outcome as the kill succeeding. */
-function killHostedSession(key: string): Promise<void> {
-  return getSharedPtyClient()
-    .then((client) => client.request("pty.kill", { key }))
-    .then(
-      () => undefined,
-      () => undefined,
-    )
+/** Best-effort `pty.kill` for a key with no local handle, over the shared
+ *  connection IF this process has one — dialing the host here would let a
+ *  tab close pin a client (see `peekSharedPtyClient`). Every failure mode
+ *  (no host, no verb, dead socket) leaves the session unreachable from here,
+ *  the same outcome as the kill succeeding. */
+function killHostedSession(key: string): void {
+  const client = peekSharedPtyClient()
+  if (!client) return
+  void client.then((c) => c.request("pty.kill", { key })).catch(() => {})
 }
 
 /** The tab state a non-mounted task has: its live module entry, else the

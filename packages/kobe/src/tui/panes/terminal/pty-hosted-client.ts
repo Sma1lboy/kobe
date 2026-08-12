@@ -114,6 +114,19 @@ export function getSharedPtyClient(): Promise<KobeDaemonClient> {
 }
 
 /**
+ * The shared connection ONLY IF this process already has one — never opens
+ * it. For callers whose work is worth doing over a connection that exists
+ * but is not worth dialing the host for, so they can't spawn (or pin) a
+ * client as a side effect: under a test runner `getSharedPtyClient()` would
+ * cache a client aimed at whatever socket was current and starve the suite
+ * that owns the real one, the same trap `use-host-sessions.ts` documents.
+ * In a live TUI the sidebar's host poll keeps this non-null.
+ */
+export function peekSharedPtyClient(): Promise<KobeDaemonClient> | null {
+  return shared
+}
+
+/**
  * Ask the pty host to pre-spawn one idle shell for `cwd` (`pty.warm`) so
  * the next shell-wrapped engine tab adopts an ALREADY-initialized shell
  * (rc files done) instead of paying shell startup. Fire-and-forget and
