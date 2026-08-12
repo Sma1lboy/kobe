@@ -103,7 +103,10 @@ if [ "$PENDING" = "0" ]; then
   CURRENT=$(node -p "require('$PKG_JSON').version")
   if ! git ls-remote --tags origin "refs/tags/v$CURRENT" | grep -q .; then
     echo "No pending changesets, but v$CURRENT is committed and NOT tagged on origin."
-    echo "Resuming the interrupted release of $CURRENT…"
+    # ${CURRENT}… not $CURRENT…: macOS bash 3.2 glues a multibyte char that
+    # directly follows an unbraced expansion into the variable name (set -u
+    # then dies on "CURRENT…: unbound variable").
+    echo "Resuming the interrupted release of ${CURRENT}…"
     git fetch origin main --quiet
     if [ "$(git rev-list --count HEAD..origin/main)" != "0" ]; then
       echo "Error: local main is BEHIND origin/main — pull first, then re-run." >&2
