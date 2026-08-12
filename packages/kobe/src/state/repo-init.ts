@@ -58,8 +58,13 @@ export type PromptDeliveryIntent =
    * party that knows what the work is actually about. Prompts into EXISTING
    * sessions (`send`, `send --tab new`, dispatch, cross-engine handoff) must
    * stay `explicit` so they never re-append the coda.
+   *
+   * `spawnerTaskId`: the kobe task whose agent created THIS task, when known.
+   * Only the CLI layer may supply it (from its own $KOBE_TASK_ID) — never read
+   * env here: the daemon can be auto-spawned from inside an engine tab and
+   * would bake that stale id into every future automation task.
    */
-  | { readonly kind: "new-task"; readonly prompt: string }
+  | { readonly kind: "new-task"; readonly prompt: string; readonly spawnerTaskId?: string }
   | { readonly kind: "none" }
 
 /**
@@ -68,8 +73,13 @@ export type PromptDeliveryIntent =
  * status-report protocol. `api` defaults to the environment-correct CLI
  * invocation; tests pass a literal.
  */
-export function newTaskBranchCoda(taskId: string, api: string = kobeApiInvocation()): string {
-  return `PS: this task's git branch name is an auto-generated placeholder. Once you understand the work, rename it to a short descriptive name (keep the kobe/ prefix): \`${api} set-branch --task-id ${taskId} --branch kobe/<descriptive-slug>\``
+export function newTaskBranchCoda(taskId: string, api: string = kobeApiInvocation(), spawnerTaskId?: string): string {
+  const rename = `PS: this task's git branch name is an auto-generated placeholder. Once you understand the work, rename it to a short descriptive name (keep the kobe/ prefix): \`${api} set-branch --task-id ${taskId} --branch kobe/<descriptive-slug>\``
+  if (!spawnerTaskId || spawnerTaskId === taskId) return rename
+  // Send-back, not `report`: a stored report only surfaces if the spawner
+  // explicitly awaits, which in practice it never does — outcomes silently
+  // vanished. `send` lands a full turn in the spawner's chat tab.
+  return `${rename}\n\nYou were spawned by kobe task ${spawnerTaskId}. When the work is finished, send your outcome back to it — include the final branch name: \`${api} send --task-id ${spawnerTaskId} --prompt "<succeeded|failed>: <one-line summary> (branch kobe/<slug>)"\``
 }
 
 const INIT_SCRIPT_REL = join(".kobe", "init.sh")
@@ -120,7 +130,10 @@ function firstMessageFor(
   if (intent.kind === "new-task") {
     // `$KOBE_TASK_ID` fallback: exported into every engine tab's env, so the
     // agent's shell expands it even if a caller never threaded the id here.
-    return { source: "explicit", text: `${intent.prompt}\n\n${newTaskBranchCoda(taskId ?? '"$KOBE_TASK_ID"')}` }
+    return {
+      source: "explicit",
+      text: `${intent.prompt}\n\n${newTaskBranchCoda(taskId ?? '"$KOBE_TASK_ID"', undefined, intent.spawnerTaskId)}`,
+    }
   }
   const text = init.initPrompt?.trim()
   return text ? { source: "repo-init", text } : undefined

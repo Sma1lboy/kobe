@@ -111,6 +111,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.clearAllMocks()
+  vi.unstubAllEnvs()
 })
 
 describe("defaultApiRuntime", () => {
@@ -280,13 +281,28 @@ describe("realPromptDeliveryOps (deliverPrompt with the default ops)", () => {
   it("launches a newTask target as the new-task intent (branch-rename coda)", async () => {
     // add / fan-out mark their first delivery with newTask — the launch spec
     // then rides the "new-task" intent so the coda is appended (issue #8).
+    vi.stubEnv("KOBE_TASK_ID", "")
     await deliverPrompt(
       client,
       { id: "t1", kind: "task", worktreePath: "/wt/t1", vendor: "claude", repo: "/repo/x", newTask: true },
       "go",
     )
     expect(mocks.buildEngineSessionLaunch).toHaveBeenLastCalledWith(
-      expect.objectContaining({ promptIntent: { kind: "new-task", prompt: "go" } }),
+      expect.objectContaining({ promptIntent: { kind: "new-task", prompt: "go", spawnerTaskId: undefined } }),
+    )
+  })
+
+  it("threads the CLI process's own $KOBE_TASK_ID as the new task's spawner", async () => {
+    // An `add` run from inside another task's engine tab carries that task's
+    // id; the coda then tells the new agent where to `send` its outcome.
+    vi.stubEnv("KOBE_TASK_ID", "spawner-1")
+    await deliverPrompt(
+      client,
+      { id: "t1", kind: "task", worktreePath: "/wt/t1", vendor: "claude", repo: "/repo/x", newTask: true },
+      "go",
+    )
+    expect(mocks.buildEngineSessionLaunch).toHaveBeenLastCalledWith(
+      expect.objectContaining({ promptIntent: { kind: "new-task", prompt: "go", spawnerTaskId: "spawner-1" } }),
     )
   })
 

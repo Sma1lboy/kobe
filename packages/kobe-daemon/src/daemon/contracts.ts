@@ -49,17 +49,6 @@ export interface TaskPRStatus {
   readonly lastError?: string
 }
 
-/**
- * A worker's SELF-REPORTED terminal outcome (`task.report`). The field name
- * carries the provenance: this is the worker's claim, never verified by kobe.
- */
-export interface TaskWorkerReport {
-  readonly outcome: "succeeded" | "failed"
-  readonly summary?: string
-  /** ISO-8601, stamped by the daemon when the report arrived. */
-  readonly reportedAt: string
-}
-
 /** Pointer back to the external issue a task was started from. Snapshot for
  *  display; `url` is the durable way to the live item. Never synced. */
 export interface TaskLinkedWorkItem {
@@ -85,7 +74,6 @@ export interface DaemonTask {
   readonly position?: number
   readonly modelEffort?: string
   readonly groupId?: string
-  readonly workerReport?: TaskWorkerReport
   readonly deletion?: TaskDeletionState
   readonly quotaResume?: TaskQuotaResumeState
   /** The external tracker item this task was started from, when it was. */
@@ -140,8 +128,6 @@ export interface DaemonOrchestrator {
   setArchived(id: string, archived?: boolean): Promise<void>
   setStatus(id: string, status: TaskStatus): Promise<void>
   setPRStatus(id: string, status: TaskPRStatus | null): Promise<void>
-  /** Store a worker's self-reported outcome verbatim (worker report, not kobe-verified). */
-  setWorkerReport(id: string, report: TaskWorkerReport): Promise<void>
   /** Stamp the external tracker item a task was started from. */
   setLinkedWorkItem(id: string, item: TaskLinkedWorkItem | null): Promise<void>
   /** Arm (or clear, with `null`) the rate-limit auto-resume schedule. */

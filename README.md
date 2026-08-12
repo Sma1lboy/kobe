@@ -70,7 +70,7 @@ Full documentation: **[docs.kobe.sma1lboy.me](https://docs.kobe.sma1lboy.me)** �
 
 > **If kobe saves you an afternoon, [star the repo](https://github.com/Sma1lboy/kobe/stargazers)** — it is the single strongest signal that tells other developers this is worth their time.
 
-## Graph engineering: fan out, supervise, observe, fan in
+## Graph engineering: fan out, complete, observe, fan in
 
 Running many agents well is not prompt engineering — it's [graph engineering](https://kobe.sma1lboy.me). Nodes are isolated attempts, edges are dependencies, and the gates are your judgment. kobe gives you a primitive for each step:
 
@@ -82,11 +82,10 @@ kobe api fan-out --repo "$PWD" \
   --prompt "Try independent approaches to simplify the auth flow."
 ```
 
-**Supervise** — workers report an explicit outcome; coordinators block until the round settles. Silence is a checkpoint, never a verdict:
+**Completion** — a worker messages its explicit outcome back to the spawning agent's chat tab (the exact command is baked into its first prompt). Silence is a checkpoint, never a verdict:
 
 ```bash
-kobe api report --outcome succeeded --summary "auth flow simplified"   # inside an attempt
-kobe api await --task-ids a,b,c --timeout-secs 900                     # from the orchestrator
+kobe api send --task-id <spawner> --prompt "succeeded: auth flow simplified (branch kobe/auth-flow)"
 ```
 
 **Observe** — read the engine's own structured session, never scrape a TUI screen:

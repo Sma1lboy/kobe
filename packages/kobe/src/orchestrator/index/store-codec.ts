@@ -24,7 +24,6 @@ import type {
   TaskPRStatus,
   TaskQuotaResumeState,
   TaskStatus,
-  TaskWorkerReport,
 } from "../../types/task.ts"
 import { toTaskId } from "../../types/task.ts"
 import { coerceVendorId } from "../../types/vendor.ts"
@@ -158,7 +157,6 @@ function coerceTask(value: unknown): Task | null {
         ? "in_progress"
         : v.status
   const deletion = coerceDeletion(v.deletion)
-  const workerReport = coerceWorkerReport(v.workerReport)
   const quotaResume = coerceQuotaResume(v.quotaResume)
   const linkedWorkItem = coerceLinkedWorkItem(v.linkedWorkItem)
 
@@ -184,29 +182,15 @@ function coerceTask(value: unknown): Task | null {
     // lose their grouping on every daemon restart.
     ...(typeof v.groupId === "string" && v.groupId.length > 0 ? { groupId: v.groupId } : {}),
     ...(deletion ? { deletion } : {}),
-    // The three optional records below were written to disk but silently
-    // dropped on load, so each one survived only until the next daemon
-    // restart: a filed worker verdict vanished (breaking `await` and
-    // `digest` across a restart), a pending quota resume was forgotten by
-    // the very runner whose durability rationale is "absolute timestamp on
-    // disk", and a task lost the tracker item it was started from.
-    ...(workerReport ? { workerReport } : {}),
+    // The optional records below were written to disk but silently dropped
+    // on load, so each survived only until the next daemon restart: a
+    // pending quota resume was forgotten by the very runner whose
+    // durability rationale is "absolute timestamp on disk", and a task
+    // lost the tracker item it was started from.
     ...(quotaResume ? { quotaResume } : {}),
     ...(linkedWorkItem ? { linkedWorkItem } : {}),
     createdAt: v.createdAt,
     updatedAt: v.updatedAt,
-  }
-}
-
-function coerceWorkerReport(value: unknown): TaskWorkerReport | undefined {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined
-  const v = value as Record<string, unknown>
-  if (v.outcome !== "succeeded" && v.outcome !== "failed") return undefined
-  if (typeof v.reportedAt !== "string" || v.reportedAt.length === 0) return undefined
-  return {
-    outcome: v.outcome,
-    ...(typeof v.summary === "string" ? { summary: v.summary } : {}),
-    reportedAt: v.reportedAt,
   }
 }
 

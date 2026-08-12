@@ -58,7 +58,12 @@ async function deliverHosted(target: PromptTarget, worktree: string, prompt: str
       worktreePath: worktree,
       shell: process.env.SHELL?.trim() || "/bin/zsh",
       argv,
-      promptIntent: { kind: target.newTask ? "new-task" : "explicit", prompt },
+      // Spawner identity is read HERE, in the CLI process — an `add`/`fan-out`
+      // run from inside an engine tab carries the spawner's $KOBE_TASK_ID, and
+      // the coda tells the new agent to `send` its outcome back (repo-init.ts).
+      promptIntent: target.newTask
+        ? { kind: "new-task", prompt, spawnerTaskId: process.env.KOBE_TASK_ID || undefined }
+        : { kind: "explicit", prompt },
       tabId: newTab,
     })
     const result = await deliverHostedPrompt(
