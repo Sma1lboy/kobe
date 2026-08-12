@@ -32,6 +32,8 @@ describe("engineTitleTurnHint", () => {
   it("reads claude's animated frames as working and its static ✳ as rest", () => {
     expect(engineTitleTurnHint("claude", "⠂ 修复构建失败")).toBe("working")
     expect(engineTitleTurnHint("claude", "⠐ 修复构建失败")).toBe("working")
+    expect(engineTitleTurnHint("claude", "◐ 修复构建失败")).toBe("working")
+    expect(engineTitleTurnHint("claude", "◑ 修复构建失败")).toBe("working")
     expect(engineTitleTurnHint("claude", "✳ 修复构建失败")).toBe("rest")
     expect(engineTitleTurnHint("claude", "修复构建失败")).toBe("rest")
   })

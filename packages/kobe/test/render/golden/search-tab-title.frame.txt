@@ -1,0 +1,26 @@
+# sidebar frame: search-tab-title
+# the query reaches a live TAB title and drags its worktree along — the tree's own increment
+# 30x22, keys: / review
+# GENERATED — do not hand-edit. Regenerate: KOBE_UPDATE_GOLDEN=1 bun run test:render
+|                              |
+| KOBE                         |
+|                              |
+|  + New task               n  |
+|                              |
+| /review█ 2/5                 |
+|                              |
+| Kanban                       |
+| Routines                     |
+|                              |
+| kobe ─────────────────────── |
+|▌ feat/alpha                2 |
+|   ◌ review                 3 |
+|                              |
+|                              |
+|                              |
+|                              |
+|                              |
+|                              |
+|                              |
+|                              |
+|                              |

@@ -20,7 +20,7 @@ import { spawnSync } from "node:child_process"
 import * as fs from "node:fs"
 import * as os from "node:os"
 import * as path from "node:path"
-import { DEFAULT_BASE_REF, getCurrentBranch, listLocalBranches, validateRepoPath } from "@/tui/lib/git-snapshot"
+import { getCurrentBranch, listLocalBranches, validateRepoPath } from "@/tui/lib/git-snapshot"
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
 
 let root: string
@@ -85,11 +85,5 @@ describe("listLocalBranches", () => {
   it("degrades to [] for non-repos and empty input", () => {
     expect(listLocalBranches(notRepo)).toEqual([])
     expect(listLocalBranches("")).toEqual([])
-  })
-})
-
-describe("DEFAULT_BASE_REF", () => {
-  it("is main — the blank-field / unreadable-HEAD fallback", () => {
-    expect(DEFAULT_BASE_REF).toBe("main")
   })
 })

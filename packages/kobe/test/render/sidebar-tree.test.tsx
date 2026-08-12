@@ -1,15 +1,19 @@
 /** @jsxImportSource @opentui/react */
 /**
- * The tree sidebar's rows render and its keys actually fire.
+ * The frame goldens (`test/render/golden/*.frame.txt`) now lock what this
+ * sidebar RENDERS — the project header, the per-level indent, the resting and
+ * live state glyphs, the pruned search tree, the archived view row — as whole
+ * captured frames rather than as substring probes that say nothing about the
+ * cells they don't name. The cases that asserted those things were removed
+ * here rather than kept as a weaker duplicate.
  *
- * Every assertion here presses a real key rather than checking a static
- * frame, because the failure this file exists to catch is a binding that was
- * never registered: the Automations page shipped with every one of its keys
- * dead (a `Binding[]` passed as an object literal), and a frame-only test
- * stayed green through it. A tree whose j/k/enter silently do nothing looks
- * exactly like a tree that renders correctly.
+ * What remains is this file's original reason to exist, which no frame can
+ * cover: pressing a real key and proving the CALLBACK fired. The Automations
+ * page once shipped with every one of its keys dead (a `Binding[]` passed as
+ * an object literal) and a frame-only test stayed green through it — a tree
+ * whose j/k/enter silently do nothing looks exactly like a tree that renders
+ * correctly.
  */
-
 import { expect, test } from "bun:test"
 import { SidebarTree } from "../../src/tui-react/panes/sidebar/SidebarTree"
 import { tabsByTask } from "../../src/tui-react/workspace/terminal-tabs-shared"
@@ -58,37 +62,6 @@ function tree(over: Partial<Parameters<typeof SidebarTree>[0]> = {}) {
     />
   )
 }
-
-test("renders project header, worktree cards, and tab rows", async () => {
-  seedTabs("a", ["tab-1", "tab-2"])
-  const { frame } = await renderComponent(tree(), { width: 28, height: 24 })
-  await new Promise((r) => setTimeout(r, SETTLE))
-  const text = await frame()
-
-  // The project header keeps the flat sidebar's section-header grammar —
-  // label + divider run. No twisty: the tree has no fold (round 5), so
-  // there is no disclosure glyph anywhere.
-  expect(text).toContain("kobe ─")
-  expect(text).not.toContain("▾")
-  expect(text).not.toContain("▸")
-  // Worktrees are the same two-line cards; their branch is the subtitle.
-  expect(text).toContain("feat/a")
-  expect(text).toContain("feat/b")
-  // The selected worktree starts expanded, so its tabs are visible without a
-  // keystroke — that is the whole point of replacing the strip.
-  expect(text).toContain("tab 1")
-  expect(text).toContain("tab 2")
-
-  const lines = text.split("\n")
-  const indentOf = (needle: string): number => {
-    const line = lines.find((l) => l.includes(needle)) ?? ""
-    return line.indexOf(needle)
-  }
-  // A tab row reads as a CHILD of its card: one level right of the card's
-  // subtitle column. (Cards and section headers share the left edge — that
-  // is the flat sidebar's own grammar, unchanged.)
-  expect(indentOf("tab 1")).toBeGreaterThan(indentOf("feat/a"))
-})
 
 test("enter on a tab row activates that tab, not just its task", async () => {
   seedTabs("a", ["tab-1", "tab-2"])
@@ -187,46 +160,6 @@ function seedTabsNamed(taskId: string, tabs: ReadonlyArray<readonly [string, str
   })
 }
 
-test("/ opens the query row and prunes the tree to matches plus ancestors", async () => {
-  tabsByTask.clear()
-  const tasks = [MAIN, task("a", { title: "alpha" }), task("b", { title: "bravo" })]
-  const { frame, mockInput } = await renderComponent(tree({ tasks }), { width: 28, height: 20 })
-  await new Promise((r) => setTimeout(r, SETTLE))
-  expect(await frame()).toContain("feat/a")
-
-  mockInput.typeText("/")
-  await new Promise((r) => setTimeout(r, SETTLE))
-  mockInput.typeText("bravo")
-  await new Promise((r) => setTimeout(r, SETTLE))
-
-  const text = await frame()
-  // The query row echoes what you typed…
-  expect(text).toContain("/bravo")
-  // …the match survives, its sibling does not, and the project header stays
-  // so the hit is not left floating.
-  expect(text).toContain("feat/b")
-  expect(text).not.toContain("feat/a")
-  expect(text).toContain("kobe")
-})
-
-test("the query matches a live TAB title, which no task-title search could", async () => {
-  // The tree's own increment over the flat sidebar: "which tab is running
-  // that thing" is answerable, and the answer drags its worktree along.
-  seedTabsNamed("a", [["tab-1", "zebra-tab"]])
-  const { frame, mockInput } = await renderComponent(tree(), { width: 28, height: 20 })
-  await new Promise((r) => setTimeout(r, SETTLE))
-
-  mockInput.typeText("/")
-  await new Promise((r) => setTimeout(r, SETTLE))
-  mockInput.typeText("zebra")
-  await new Promise((r) => setTimeout(r, SETTLE))
-
-  const text = await frame()
-  expect(text).toContain("zebra-tab")
-  expect(text).toContain("feat/a")
-  expect(text).not.toContain("feat/b")
-})
-
 test("escape leaves search and restores the full tree", async () => {
   tabsByTask.clear()
   const tasks = [MAIN, task("a", { title: "alpha" }), task("b", { title: "bravo" })]
@@ -284,61 +217,4 @@ test("escape leaves move mode", async () => {
   mockInput.pressEscape()
   await new Promise((r) => setTimeout(r, SETTLE))
   expect(exited).toBe(1)
-})
-
-test("a tab row lights from its OWN activity, not just the task rollup", async () => {
-  // The bug: `carriesActivity` required `tab.active`, and the task entry is a
-  // last-event-wins rollup across tabs — so a task whose live work sits in a
-  // NON-active tab rendered every row at rest `○`, and only opening the task
-  // revealed it was running. The daemon reports per-tab state for exactly
-  // this; the tree just wasn't reading it.
-  //
-  // Counting rest glyphs rather than asserting the running one: `running`
-  // animates through a spinner frame set, so the only stable fact is that
-  // this row STOPPED resting.
-  tabsByTask.clear()
-  seedTabs("a", ["tab-1", "tab-2"])
-  const idle = await renderComponent(tree(), { width: 28, height: 20 })
-  await new Promise((r) => setTimeout(r, SETTLE))
-  // Resting is either glyph since the observer split them: ○ known-idle,
-  // ◌ no-signal-yet (unknown). This harness has no daemon record, so rows
-  // rest as ◌ — the stable fact is still that a live row STOPS resting.
-  const restingWhenIdle = ((await idle.frame()).match(/[○◌]/g) ?? []).length
-
-  // tab-2 is NOT the active tab (seedTabs makes tab-1 active) — before the
-  // fix this state was unreachable from the tree entirely.
-  const engineTabState = new Map([["a", new Map([["tab-2", { state: "running" as const, at: 1 }]])]])
-  const live = await renderComponent(tree({ engineTabState }), { width: 28, height: 20 })
-  await new Promise((r) => setTimeout(r, SETTLE))
-  const restingWhenLive = ((await live.frame()).match(/[○◌]/g) ?? []).length
-
-  expect(restingWhenIdle).toBeGreaterThan(0)
-  expect(restingWhenLive).toBe(restingWhenIdle - 1)
-})
-
-test("an idle task keeps the resting glyph — running must mean running", async () => {
-  tabsByTask.clear()
-  seedTabs("a", ["tab-1"])
-  const { frame } = await renderComponent(tree(), { width: 28, height: 20 })
-  await new Promise((r) => setTimeout(r, SETTLE))
-  // No daemon signal in this harness → the unknown resting glyph ◌ (a
-  // spinner here would be the actual bug this test guards against).
-  expect(await frame()).toMatch(/[○◌]/)
-})
-
-test("the Active/Archived row stays hidden until something is archived", async () => {
-  // The tree renders its OWN copy of the view tabs. The gate added to the flat
-  // sidebar skipped this one, so the row kept showing on a fresh install while
-  // a passing test on the other component said it was fixed.
-  const { frame } = await renderComponent(tree(), { width: 28, height: 30 })
-  await new Promise((r) => setTimeout(r, SETTLE))
-  const text = await frame()
-  expect(text).not.toContain("Archived")
-
-  const withArchived = await renderComponent(tree({ tasks: [MAIN, task("a"), task("z", { archived: true })] }), {
-    width: 28,
-    height: 30,
-  })
-  await new Promise((r) => setTimeout(r, SETTLE))
-  expect(await withArchived.frame()).toContain("Archived")
 })

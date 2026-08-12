@@ -85,6 +85,7 @@ More fixes in [Troubleshooting](TROUBLESHOOTING.md).
 ## Next steps
 
 - [Concepts](CONCEPTS.md) — tasks, sessions, and what survives what.
+- [The TUI](TUI.md) — status glyphs, the Inbox, diff review, and the pages.
 - [CLI reference](CLI.md) — every `kobe` command.
 - [kobe api](API.md) — the scriptable surface for scripts and agents.
 - [Configuration](CONFIGURATION.md) — engines, themes, notifications.

@@ -1,0 +1,26 @@
+# sidebar frame: recent-jump-row
+# narrow mode's one-keystroke way back into the task you were last inside
+# 30x22
+# GENERATED — do not hand-edit. Regenerate: KOBE_UPDATE_GOLDEN=1 bun run test:render
+|                              |
+| KOBE                         |
+|                              |
+|  + New task               n  |
+|                              |
+| Kanban                       |
+| Routines                     |
+|                              |
+|  ↩ Recent: bravo             |
+|                              |
+| kobe ─────────────────────── |
+|  feat/alpha                3 |
+|▌  ◌ build                  4 |
+|   ◌ review                 5 |
+|  feat/bravo                6 |
+|   ◌ tests                  7 |
+|                              |
+|                              |
+|                              |
+|                              |
+|                              |
+|                              |
