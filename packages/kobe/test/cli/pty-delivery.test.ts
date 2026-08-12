@@ -50,6 +50,24 @@ describe("findEngineKey", () => {
     expect(findEngineKey(sessions, "t1", "codex")).toBe("t1::tab-5")
   })
 
+  it("resolves a SHELL-WRAPPED engine tab when tab-1 is absent (issue #19)", () => {
+    // Every hosted session launches via `<shell> -ilc '…<engine> …'`
+    // (buildEngineSessionLaunch), so command[0] is NEVER the engine binary.
+    // The old `command[0] === engineBin` fallback was dead code in
+    // production: this surviving engine tab resolved to null and delivery
+    // silently spawned a duplicate engine.
+    const sessions = [
+      session("t1::tab-1", ["/bin/zsh", "-ilc", "export KOBE_TASK_ID='t1'\nclaude 'hi'"], false),
+      session("t1::tab-2", ["/bin/zsh", "-ilc", "export KOBE_TASK_ID='t1' KOBE_TAB_ID='tab-2'\nclaude '--resume' 'x'"]),
+    ]
+    expect(findEngineKey(sessions, "t1", "claude")).toBe("t1::tab-2")
+  })
+
+  it("a shell-wrapped SHELL tab still never matches", () => {
+    const sessions = [session("t1::tab-2", ["/bin/zsh", "-il"])]
+    expect(findEngineKey(sessions, "t1", "claude")).toBeNull()
+  })
+
   it("skips a DEAD tab-1 (an exited engine cannot receive a prompt)", () => {
     const sessions = [session("t1::tab-1", ["claude"], false)]
     expect(findEngineKey(sessions, "t1", "claude")).toBeNull()
@@ -196,6 +214,84 @@ describe("deliverHostedPrompt", () => {
     )
     expect(result).toMatchObject({ started: false, delivered: true })
     expect(calls).toContain("pty.write")
+  })
+
+  it("delivers into a surviving shell-wrapped engine tab instead of spawning (issue #19 incident)", async () => {
+    // The incident shape: tab-1 dead, tab-2 a live shell-wrapped engine.
+    // Pre-fix this spawned a fresh unsandboxed engine at launch.key and
+    // returned ok while tab-2 never saw the prompt.
+    const calls: string[] = []
+    const rpc = {
+      request: async <T>(name: string): Promise<T> => {
+        calls.push(name)
+        if (name === "pty.list")
+          return {
+            sessions: [
+              session("t1::tab-1", ["/bin/zsh", "-ilc", "claude 'x'"], false),
+              session("t1::tab-2", ["/bin/zsh", "-ilc", "claude '--resume' 'x'"]),
+            ],
+          } as T
+        if (name === "pty.peek") return { exists: true, alive: true } as T
+        return {} as T
+      },
+    }
+    const result = await deliverHostedPrompt(
+      rpc,
+      { id: "t1", engineBin: "claude" },
+      "/wt/t1",
+      "go",
+      { key: "t1::tab-1", command: ["/bin/zsh", "-ilc", "claude 'go'"] },
+      { snapshot: psWith("claude") },
+    )
+    expect(result).toMatchObject({ session: "t1::tab-2", started: false, delivered: true })
+    expect(calls).not.toContain("pty.open") // NEVER a new engine while one lives
+  })
+
+  it("FAILS LOUD instead of spawning when live tabs exist but none is an engine (issue #19)", async () => {
+    // A live shell tab, no engine anywhere: pre-fix this silently booted a
+    // brand-new engine at tab-1 and reported ok — sender and receiver both
+    // believed the message arrived. It must be a typed error instead.
+    const calls: string[] = []
+    const rpc = {
+      request: async <T>(name: string): Promise<T> => {
+        calls.push(name)
+        if (name === "pty.list") return { sessions: [session("t1::tab-2", ["/bin/zsh", "-il"])] } as T
+        return {} as T
+      },
+    }
+    const err = await deliverHostedPrompt(rpc, { id: "t1", engineBin: "claude" }, "/wt/t1", "go", {
+      key: "t1::tab-1",
+      command: ["/bin/zsh", "-ilc", "claude 'go'"],
+    }).then(
+      () => null,
+      (e) => e,
+    )
+    expect(err).toBeInstanceOf(ApiError)
+    expect((err as ApiError).code).toBe("NO_ENGINE_TAB")
+    expect((err as ApiError).data).toMatchObject({ nextCommandArgs: ["api", "pty-list"] })
+    expect(calls).not.toContain("pty.open") // no session was created
+    expect(calls).not.toContain("pty.write") // and nothing was pasted anywhere
+  })
+
+  it("still first-starts the canonical engine when only DEAD sessions remain, cwd'd at the worktree", async () => {
+    const calls: Array<{ name: string; payload: unknown }> = []
+    const rpc = {
+      request: async <T>(name: string, payload?: unknown): Promise<T> => {
+        calls.push({ name, payload })
+        if (name === "pty.list")
+          return { sessions: [session("t1::tab-1", ["/bin/zsh", "-ilc", "claude 'x'"], false)] } as T
+        if (name === "pty.open") return { replay: "", alive: true, created: true } as T
+        return {} as T
+      },
+    }
+    const result = await deliverHostedPrompt(rpc, { id: "t1", engineBin: "claude" }, "/wt/t1", "go", {
+      key: "t1::tab-1",
+      command: ["/bin/zsh", "-ilc", "claude 'go'"],
+    })
+    // started:true is the "a NEW session was created" marker.
+    expect(result).toMatchObject({ session: "t1::tab-1", started: true, delivered: true })
+    const open = calls.find((c) => c.name === "pty.open")
+    expect(open?.payload).toMatchObject({ cwd: "/wt/t1" }) // the task's worktree, never the caller's repo
   })
 
   it("REFUSES an existing session whose engine exited into the keepAlive shell", async () => {

@@ -107,9 +107,18 @@ export const deliverToKey = deliverToHostedKey
 const writePrompt = writeHostedPrompt
 
 /**
- * Deliver to an existing canonical hosted engine, or create it once with
- * the explicit prompt already embedded in its launch argv. The latter avoids
- * racing a paste against a cold engine's startup screen.
+ * Deliver to an existing hosted engine tab, or — ONLY when the task has no
+ * alive session at all — create the canonical one with the explicit prompt
+ * already embedded in its launch argv (avoids racing a paste against a cold
+ * engine's startup screen). `started: true` in the result means "a NEW
+ * session was created", never "delivered into an existing one".
+ *
+ * When alive tabs exist but none resolves as an engine, this THROWS
+ * (NO_ENGINE_TAB) instead of spawning. Issue #19: the silent-spawn fallback
+ * booted an unsandboxed `--dangerously-skip-permissions` engine (in the
+ * incident, cwd'd at the MAIN repo) while both sender and receiver believed
+ * the message was delivered. A well-meaning fallback here is
+ * indistinguishable from success on both sides — it must stay loud.
  */
 export async function deliverHostedPrompt(
   rpc: PtyHostRpc,
@@ -149,6 +158,24 @@ export async function deliverHostedPrompt(
       started: false,
       engineReady: delivered,
       delivered,
+    }
+  }
+
+  // No engine resolved. Spawning is legitimate ONLY when the task has no
+  // alive session whatsoever (first start / all-dead resume) — an alive tab
+  // we merely failed to identify means the prompt would land in a duplicate
+  // engine the receiver never sees. Fail loud; the caller picks a tab.
+  if (!opts?.forceNew) {
+    const aliveTabs = sessions.filter((s) => s.alive && isTaskKey(s.key, target.id)).map((s) => s.key)
+    if (aliveTabs.length > 0) {
+      throw new ApiError(
+        `task ${target.id} has live tabs (${aliveTabs.join(", ")}) but none resolves as its engine tab — refusing to spawn a new engine`,
+        "NO_ENGINE_TAB",
+        {
+          hint: "address a live engine tab explicitly with --tab <tab-N> (see pty-list), or spawn a fresh engine tab with --tab new",
+          nextCommandArgs: ["api", "pty-list"],
+        },
+      )
     }
   }
 
