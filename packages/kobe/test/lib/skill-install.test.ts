@@ -66,8 +66,15 @@ describe("npxSkillsArgv / npxSkillsCommand", () => {
     // kobe deliberately owns no agent registry: ~75 agents, each with its own
     // skills dir and symlink rules. Passing an agent here would freeze that
     // list into kobe.
-    expect(npxSkillsArgv({ source: "/bundled" })).toEqual(["skills", "add", "/bundled", "--skill", "kobe"])
+    expect(npxSkillsArgv({ source: "/bundled" })).toEqual(["skills", "add", "/bundled", "--skill", "kobe", "--global"])
     expect(npxSkillsArgv({ source: "/bundled" })).not.toContain("--agent")
+  })
+
+  it("installs GLOBAL by default; global:false opts into project-level", () => {
+    // The skill drives a machine-wide daemon — one user-level copy, one
+    // staleness lifecycle, instead of a re-prompt in every repo.
+    expect(npxSkillsArgv({ source: "/b" })).toContain("--global")
+    expect(npxSkillsArgv({ source: "/b", global: false })).not.toContain("--global")
   })
 
   it("installs from the BUNDLED path, not a repo clone", () => {
@@ -89,11 +96,12 @@ describe("npxSkillsArgv / npxSkillsCommand", () => {
       "/b",
       "--skill",
       "kobe",
+      "--global",
       "--agent",
       "cursor",
     ])
     expect(npxSkillsCommand({ source: "/b", agent: ["claude-code", "codex"] })).toBe(
-      "npx skills add /b --skill kobe --agent claude-code --agent codex",
+      "npx skills add /b --skill kobe --global --agent claude-code --agent codex",
     )
   })
 })

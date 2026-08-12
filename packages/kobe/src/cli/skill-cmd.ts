@@ -8,10 +8,14 @@
  * writing the real file to `.agents/skills` and symlinking the agent dirs
  * that want one. Verbs:
  *
- *   install [--agent NAME]…  run the npx skills flow (no flag = it asks)
- *   status                   report whether the skill is installed
- *   command [--agent NAME]…  print the underlying npx command (don't run it)
- *   print                    print the bundled SKILL.md (herdr-style `kobe --skill`)
+ *   install [--project] [--agent NAME]…  run the npx skills flow (no flag = it asks)
+ *   status                               report whether the skill is installed
+ *   command [--project] [--agent NAME]…  print the underlying npx command (don't run it)
+ *   print                                print the bundled SKILL.md (herdr-style `kobe --skill`)
+ *
+ * Installs are GLOBAL (user-level) by default — the skill drives a
+ * machine-wide daemon, so one copy per machine is the right shape;
+ * `--project` opts back into a per-project install.
  */
 
 import { existsSync, readFileSync } from "node:fs"
@@ -31,27 +35,34 @@ function skillUsage(): string {
     "usage: kobe skill <verb>",
     "",
     "verbs:",
-    "  install [--agent NAME]…  Install the kobe agent skill (wraps `npx skills add`)",
-    "  status                   Show whether the skill is installed",
-    "  command [--agent NAME]…  Print the underlying npx command without running it",
-    "  print                    Print the bundled SKILL.md (also: `kobe --skill`)",
+    "  install [--project] [--agent NAME]…  Install the kobe agent skill (wraps `npx skills add`)",
+    "  status                               Show whether the skill is installed",
+    "  command [--project] [--agent NAME]…  Print the underlying npx command without running it",
+    "  print                                Print the bundled SKILL.md (also: `kobe --skill`)",
     "",
-    "The skill teaches a coding agent how to drive `kobe api`. With no --agent,",
-    "the agent-skills CLI detects your installed agents and asks which to use;",
-    "repeat --agent to name them yourself (e.g. --agent claude-code --agent codex).",
+    "The skill teaches a coding agent how to drive `kobe api`. Installs are",
+    "global (user-level) by default; --project installs into the current project",
+    "instead. With no --agent, the agent-skills CLI detects your installed agents",
+    "and asks; repeat --agent to name them (e.g. --agent claude-code --agent codex).",
   ].join("\n")
 }
 
 /**
- * Parse repeated `--agent NAME` / `--agent=NAME` (the only flag these verbs
- * take). Empty result means "let the agent-skills CLI ask" — that's the
- * default, and the reason kobe carries no agent list of its own.
+ * Parse repeated `--agent NAME` / `--agent=NAME` plus the `--project` /
+ * `--global` scope pair. Empty agents means "let the agent-skills CLI ask" —
+ * that's the default, and the reason kobe carries no agent list of its own.
+ * Scope defaults to global; `--global` is accepted for explicitness.
  */
-function parseAgents(rest: readonly string[]): string[] {
+function parseInstallFlags(rest: readonly string[]): { agents: string[]; global: boolean } {
+  let global = true
   const agents: string[] = []
   for (let i = 0; i < rest.length; i++) {
     const arg = rest[i]
-    if (arg === "--agent") {
+    if (arg === "--project" || arg === "-p") {
+      global = false
+    } else if (arg === "--global" || arg === "-g") {
+      global = true
+    } else if (arg === "--agent") {
       const v = rest[i + 1]
       if (!v || v.startsWith("--")) {
         process.stderr.write("kobe skill: --agent requires a value\n")
@@ -79,7 +90,7 @@ function parseAgents(rest: readonly string[]): string[] {
     )
     process.exit(2)
   }
-  return agents
+  return { agents, global }
 }
 
 export async function runSkillSubcommand(argv: readonly string[]): Promise<void> {
@@ -127,24 +138,25 @@ export async function runSkillSubcommand(argv: readonly string[]): Promise<void>
   }
 
   if (verb === "command") {
-    process.stdout.write(`${npxSkillsCommand({ agent: parseAgents(rest) })}\n`)
+    const flags = parseInstallFlags(rest)
+    process.stdout.write(`${npxSkillsCommand({ agent: flags.agents, global: flags.global })}\n`)
     return
   }
 
   // install — shell out to the agent-skills CLI via npx. stdio is inherited,
   // so with no --agent its own picker runs here interactively.
-  const agent = parseAgents(rest)
+  const { agents, global } = parseInstallFlags(rest)
   const bundled = bundledSkillDir()
   process.stdout.write(
-    `kobe skill: running \`${npxSkillsCommand({ agent })}\`\n${
+    `kobe skill: running \`${npxSkillsCommand({ agent: agents, global })}\`\n${
       bundled ? "" : "kobe skill: no bundled skill found — falling back to a repo clone (large download).\n"
     }`,
   )
-  const code = await runNpxSkillsInstall(agent)
+  const code = await runNpxSkillsInstall(agents, global)
   if (code !== 0) {
     process.stderr.write(
       `\nkobe skill install failed (npx exited ${code}). Is \`npx\` on PATH?\n` +
-        `You can run it yourself: ${npxSkillsCommand({ agent })}\n`,
+        `You can run it yourself: ${npxSkillsCommand({ agent: agents, global })}\n`,
     )
     process.exit(code || 1)
   }

@@ -163,16 +163,19 @@ current directory. `unset` with no flag clears both.
 ## skill
 
 ```bash
-kobe skill install [--agent NAME]…
+kobe skill install [--project] [--agent NAME]…
 kobe skill status
-kobe skill command [--agent NAME]…   # print the command without running it
-kobe skill print                     # print the SKILL.md itself
+kobe skill command [--project] [--agent NAME]…   # print the command without running it
+kobe skill print                                 # print the SKILL.md itself
 ```
 
 Installs the kobe agent skill — what teaches a coding agent to drive
-`kobe api`. With no `--agent` it detects your installed agents and asks. To
-name them yourself, repeat the flag (`--agent claude-code --agent codex`); a
-comma-joined list is rejected rather than silently using only the first.
+`kobe api`. Installs are **global** (user-level) by default: the skill
+drives a machine-wide daemon, so one copy per machine keeps one staleness
+lifecycle; `--project` installs into the current project instead. With no
+`--agent` it detects your installed agents and asks. To name them yourself,
+repeat the flag (`--agent claude-code --agent codex`); a comma-joined list
+is rejected rather than silently using only the first.
 
 The skill ships inside the npm package, so nothing is downloaded.
 

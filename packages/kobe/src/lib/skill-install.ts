@@ -77,10 +77,22 @@ export function bundledSkillDir(): string | null {
   return candidates.find((dir) => existsSync(join(dir, "SKILL.md"))) ?? null
 }
 
+/** Options shared by the argv/command/install helpers below. */
+export interface NpxSkillsOpts {
+  agent?: string | readonly string[]
+  source?: string | null
+  /** Install user-level (`--global`) — the default; `false` = project-level. */
+  global?: boolean
+}
+
 /**
  * Build the `npx skills add …` argv. `source` is the bundled directory when
  * we have one (a local path — the CLI validates it and skips the network
  * entirely) and the repo slug otherwise.
+ *
+ * GLOBAL by default: the skill drives `kobe api`, which is machine-wide
+ * (one daemon, one task store), and a per-project copy re-prompts staleness
+ * in every repo separately. `global: false` opts back into project-level.
  *
  * Agent SELECTION is deliberately left to the agent-skills CLI: omitting
  * `--agent` makes it detect the installed agents and prompt, which is the
@@ -89,14 +101,22 @@ export function bundledSkillDir(): string | null {
  * a specific one. Note the CLI wants a repeated flag per agent, not a
  * comma-joined list (it rejects `--agent claude-code,codex`).
  */
-export function npxSkillsArgv(opts: { agent?: string | readonly string[]; source?: string | null } = {}): string[] {
+export function npxSkillsArgv(opts: NpxSkillsOpts = {}): string[] {
   const source = opts.source !== undefined ? opts.source : bundledSkillDir()
   const agents = opts.agent === undefined ? [] : typeof opts.agent === "string" ? [opts.agent] : opts.agent
-  return ["skills", "add", source ?? SKILL_SOURCE_SLUG, "--skill", "kobe", ...agents.flatMap((a) => ["--agent", a])]
+  return [
+    "skills",
+    "add",
+    source ?? SKILL_SOURCE_SLUG,
+    "--skill",
+    "kobe",
+    ...(opts.global === false ? [] : ["--global"]),
+    ...agents.flatMap((a) => ["--agent", a]),
+  ]
 }
 
 /** The full underlying command string, for display in help / hints. */
-export function npxSkillsCommand(opts: { agent?: string | readonly string[]; source?: string | null } = {}): string {
+export function npxSkillsCommand(opts: NpxSkillsOpts = {}): string {
   return `npx ${npxSkillsArgv(opts).join(" ")}`
 }
 
@@ -104,8 +124,8 @@ export function npxSkillsCommand(opts: { agent?: string | readonly string[]; sou
  * Run the `npx skills add …` install flow, inheriting stdio (so the CLI's
  * own agent picker is fully interactive). Returns the npx exit code.
  */
-export async function runNpxSkillsInstall(agent?: string | readonly string[]): Promise<number> {
-  const proc = Bun.spawn(["npx", ...npxSkillsArgv(agent === undefined ? {} : { agent })], {
+export async function runNpxSkillsInstall(agent?: string | readonly string[], global?: boolean): Promise<number> {
+  const proc = Bun.spawn(["npx", ...npxSkillsArgv({ ...(agent === undefined ? {} : { agent }), global })], {
     stdin: "inherit",
     stdout: "inherit",
     stderr: "inherit",
