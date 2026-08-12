@@ -10,9 +10,9 @@ import { kobeApiInvocation } from "../../engine/interactive-command.ts"
 import type { TaskStatus } from "../../types/task.ts"
 import type { VendorId } from "../../types/vendor.ts"
 import type { DaemonRpc } from "../daemon-session.ts"
-import { daemonOf, simpleRpc } from "./handler-helpers.ts"
+import { daemonOf, dispatcherEnvPayload, simpleRpc } from "./handler-helpers.ts"
 import { resolveActiveTaskId } from "./runtime.ts"
-import { ApiError, type VerbContext } from "./types.ts"
+import { ApiError, type ApiRuntime, type VerbContext } from "./types.ts"
 
 /**
  * Peer provenance: a `send` issued from INSIDE another kobe task is one
@@ -34,6 +34,13 @@ async function withPeerProvenance(daemon: DaemonRpc, targetTaskId: string, promp
     /* stale env id — keep id-only provenance rather than dropping it */
   }
   const api = kobeApiInvocation()
+  // The baked-in reply command carries the sender's TAB, not just its task
+  // (issue #21): task-granular replies land on canonical-tab resolution,
+  // which is exactly the link that breaks (#19) — tab-precise addressing is
+  // the loop's durable route home. $KOBE_TAB_ID is exported into every
+  // engine tab alongside $KOBE_TASK_ID (session-launch.ts).
+  const senderTab = process.env.KOBE_TAB_ID
+  const replyTarget = `--task-id ${senderId}${senderTab ? ` --tab ${senderTab}` : ""}`
   // The trailing pointer closes the loop for a receiver that has never seen
   // kobe: reply command baked in, and where to learn the rest (the herdr
   // "--skill first" trick) — a pointer, not a curriculum, since every peer
@@ -42,7 +49,7 @@ async function withPeerProvenance(daemon: DaemonRpc, targetTaskId: string, promp
   // improvises verbs and side-channels (2026-08-10: a peer coordination
   // round-trip fell back to a human relay because neither side had the
   // skill's contract in context).
-  return `[KOBE PEER] from "${label}" (task ${senderId} — load the kobe agent skill FIRST (required, e.g. /kobe), then reply: \`${api} send --task-id ${senderId} --prompt "<text>"\`; verb reference: \`${api} schema\`): ${prompt}`
+  return `[KOBE PEER] from "${label}" (task ${senderId} — load the kobe agent skill FIRST (required, e.g. /kobe), then reply: \`${api} send ${replyTarget} --prompt "<text>"\`; verb reference: \`${api} schema\`): ${prompt}`
 }
 
 export async function issueUpdate(ctx: VerbContext): Promise<unknown> {
@@ -71,7 +78,9 @@ export async function add(ctx: VerbContext): Promise<unknown> {
   const daemon = daemonOf(ctx)
   const { args, runtime } = ctx
   const repo = await runtime.resolveRepoRoot(args.requirePath("repo"))
-  const payload: Record<string, string> = { repo }
+  // Record who dispatched this create (issue #21) — the reply address a
+  // sub-task's bare `send` routes its outcome back to.
+  const payload: Record<string, string> = { repo, ...dispatcherEnvPayload() }
   const title = args.str("title")
   if (title) payload.title = title
   const branch = args.str("branch")
@@ -138,23 +147,87 @@ export async function add(ctx: VerbContext): Promise<unknown> {
   }
 }
 
+/**
+ * The dispatcher recorded on the CALLER's own task, when the caller is a
+ * kobe session with one. `null` (keep the active-task default) when the
+ * caller isn't a kobe session, the task predates the field or was created
+ * outside a kobe session, or the env id is stale.
+ */
+async function readOwnDispatcher(daemon: DaemonRpc): Promise<SerializedTask["dispatcher"] | null> {
+  const selfId = process.env.KOBE_TASK_ID
+  if (!selfId) return null
+  try {
+    const res = await daemon.request<{ task: SerializedTask }>("task.get", { taskId: selfId })
+    return res.task.dispatcher ?? null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Pick the tab a dispatcher-defaulted `send` lands on: the exact tab the
+ * work was dispatched from first, the dispatcher task's canonical live
+ * engine tab when that tab has died, and NEVER a silent spawn — with
+ * nothing alive the send fails loud with a typed error, per the 2026-08-12
+ * collaboration-verb design principle (a fallback must not impersonate
+ * success).
+ */
+async function resolveDispatcherTab(
+  runtime: ApiRuntime,
+  dispatcher: { readonly taskId: string; readonly tabId: string },
+): Promise<string | undefined> {
+  const { tabs, running } = await runtime.taskTabs(dispatcher.taskId)
+  // The dispatched-from tab first, addressed only when it reads ALIVE: the
+  // tab join now also lists live sessions the persisted snapshot never
+  // registered (issue #20), so "present and alive" is the honest liveness
+  // test and a tab that is merely gone from the snapshot still gets the
+  // canonical fallback below instead of a TAB_NOT_FOUND at delivery.
+  if (tabs.some((t) => t.id === dispatcher.tabId && t.alive)) return dispatcher.tabId
+  // Dead dispatcher tab → the task's canonical live engine (tab omitted).
+  // Gated on a live engine tab existing: entering the canonical delivery
+  // path with nothing alive would silently boot a NEW engine (issue #19's
+  // failure mode) instead of reaching the dispatcher.
+  if (running) return undefined
+  throw new ApiError(
+    `dispatcher tab ${dispatcher.tabId} on task ${dispatcher.taskId} is dead and the task has no live engine tab — the reply has nowhere to land`,
+    "DISPATCHER_UNREACHABLE",
+    {
+      dispatcher,
+      hint: "address an alive target explicitly with --task-id/--tab (see `kobe api pty-list`), or notify the user with `kobe api notify`",
+      nextCommandArgs: ["api", "pty-list"],
+    },
+  )
+}
+
 export async function send(ctx: VerbContext): Promise<unknown> {
   const daemon = daemonOf(ctx)
   const prompt = ctx.args.require("prompt")
-  let taskId = ctx.args.str("task-id")
-  if (!taskId) {
-    const active = await resolveActiveTaskId(daemon)
-    if (!active) {
-      throw new ApiError(
-        "no --task-id given and no active task — open a task first or pass --task-id",
-        "MISSING_TARGET",
-      )
-    }
-    taskId = active
-  }
-  const tab = ctx.args.str("tab")
+  let tab = ctx.args.str("tab")
   if (tab && tab !== "new" && !/^tab-[A-Za-z0-9-]+$/.test(tab)) {
     throw new ApiError(`--tab must be "new" or a tab id like tab-2 (got ${JSON.stringify(tab)})`, "BAD_TAB")
+  }
+  let taskId = ctx.args.str("task-id")
+  if (!taskId) {
+    // Inside a sub-task, a bare `send` is the reply verb: it defaults to the
+    // DISPATCHER (task + tab) that created this task, not the global active
+    // task — the loop's outcome contract (55c990f34) routes completion back
+    // to the dispatching chat tab. An explicit --tab keeps its exact-tab
+    // semantics (on the dispatcher task); the fallback chain only runs for
+    // the tab default.
+    const dispatcher = await readOwnDispatcher(daemon)
+    if (dispatcher) {
+      taskId = dispatcher.taskId
+      if (tab === undefined) tab = await resolveDispatcherTab(ctx.runtime, dispatcher)
+    } else {
+      const active = await resolveActiveTaskId(daemon)
+      if (!active) {
+        throw new ApiError(
+          "no --task-id given and no active task — open a task first or pass --task-id",
+          "MISSING_TARGET",
+        )
+      }
+      taskId = active
+    }
   }
   const res = await daemon.request<{ task: SerializedTask }>("task.get", { taskId })
   const text = ctx.args.bool("plain") ? prompt : await withPeerProvenance(daemon, taskId, prompt)

@@ -22,6 +22,20 @@ export async function simpleRpc(ctx: VerbContext, name: string, payload: Record<
 }
 
 /**
+ * Dispatcher provenance for `task.create` (issue #21): a create issued from
+ * INSIDE a kobe engine tab records who dispatched it — `$KOBE_TASK_ID` +
+ * `$KOBE_TAB_ID` are exported into every engine tab (session-launch.ts), and
+ * the pair is the reply address a sub-task's bare `send` routes back to.
+ * Read HERE in the CLI process (the daemon has no caller env); a create from
+ * a plain shell records nothing. Tab floor tab-1 = the canonical engine tab.
+ */
+export function dispatcherEnvPayload(env: NodeJS.ProcessEnv = process.env): Record<string, string> {
+  const taskId = env.KOBE_TASK_ID
+  if (!taskId) return {}
+  return { dispatcherTaskId: taskId, dispatcherTabId: env.KOBE_TAB_ID || "tab-1" }
+}
+
+/**
  * `pty-list` — inventory of the standalone pty host's sessions (key, pid,
  * command, live OSC window title — the same "实时进程名" stream the TUI tab
  * strip shows). Talks to the PTY HOST socket, not the daemon (offline verb),

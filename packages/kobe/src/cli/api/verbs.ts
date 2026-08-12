@@ -115,7 +115,7 @@ export const VERBS: readonly VerbSpec[] = [
   {
     name: "get-task",
     summary:
-      "Read one task's metadata + terminal tabs. `.running` = any hosted engine tab is live; `.tabs[]` (id/kind/vendor/liveVendor/lastTitle/alive) is the discovery read for `send --tab tab-N`.",
+      "Read one task's metadata + terminal tabs. `.running` = any hosted engine tab is live; `.tabs[]` (id/kind/vendor/liveVendor/lastTitle/alive) is the discovery read for `send --tab tab-N`; `.task.dispatcher` = the kobe session (task+tab) that created it, when one did.",
     flags: [F.taskId()],
     handler: getTask,
   },
@@ -177,7 +177,7 @@ export const VERBS: readonly VerbSpec[] = [
   {
     name: "send",
     summary:
-      "Paste a follow-up prompt into a task's running engine (one full turn). Defaults to the active task. Sent from inside another kobe task ($KOBE_TASK_ID), the prompt is prefixed with [KOBE PEER] provenance — who sent it and how to reply — so agent-to-agent messaging needs no coordinator.",
+      "Paste a follow-up prompt into a task's running engine (one full turn). Without --task-id, a task spawned from another kobe session replies to its dispatcher's tab (then that task's live canonical engine; nothing alive = DISPATCHER_UNREACHABLE, never a silent spawn); otherwise the active task. Sent from inside another kobe task ($KOBE_TASK_ID), the prompt is prefixed with [KOBE PEER] provenance — who sent it and how to reply (tab-precise) — so agent-to-agent messaging needs no coordinator.",
     flags: [
       F.taskId(false),
       F.prompt(true, "Text pasted + submitted into the engine pane."),
@@ -329,7 +329,7 @@ export const VERBS: readonly VerbSpec[] = [
   {
     name: "collect",
     summary:
-      "Read-only comparison snapshot of several tasks: identity, branch, .running, uncommitted .changes, and committed .base (ahead count + diffstat vs the base branch).",
+      "Read-only comparison snapshot of several tasks: identity, branch, lineage (.dispatcher, .groupId), .running, uncommitted .changes, and committed .base (ahead count + diffstat vs the base branch).",
     flags: [
       { name: "task-ids", type: "csv", placeholder: "a,b,c", description: "Comma-separated task ids." },
       F.repo(false),

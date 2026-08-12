@@ -105,6 +105,19 @@ export interface TaskQuotaResumeState {
 }
 
 /**
+ * Provenance of the kobe session that created this task: which task and
+ * which terminal tab dispatched it (from the creating CLI process's
+ * `$KOBE_TASK_ID` / `$KOBE_TAB_ID`). This is the reply address for the
+ * collaboration loop — a sub-task's bare `send` routes its outcome back to
+ * this exact tab. Absent when the task was created outside a kobe session
+ * (TUI dialog, plain shell) and on records that predate the field.
+ */
+export interface TaskDispatcher {
+  readonly taskId: string
+  readonly tabId: string
+}
+
+/**
  * One task. Stored in `~/.kobe/tasks.json` as part of {@link TaskIndex}.
  *
  * Field invariants:
@@ -182,6 +195,8 @@ export interface Task {
   readonly quotaResume?: TaskQuotaResumeState
   /** The external tracker item this task was started from, when it was. */
   readonly linkedWorkItem?: TaskLinkedWorkItem
+  /** The kobe session (task + tab) that dispatched this task, when one did. */
+  readonly dispatcher?: TaskDispatcher
   readonly createdAt: string
   readonly updatedAt: string
 }

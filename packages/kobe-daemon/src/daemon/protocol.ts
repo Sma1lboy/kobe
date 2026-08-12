@@ -386,6 +386,8 @@ export interface SerializedTask {
   /** Durable rate-limit auto-resume schedule. */
   readonly quotaResume?: DaemonTask["quotaResume"]
   readonly linkedWorkItem?: DaemonTask["linkedWorkItem"]
+  /** The kobe session (task + tab) that dispatched this task's creation. */
+  readonly dispatcher?: DaemonTask["dispatcher"]
   readonly createdAt: string
   readonly updatedAt: string
 }
@@ -409,6 +411,7 @@ export function serializeTask(task: DaemonTask): SerializedTask {
     deletion: task.deletion,
     quotaResume: task.quotaResume,
     linkedWorkItem: task.linkedWorkItem,
+    dispatcher: task.dispatcher,
     createdAt: task.createdAt,
     updatedAt: task.updatedAt,
   }

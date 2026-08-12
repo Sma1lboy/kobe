@@ -9,7 +9,7 @@ import { DEFAULT_FEEDBACK_CATEGORY_SLUG, submitFeedback } from "../../lib/feedba
 import { ulid } from "../../orchestrator/index/ulid.ts"
 import type { VendorId } from "../../types/vendor.ts"
 import { FANOUT_CAP, buildCountPlan, parseAgentsSpec } from "./flags.ts"
-import { daemonOf } from "./handler-helpers.ts"
+import { daemonOf, dispatcherEnvPayload } from "./handler-helpers.ts"
 import { ApiError, type VerbContext } from "./types.ts"
 
 export async function fanOut(ctx: VerbContext): Promise<unknown> {
@@ -47,8 +47,11 @@ export async function fanOut(ctx: VerbContext): Promise<unknown> {
   // can retry/archive them instead of double-spawning.
   const created: Array<{ taskId: string; vendor: VendorId; task: SerializedTask }> = []
   let createFailure: { vendor: VendorId; error: { message: string; code: string } } | null = null
+  // Every sibling records the same dispatcher (issue #21) — the reply
+  // address each worker's bare `send` routes its outcome back to.
+  const dispatcher = dispatcherEnvPayload()
   for (const [i, vendor] of plan.entries()) {
-    const payload: Record<string, string> = { repo, vendor, groupId }
+    const payload: Record<string, string> = { repo, vendor, groupId, ...dispatcher }
     if (title) payload.title = plan.length > 1 ? `${title} #${i + 1}/${plan.length}` : title
     if (baseRef) payload.baseRef = baseRef
     try {
@@ -165,6 +168,9 @@ export async function collect(ctx: VerbContext): Promise<unknown> {
       vendor: task.vendor,
       status: task.status,
       ...(task.groupId ? { groupId: task.groupId } : {}),
+      // Lineage read (issue #21): who dispatched this task, so a fan-out
+      // round's parent is programmatically discoverable.
+      ...(task.dispatcher ? { dispatcher: task.dispatcher } : {}),
       running,
       changes,
       base,

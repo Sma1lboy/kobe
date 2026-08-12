@@ -35,6 +35,14 @@ export const TASK_HANDLERS: readonly DaemonRequestHandler[] = [
     web: true,
     async handle(payload, ctx) {
       const repo = requireString(payload, "repo")
+      // Dispatcher provenance (issue #21): the CLI reads its own
+      // $KOBE_TASK_ID/$KOBE_TAB_ID and sends both flat — the daemon process
+      // has no caller env of its own. Recorded only when the task id is
+      // present; the tab floor is tab-1, the canonical first engine tab.
+      const dispatcherTaskId = optionalString(payload, "dispatcherTaskId")
+      const dispatcher = dispatcherTaskId
+        ? { taskId: dispatcherTaskId, tabId: optionalString(payload, "dispatcherTabId") || "tab-1" }
+        : undefined
       const task = await ctx.orch.createTask({
         repo,
         title: optionalString(payload, "title"),
@@ -43,6 +51,7 @@ export const TASK_HANDLERS: readonly DaemonRequestHandler[] = [
         vendor: optionalVendor(payload, "vendor"),
         modelEffort: optionalString(payload, "effort"),
         groupId: optionalString(payload, "groupId"),
+        dispatcher,
       })
       return { taskId: task.id, task: serializeTask(task) }
     },
