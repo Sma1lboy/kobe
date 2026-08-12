@@ -18,14 +18,15 @@ This prompts for the bump type (**patch** / **minor** / **major**) and a summary
 - A pure tooling / docs / CI change that doesn't touch the published package needs **no** changeset. If you want to record "intentionally nothing to release", run `bun run changeset -- --empty`.
 - Bump type: `patch` for fixes, `minor` for features, `major` for breaking changes. kobe is pre-1.0, so breaking changes still go `minor` by convention unless we decide otherwise.
 
-### 2. Cutting a release — the changesets bot (default)
+### 2. Cutting a release — automatic (default)
 
-Releases are automated by [`changesets.yml`](../.github/workflows/changesets.yml) (the vercel/ai loop, via [changesets/action](https://github.com/changesets/action)):
+Releases are fully automatic via [`changesets.yml`](../.github/workflows/changesets.yml): **any push to `main` that carries pending changesets IS a release.** No bot PR, no button. The workflow:
 
-1. **Every push to `main` with pending changesets** opens or updates the bot's **"chore: release" PR** — it holds the `changeset version` result (version bump + CHANGELOG + lockfile refresh + lint:fix, identical to what `release.sh` generates). Landed changesets keep folding into that one PR.
-2. **Merging the release PR is the release.** The merge push has zero pending changesets and an untagged version, so the workflow's `tag` job waits for that commit's `ci.yml` to go green (same two-phase rule as `release.sh` — no tag on a red tree, version never burned), then tags `vX.Y.Z` and dispatches `release.yml`, which publishes exactly as before.
+1. Waits for the triggering commit's `ci.yml` run to go green (a red run releases nothing — land the fix, and the next push releases the accumulated changesets; a run cancelled by a newer push defers to that push's workflow).
+2. Runs the same regeneration `release.sh` does (`changeset version` + lockfile refresh + lint:fix), verifies with `bun install --frozen-lockfile` + the lint gate, commits `chore: release — X.Y.Z`, pushes it, and tags `vX.Y.Z`.
+3. Dispatches `release.yml` on the tag (a GITHUB_TOKEN tag push never fires tag triggers — the dispatch is explicit), which re-runs every publish gate from the tag checkout before `npm publish`.
 
-Two footnotes: the bot PR gets no `ci.yml` run of its own (GitHub never runs workflows on GITHUB_TOKEN-created PRs — the publish path is still gated by `ci.yml` on the merge commit plus `release.yml`'s own gates), and if `ci.yml` fails on the merge commit nothing is tagged — land the fix on `main`; the next push's run tags the same version at the fixed HEAD.
+Consequence to keep in mind: a `minor`/`major` changeset auto-ships that bump the moment it lands on `main` — the changeset file in the PR **is** the release decision, so review bump types at PR review time.
 
 ### 2b. Cutting a release by hand (fallback)
 

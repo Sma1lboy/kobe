@@ -12,15 +12,16 @@ manual flow in [`docs/RELEASING.md`](../../../docs/RELEASING.md) describes — r
 that doc once if anything here is ambiguous; it is the source of truth and this
 skill must never contradict it.
 
-> **Default path is the changesets bot** (`.github/workflows/changesets.yml`,
-> since 2026-08-12): pending changesets accumulate in the bot's
-> "chore: release" PR, and MERGING that PR is the release — CI-green wait,
-> tag, and publish all run in Actions. When the user asks to release, check
-> for that open PR first: if it exists and its version is right, merge it and
-> jump to Step 4 (watch the pipeline). Run the `scripts/release.sh` flow
-> below only when the bot path is unavailable (Actions down, no PR, or the
-> user explicitly asks for the local flow) — and never while the bot's `tag`
-> job is mid-flight on the same version.
+> **Releases are automatic** (`.github/workflows/changesets.yml`, since
+> 2026-08-12): any push to `main` carrying pending changesets triggers the
+> full chain in Actions — CI-green wait → version+commit → tag → publish.
+> When the user asks to release, FIRST check whether that workflow already
+> has it: `gh run list --workflow=changesets.yml --limit 3`. If a run is
+> mid-flight or completed for the relevant push, jump to Step 4 (watch the
+> publish pipeline / verify npm). Run the `scripts/release.sh` flow below
+> only when the automatic path is unavailable (Actions down) or the user
+> explicitly asks for the local flow — and never while a changesets.yml
+> run is mid-flight on the same version (they'd race to tag it).
 
 The job is: **detect the bump → gate → bump/tag/push → watch CI → confirm
 published, or stop with a precise report.** Do the whole chain without

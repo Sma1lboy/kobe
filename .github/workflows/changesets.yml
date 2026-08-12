@@ -1,26 +1,25 @@
-# Changesets automation — the vercel/ai-style release loop.
+# Fully automatic releases: any push to main carrying pending changesets
+# IS a release. No bot PR, no manual merge — the workflow does what
+# scripts/release.sh does, in Actions:
 #
-# On every push to main:
+#   1. Wait for the triggering commit's ci.yml run to go green (the full
+#      Linux/macOS gate set). A red or cancelled run releases nothing.
+#   2. `bun run ci:version` — changeset version + lockfile refresh +
+#      lint:fix — then verify with `bun install --frozen-lockfile` and the
+#      lint gate, so the bookkeeping commit can't be the thing that breaks.
+#   3. Commit `chore: release — X.Y.Z`, push it to main, tag vX.Y.Z.
+#   4. Dispatch release.yml on the tag (a GITHUB_TOKEN tag push never
+#      fires the tag trigger — GitHub's recursion guard; workflow_dispatch
+#      is the documented exception). release.yml re-runs every publish
+#      gate from the tag checkout before npm sees anything.
 #
-#   `version-pr` — pending changesets exist → changesets/action opens or
-#     updates the "chore: release" PR (runs `bun run ci:version`: changeset
-#     version + lockfile refresh + lint:fix, the same regeneration steps
-#     scripts/release.sh performs). Each landed changeset folds into that
-#     one PR. NOTE: PRs opened with GITHUB_TOKEN never get their own ci.yml
-#     runs — that's a GitHub guard against recursion, not a config bug. The
-#     publish path below is still doubly gated.
+# The release commit itself gets no ci.yml run (same recursion guard), but
+# its delta over the CI-validated parent is machine-generated version
+# bookkeeping, verified in step 2 — and release.yml's own gates still
+# stand between the tag and npm.
 #
-#   `tag` — no pending changesets AND the committed version is untagged
-#     (i.e. the release PR just merged) → wait for this commit's ci.yml run
-#     to go green (the same Linux/macOS gates scripts/release.sh waits on),
-#     then tag vX.Y.Z and dispatch release.yml on that tag. Dispatching
-#     explicitly because a tag pushed with GITHUB_TOKEN does not fire
-#     release.yml's tag trigger (same recursion guard); workflow_dispatch
-#     is the documented exception.
-#
-# So: land patches with changesets → the bot PR accumulates them → merging
-# the PR is the release. scripts/release.sh stays as the manual fallback —
-# both paths converge on the identical tag-triggered publish pipeline.
+# scripts/release.sh stays as the manual fallback for when Actions is
+# down. Don't run both on the same version: they'd race to tag it.
 
 name: Changesets
 
@@ -32,74 +31,55 @@ permissions:
   contents: read
 
 concurrency:
-  # Never cancel: a superseded run must still finish maintaining the
-  # version PR; the tag job self-guards against racing a newer push.
+  # Serialize, never cancel: back-to-back merges queue, and a superseded
+  # run defers to the newer one via the guards below.
   group: changesets-main
   cancel-in-progress: false
 
 jobs:
-  version-pr:
+  release:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
-      pull-requests: write
+      contents: write # push the release commit + tag
+      actions: write # dispatch release.yml
     steps:
-      - name: Checkout
+      - name: Checkout main
         uses: actions/checkout@v5
         with:
+          ref: main
           fetch-depth: 0
 
-      - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.3.13
-
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
-      - name: Open or update the release PR
-        uses: changesets/action@v1
-        with:
-          version: bun run ci:version
-          commit: "chore: release"
-          title: "chore: release"
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  tag:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write # push the vX.Y.Z tag
-      actions: write # dispatch release.yml on it
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v5
-
-      - name: Decide whether this commit is an untagged release
+      - name: Decide what this push needs
         id: gate
         run: |
+          if [ "$(git rev-parse HEAD)" != "$GITHUB_SHA" ]; then
+            echo "main moved past $GITHUB_SHA — deferring to the newer push's run"
+            echo "mode=skip" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           PENDING=$(find .changeset -maxdepth 1 -name '*.md' ! -name 'README.md' | wc -l | tr -d ' ')
           VERSION=$(node -p "require('./packages/kobe/package.json').version")
-          TAG="v$VERSION"
           if [ "$PENDING" != "0" ]; then
-            echo "pending changesets ($PENDING) — not a release commit"
-            echo "release=false" >> "$GITHUB_OUTPUT"
-          elif git ls-remote --tags origin "refs/tags/$TAG" | grep -q .; then
-            echo "$TAG already on origin — nothing to do"
-            echo "release=false" >> "$GITHUB_OUTPUT"
+            echo "$PENDING pending changeset(s) — releasing"
+            echo "mode=release" >> "$GITHUB_OUTPUT"
+          elif ! git ls-remote --tags origin "refs/tags/v$VERSION" | grep -q .; then
+            # A committed-but-untagged version: an interrupted earlier run
+            # (or a manual release.sh push). Finish it.
+            echo "v$VERSION committed but untagged — resuming"
+            echo "mode=resume" >> "$GITHUB_OUTPUT"
+            echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
           else
-            echo "$TAG is committed and untagged — releasing"
-            echo "release=true" >> "$GITHUB_OUTPUT"
-            echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+            echo "no pending changesets, v$VERSION already tagged — nothing to do"
+            echo "mode=skip" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Wait for this commit's ci.yml to go green
-        if: steps.gate.outputs.release == 'true'
+        if: steps.gate.outputs.mode == 'release'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Same two-phase rule as scripts/release.sh: the tag exists only
-          # after the release commit passed the full Linux/macOS gate set.
+          # No tag, no release commit, until the triggering push passed the
+          # same Linux/macOS gates that block publish.
           run_id=""
           tries=0
           while [ -z "$run_id" ]; do
@@ -117,24 +97,71 @@ jobs:
           if ! gh run watch --repo "$GITHUB_REPOSITORY" "$run_id" --exit-status >/dev/null; then
             concl=$(gh run view --repo "$GITHUB_REPOSITORY" "$run_id" --json conclusion --jq .conclusion)
             if [ "$concl" = "cancelled" ]; then
-              # A newer main push superseded this one; its own Changesets
-              # run picks the release up. Nothing tagged, nothing burned.
-              echo "ci.yml run was cancelled by a newer push — deferring to that push's run"
+              # A newer main push superseded this one (ci.yml cancels
+              # in-progress main runs); that push's own Changesets run
+              # will release the accumulated changesets.
+              echo "ci.yml run cancelled by a newer push — deferring"
               exit 0
             fi
-            echo "::error::ci.yml failed on the release commit — nothing tagged, version not burned. Land a fix; the next push retries."
+            echo "::error::ci.yml failed on $GITHUB_SHA — nothing released. Land a fix; the next push releases the accumulated changesets."
             exit 1
           fi
-          echo "ci_green=true" >> "$GITHUB_OUTPUT"
+          echo "green=true" >> "$GITHUB_OUTPUT"
         id: ci
 
-      - name: Tag and dispatch the publish pipeline
-        if: steps.gate.outputs.release == 'true' && steps.ci.outputs.ci_green == 'true'
+      - name: Setup Bun
+        if: steps.ci.outputs.green == 'true'
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.13
+
+      - name: Version, verify, commit, tag
+        if: steps.ci.outputs.green == 'true'
+        id: version
+        run: |
+          bun install --frozen-lockfile
+          bun run ci:version
+          NEW=$(node -p "require('./packages/kobe/package.json').version")
+          TAG="v$NEW"
+          if git ls-remote --tags origin "refs/tags/$TAG" | grep -q .; then
+            echo "::error::$TAG already exists on origin — changesets produced a version that's already tagged"
+            exit 1
+          fi
+          # The bookkeeping delta must not be what breaks the publish gates.
+          bun install --frozen-lockfile
+          bun run lint
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          # Same explicit path list as scripts/release.sh — never git add -A.
+          git add packages/*/package.json packages/*/CHANGELOG.md .changeset
+          if ! git diff --quiet bun.lock 2>/dev/null; then
+            git add bun.lock
+          fi
+          git commit -m "chore: release — $NEW"
+          git tag "$TAG"
+          git push origin main
+          git push origin "$TAG"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Dispatch the publish pipeline
+        if: steps.gate.outputs.mode == 'resume' || steps.version.outputs.tag != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAG: ${{ steps.gate.outputs.tag }}
+          TAG: ${{ steps.version.outputs.tag || steps.gate.outputs.tag }}
         run: |
-          git tag "$TAG" "$GITHUB_SHA"
-          git push origin "$TAG"
+          # Resume case: the tag may not exist yet (interrupted run) —
+          # create it at HEAD if absent, then dispatch.
+          if ! git ls-remote --tags origin "refs/tags/$TAG" | grep -q .; then
+            git tag "$TAG"
+            git push origin "$TAG"
+          fi
+          # A user-pushed tag (scripts/release.sh) already fired release.yml
+          # via the tag trigger — dispatching again would double-publish
+          # into an npm E409. Only dispatch when no run exists for this tag.
+          if gh run list --repo "$GITHUB_REPOSITORY" --workflow=release.yml --limit 20 \
+              --json headBranch --jq ".[] | select(.headBranch == \"$TAG\")" | grep -q .; then
+            echo "release.yml already ran (or is running) for $TAG — not dispatching again"
+            exit 0
+          fi
           gh workflow run release.yml --repo "$GITHUB_REPOSITORY" --ref "refs/tags/$TAG"
           echo "dispatched release.yml on $TAG"
