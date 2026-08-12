@@ -172,6 +172,17 @@ describe("kobe skill install", () => {
     expect(err()).toContain(npxSkillsCommand())
   })
 
+  it("installs GLOBAL by default; --project opts into project-level", async () => {
+    // The skill drives a machine-wide daemon — default to one user-level
+    // copy instead of a stale-prompt lifecycle per repo.
+    await runSkillSubcommand(["install"])
+    expect(mocks.bunSpawn.mock.calls[0][0]).toContain("--global")
+
+    mocks.bunSpawn.mockClear()
+    await runSkillSubcommand(["install", "--project"])
+    expect(mocks.bunSpawn.mock.calls[0][0]).not.toContain("--global")
+  })
+
   it("rejects a comma-joined --agent instead of silently using only the first", async () => {
     await expect(runSkillSubcommand(["install", "--agent", "claude-code,codex"])).rejects.toThrow("exit 2")
     expect(err()).toContain("--agent takes one name")
