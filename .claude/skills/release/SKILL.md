@@ -12,6 +12,16 @@ manual flow in [`docs/RELEASING.md`](../../../docs/RELEASING.md) describes — r
 that doc once if anything here is ambiguous; it is the source of truth and this
 skill must never contradict it.
 
+> **Default path is the changesets bot** (`.github/workflows/changesets.yml`,
+> since 2026-08-12): pending changesets accumulate in the bot's
+> "chore: release" PR, and MERGING that PR is the release — CI-green wait,
+> tag, and publish all run in Actions. When the user asks to release, check
+> for that open PR first: if it exists and its version is right, merge it and
+> jump to Step 4 (watch the pipeline). Run the `scripts/release.sh` flow
+> below only when the bot path is unavailable (Actions down, no PR, or the
+> user explicitly asks for the local flow) — and never while the bot's `tag`
+> job is mid-flight on the same version.
+
 The job is: **detect the bump → gate → bump/tag/push → watch CI → confirm
 published, or stop with a precise report.** Do the whole chain without
 hand-holding, but stop and surface (never guess) at the two human-judgment gates

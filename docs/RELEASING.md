@@ -18,11 +18,22 @@ This prompts for the bump type (**patch** / **minor** / **major**) and a summary
 - A pure tooling / docs / CI change that doesn't touch the published package needs **no** changeset. If you want to record "intentionally nothing to release", run `bun run changeset -- --empty`.
 - Bump type: `patch` for fixes, `minor` for features, `major` for breaking changes. kobe is pre-1.0, so breaking changes still go `minor` by convention unless we decide otherwise.
 
-### 2. Cutting a release
+### 2. Cutting a release — the changesets bot (default)
+
+Releases are automated by [`changesets.yml`](../.github/workflows/changesets.yml) (the vercel/ai loop, via [changesets/action](https://github.com/changesets/action)):
+
+1. **Every push to `main` with pending changesets** opens or updates the bot's **"chore: release" PR** — it holds the `changeset version` result (version bump + CHANGELOG + lockfile refresh + lint:fix, identical to what `release.sh` generates). Landed changesets keep folding into that one PR.
+2. **Merging the release PR is the release.** The merge push has zero pending changesets and an untagged version, so the workflow's `tag` job waits for that commit's `ci.yml` to go green (same two-phase rule as `release.sh` — no tag on a red tree, version never burned), then tags `vX.Y.Z` and dispatches `release.yml`, which publishes exactly as before.
+
+Two footnotes: the bot PR gets no `ci.yml` run of its own (GitHub never runs workflows on GITHUB_TOKEN-created PRs — the publish path is still gated by `ci.yml` on the merge commit plus `release.yml`'s own gates), and if `ci.yml` fails on the merge commit nothing is tagged — land the fix on `main`; the next push's run tags the same version at the fixed HEAD.
+
+### 2b. Cutting a release by hand (fallback)
 
 ```bash
 scripts/release.sh
 ```
+
+Same pipeline driven locally — useful when Actions is down or you want the interactive confirm. Don't run it while the bot's `tag` job is mid-flight on the same version (both would race to push the same tag; harmless when identical, noisy when not).
 
 > **PR-only exception.** Development lands on `main` exclusively via pull
 > requests (AGENTS.md "PR-only mainline"); the `chore: release — X.Y.Z`
