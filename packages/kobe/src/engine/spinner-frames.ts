@@ -18,8 +18,15 @@ export const DEFAULT_SPINNER_FRAMES: readonly string[] = ["⠋", "⠙", "⠹", "
  * `src/components/Spinner.tsx` (`getDefaultCharacters()` + the
  * forward-then-reverse concat that makes the glyph oscillate ·→✽→· with a
  * one-frame hold at each end).
+ *
+ * One deviation: claude-code's third frame is `✳` (U+2733), the only glyph in
+ * the set with the Unicode Emoji property. Windows font fallback (Segoe UI
+ * Emoji) draws it as the green color-emoji asterisk — and ignores a VS15
+ * (U+FE0E) text-presentation request — so it clashes with the surrounding
+ * monochrome frames. Kobe substitutes `✱` (U+2731 HEAVY ASTERISK), which has
+ * no emoji mapping anywhere and keeps the ·→✽ size ramp intact.
  */
-const CLAUDE_SPINNER_CHARS: readonly string[] = ["·", "✢", "✳", "✶", "✻", "✽"]
+const CLAUDE_SPINNER_CHARS: readonly string[] = ["·", "✢", "✱", "✶", "✻", "✽"]
 export const CLAUDE_SPINNER_FRAMES: readonly string[] = [
   ...CLAUDE_SPINNER_CHARS,
   ...[...CLAUDE_SPINNER_CHARS].reverse(),

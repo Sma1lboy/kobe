@@ -1147,7 +1147,7 @@ mainBranch=-                       act=permission_needed  | main=1 title=kobe   
 mainBranch=-                       act=error              | main=1 title=kobe             glyph=✕   tone=error       load=0 matz=0 sub=error
 
 ## engine-owned spinner frame sets + withSpinnerFrame overlay
-vendor=claude     frames(0..25)=·✢✳✶✻✽✽✻✶✳✢··✢✳✶✻✽✽✻✶✳✢··✢
+vendor=claude     frames(0..25)=·✢✱✶✻✽✽✻✶✱✢··✢✱✶✻✽✽✻✶✱✢··✢
 vendor=codex      frames(0..25)=⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏⠋⠙⠹⠸⠼⠴
 vendor=copilot    frames(0..25)=⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏⠋⠙⠹⠸⠼⠴
 vendor=kimi       frames(0..25)=⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏⠋⠙⠹⠸⠼⠴
@@ -1162,7 +1162,7 @@ act=idle               frame=14   overlay: base=○ after=○ tone=textMuted   s
 act=idle               frame=99   overlay: base=○ after=○ tone=textMuted   sub=feat/sidebar     frameReads=0 sameObject=1 sameAsDirect=1
 act=running            frame=0    overlay: base=· after=· tone=primary     sub=feat/sidebar     frameReads=1 sameObject=1 sameAsDirect=1
 act=running            frame=3    overlay: base=· after=✶ tone=primary     sub=feat/sidebar     frameReads=1 sameObject=0 sameAsDirect=1
-act=running            frame=14   overlay: base=· after=✳ tone=primary     sub=feat/sidebar     frameReads=1 sameObject=0 sameAsDirect=1
+act=running            frame=14   overlay: base=· after=✱ tone=primary     sub=feat/sidebar     frameReads=1 sameObject=0 sameAsDirect=1
 act=running            frame=99   overlay: base=· after=✶ tone=primary     sub=feat/sidebar     frameReads=1 sameObject=0 sameAsDirect=1
 act=turn_complete      frame=0    overlay: base=● after=● tone=primary     sub=feat/sidebar     frameReads=0 sameObject=1 sameAsDirect=1
 act=turn_complete      frame=3    overlay: base=● after=● tone=primary     sub=feat/sidebar     frameReads=0 sameObject=1 sameAsDirect=1
