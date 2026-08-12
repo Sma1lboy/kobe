@@ -156,6 +156,11 @@ describe.skipIf(!nodePty)("Pure TUI unread lamp across a restart (behavior)", ()
       const row = tabRows(screen())[0] ?? ""
       expect(row, "a completion already read came back unread after the restart").not.toContain(UNREAD)
       expect(row, "tab-1's row never received the daemon's activity").toContain(SEEN)
+      // ...and the row genuinely was one nobody was looking at. Had this
+      // launch landed back in tab-1, the session-only seen bit would digest
+      // the lamp on its own and the assertions above would say nothing.
+      const parked = (await readState())[key] as { activeId?: string } | undefined
+      expect(parked?.activeId, "launch #2 did not stay parked on tab-2").toBe("tab-2")
     })
   }, 120_000)
 })
