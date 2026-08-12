@@ -161,7 +161,15 @@ const runCreateTask = async (
 ) => {
   const flow = spec.flows?.createTask
   if (!flow) throw new Error("replay flow createTask is not configured")
-  if (flow.focusPaneBeforeOpen === "leftmost") await sendKey("C-h", terminal, clock, startedAt, frames)
+  // The sidebar owns the bare `n` that opens the dialog, and a fresh boot does
+  // not focus it — an unanchored `n` is simply swallowed. Use the `ctrl+a` `h`
+  // prefix sequence from docs/KEYBINDINGS.md ("move focus left"): it is
+  // idempotent at the leftmost pane, unlike `ctrl+q`, which focuses the
+  // sidebar but QUITS when the sidebar already has focus.
+  if (flow.focusPaneBeforeOpen === "leftmost") {
+    await sendKey("C-a", terminal, clock, startedAt, frames)
+    await sendKey("h", terminal, clock, startedAt, frames)
+  }
   await sendKey(flow.openKey ?? "n", terminal, clock, startedAt, frames)
   await wait(spec, flow.dialogWait, terminal, clock, startedAt, frames)
   if (flow.dialogSettleMs !== undefined) await pause(flow.dialogSettleMs, terminal, clock, startedAt, frames)

@@ -12,7 +12,7 @@
     "output": "src/quicklook/frames.json",
     "home": ".capture-home-puretui",
     "repoDefault": "fixture-repo",
-    "shellPrompt": ""
+    "shellPrompt": "kobe-demo$ "
   },
   "setup": {
     "readyWait": "workspaceReady",
@@ -29,19 +29,19 @@
       "timeoutMs": 20000
     },
     "newTaskDialog": {
-      "pattern": "New task",
+      "pattern": "from branch",
       "timeoutMs": 8000
     },
     "stubReady": {
-      "pattern": "ready ›",
+      "pattern": "ready \u203a",
       "timeoutMs": 30000
     },
     "enginePicker": {
-      "pattern": "engine or shell",
+      "pattern": "New conversation",
       "timeoutMs": 8000
     },
     "shellPrompt": {
-      "pattern": "sh-3.2$",
+      "pattern": "kobe-demo$",
       "timeoutMs": 15000
     },
     "fanOutDone": {
@@ -60,6 +60,7 @@
   },
   "flows": {
     "createTask": {
+      "focusPaneBeforeOpen": "leftmost",
       "openKey": "n",
       "dialogWait": "newTaskDialog",
       "dialogSettleMs": 1200,
@@ -273,46 +274,46 @@
     {
       "name": "boot",
       "from": 0,
-      "to": 4.5
+      "to": 5.1
     },
     {
       "name": "dialog",
-      "from": 4.5,
-      "to": 8,
+      "from": 5.1,
+      "to": 10.5,
       "region": "dialog"
     },
     {
       "name": "type-prompt",
-      "from": 8,
-      "to": 13.4,
+      "from": 10.5,
+      "to": 16.0,
       "region": "input"
     },
     {
       "name": "fan-out",
-      "from": 13.4,
-      "to": 18.3,
+      "from": 16.0,
+      "to": 22.5,
       "region": "chat"
     },
     {
       "name": "parallel",
-      "from": 18.3,
-      "to": 24
+      "from": 22.5,
+      "to": 26.7
     },
     {
       "name": "attempt",
-      "from": 24,
-      "to": 29.2,
+      "from": 26.7,
+      "to": 32.1,
       "region": "chat"
     },
     {
       "name": "diff",
-      "from": 29.2,
-      "to": 34.4,
+      "from": 32.1,
+      "to": 37.3,
       "region": "review"
     },
     {
       "name": "land",
-      "from": 34.4,
+      "from": 37.3,
       "to": "capture-end",
       "region": "chat"
     },
@@ -330,7 +331,10 @@
     "tailHoldSeconds": 3,
     "minChangedCells": 10,
     "rowGap": 3,
-    "colQuantiles": [0.05, 0.95]
+    "colQuantiles": [
+      0.05,
+      0.95
+    ]
   },
   "theme": {
     "defaultFg": "#FFFFFF",
@@ -355,7 +359,9 @@
     ]
   },
   "delivery": {
-    "speedCuts": [1],
+    "speedCuts": [
+      1
+    ],
     "posterAt": 5
   }
 }

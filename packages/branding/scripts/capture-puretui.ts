@@ -90,17 +90,22 @@ const createFixtureRepository = async (demoRoot: string): Promise<string> => {
   return fixtureRepo
 }
 
+/**
+ * Mirrors `KOBE_SKILL_VERSION` in `packages/kobe/src/lib/skill-install.ts`.
+ * `skillHintSeen:vN` mutes the versioned skill-update prompt — the capture
+ * keeps the user's real HOME, whose installed skill may be stale — and a
+ * stale N lets that prompt swallow the boot wait. Bump in lockstep; the test
+ * asserts against this constant so the two can't drift apart again.
+ */
+export const CAPTURE_SKILL_HINT_VERSION = 19
+
 const prepareCaptureState = async (demoRoot: string, fixtureRepo: string, claudeCommand?: string): Promise<void> => {
   const configDir = join(demoRoot, "home", ".config", "kobe")
   await mkdir(configDir, { recursive: true })
-  // `skillHintSeen:vN` mutes the versioned skill-update prompt (the capture
-  // keeps the user's real HOME, whose installed skill may be stale). If the
-  // boot wait times out on that prompt after a KOBE_SKILL_VERSION bump,
-  // update N here to match `src/lib/skill-install.ts`.
   const state: Record<string, unknown> = {
     onboarded: true,
     skillHintSeen: "1",
-    "skillHintSeen:v6": "1",
+    [`skillHintSeen:v${CAPTURE_SKILL_HINT_VERSION}`]: "1",
     savedRepos: [fixtureRepo],
   }
   const captureClaudeCommand = claudeCommand?.trim()
@@ -134,6 +139,7 @@ export async function capturePureTui(
     readyTimeoutMs: ready?.timeoutMs,
     cols: spec.viewport.cols,
     rows: spec.viewport.rows,
+    shellPrompt: spec.capture.shellPrompt,
     theme: {
       defaultFg: spec.theme?.defaultFg ?? DEFAULT_TERMINAL_THEME.defaultFg,
       defaultBg: spec.theme?.defaultBg ?? DEFAULT_TERMINAL_THEME.defaultBg,

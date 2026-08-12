@@ -5,7 +5,7 @@ import { join, resolve } from "node:path"
 import { type CapturePureTuiOptions, capturePureTui } from "../scripts/capture-puretui"
 import * as pureTuiTerminal from "../src/quicklook/puretui-terminal"
 
-type CaptureEnvironment = (demoRoot: string) => Record<string, string>
+type CaptureEnvironment = (demoRoot: string, shellPrompt?: string) => Record<string, string>
 
 const captureEnvironment = (): CaptureEnvironment | undefined =>
   (pureTuiTerminal as typeof pureTuiTerminal & { captureEnvironment?: CaptureEnvironment }).captureEnvironment
@@ -66,6 +66,26 @@ describe("PureTUI capture environment", () => {
       if (previous === undefined) delete process.env.NO_COLOR
       else process.env.NO_COLOR = previous
     }
+  })
+
+  test("pins the shell prompt so shell beats stay waitable off-macOS", () => {
+    const buildEnvironment = captureEnvironment()
+    expect(typeof buildEnvironment).toBe("function")
+    if (!buildEnvironment) return
+
+    // Without the pin the prompt is whatever the operator's login shell
+    // paints — bare `$` under dash — and every shellPrompt wait times out.
+    expect(buildEnvironment("/tmp/kobe-prompt-capture", "kobe-demo$ ")).toMatchObject({
+      SHELL: "/bin/sh",
+      PS1: "kobe-demo$ ",
+    })
+  })
+
+  test("leaves the shell prompt alone when the spec pins none", () => {
+    const buildEnvironment = captureEnvironment()
+    if (!buildEnvironment) return
+    const env = buildEnvironment("/tmp/kobe-prompt-capture")
+    expect(env).not.toHaveProperty("PS1")
   })
 
   test("leaves the isolated engine command unset by default", async () => {

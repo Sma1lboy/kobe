@@ -283,7 +283,8 @@ describe("capture core", () => {
 
     expect(terminal.calls).toEqual([
       "start",
-      "key:C-h",
+      "key:C-a",
+      "key:h",
       "key:n",
       "wait:composer:500",
       "key:C-e",

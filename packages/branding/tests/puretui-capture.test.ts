@@ -1,9 +1,9 @@
-import { expect, test } from "bun:test"
+import { describe, expect, test } from "bun:test"
 import { mkdtemp, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import { defaultDaemonSocketPath, defaultPtyHostSocketPath } from "../../kobe-daemon/src/daemon/paths"
-import { capturePureTui } from "../scripts/capture-puretui"
+import { CAPTURE_SKILL_HINT_VERSION, capturePureTui } from "../scripts/capture-puretui"
 import quicklookSpec from "../src/quicklook/quicklook.replay.json"
 import { type RawReplaySpec, assertRenderableCapture } from "../src/quicklook/replay-spec"
 
@@ -27,10 +27,13 @@ e2e(
     spec.viewport = { cols: 100, rows: 30, width: 800, height: 480 }
     spec.capture.seconds = 18
     spec.setup = { seedTasks: [] }
-    spec.waits = { newTaskDialog: { pattern: "New task", timeoutMs: 8000 } }
+    // Dialog-only label: "New task" also matches the sidebar's own button,
+    // so it would pass before the dialog ever opened.
+    spec.waits = { newTaskDialog: { pattern: "from branch", timeoutMs: 8000 } }
     spec.text = { prompt: "Brand Studio replay prompt" }
     spec.flows = {
       createTask: {
+        focusPaneBeforeOpen: "leftmost",
         openKey: "n",
         dialogWait: "newTaskDialog",
         dialogSettleMs: 100,
@@ -65,3 +68,75 @@ e2e(
   },
   45_000,
 )
+
+describe("capture PureTUI CLI", () => {
+  test("passes the fixture repo and declared seed tasks to the capture terminal", async () => {
+    const root = await mkdtemp(join(tmpdir(), "kobe-capture-cli-valid-"))
+    const specPath = join(root, "capture.replay.json")
+    const outputPath = join(root, "frames.json")
+    const raw = JSON.parse(
+      await Bun.file(join(resolve(import.meta.dirname, ".."), "src/quicklook/quicklook.replay.json")).text(),
+    )
+    raw.capture.seconds = 0
+    raw.beats = []
+    raw.stages = [{ name: "still", from: 0, to: "end" }]
+    await writeFile(specPath, `${JSON.stringify(raw)}\n`)
+    let received: Parameters<NonNullable<Parameters<typeof capturePureTui>[1]["createCapture"]>>[0] | undefined
+
+    await capturePureTui(
+      { specPath, outputPath, demoRoot: join(root, "demo"), keepDemoRoot: true },
+      {
+        createCapture: async (options) => {
+          received = options
+          return {
+            demoRoot: options.demoRoot,
+            terminal: {
+              async start() {},
+              async snapshot() {
+                return Array.from({ length: options.rows }, () => "")
+              },
+              async type() {},
+              async key() {},
+              async waitFor() {},
+              async stop() {},
+            },
+            async cleanup() {},
+          }
+        },
+        log: () => {},
+      },
+    )
+
+    expect(received).toMatchObject({
+      fixtureRepo: join(root, "demo", "fixture-repo"),
+      seedTasks: [{ title: "fix flaky retry test", status: "in_progress" }],
+    })
+    expect(received).not.toHaveProperty("pathPrefix")
+    expect(await Bun.file(join(root, "demo", "home", ".config", "kobe", "state.json")).json()).toEqual({
+      onboarded: true,
+      skillHintSeen: "1",
+      [`skillHintSeen:v${CAPTURE_SKILL_HINT_VERSION}`]: "1",
+      savedRepos: [join(root, "demo", "fixture-repo")],
+    })
+  })
+
+  test("validates the replay spec before spawning the sidecar", async () => {
+    const root = await mkdtemp(join(tmpdir(), "kobe-capture-cli-"))
+    const specPath = join(root, "invalid.replay.json")
+    await writeFile(specPath, "{}\n")
+    let createCalls = 0
+
+    await expect(
+      capturePureTui(
+        { specPath, outputPath: join(root, "frames.json"), demoRoot: join(root, "demo"), keepDemoRoot: true },
+        {
+          createCapture: async () => {
+            createCalls++
+            throw new Error("sidecar must not start")
+          },
+        },
+      ),
+    ).rejects.toThrow("replay spec")
+    expect(createCalls).toBe(0)
+  })
+})
