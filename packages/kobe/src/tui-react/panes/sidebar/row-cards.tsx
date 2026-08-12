@@ -32,9 +32,11 @@ import {
 import { toneColor, truncateBranchLabel } from "../../../tui/panes/sidebar/view-core"
 import { type WorktreeChanges, pickPushedChanges } from "../../../tui/panes/sidebar/worktree-changes"
 import { pollWorktreeChanges, worktreeChanges } from "../../../tui/panes/sidebar/worktree-changes-poller"
+import { useOptionalKV } from "../../context/kv"
 import { useTheme } from "../../context/theme"
 import { useT } from "../../i18n"
 import { resolveRowSelectionChrome } from "../../ui/row-selection-chrome"
+import { completionSeenAt, completionSeenKey, markCompletionSeen } from "../../workspace/completion-seen"
 import type { SidebarHover } from "./types"
 
 export type SidebarRowCardSharedProps = {
@@ -190,9 +192,13 @@ function RowBody(props: {
  */
 /**
  * Rows whose CURRENT `turn_complete` the user has already looked at
- * (selected while complete) — the herdr "seen" bit driving ● → ✓. Session
- * scope is deliberate: a fresh attach starts everything unseen. Cleared the
+ * (selected while complete) — the herdr "seen" bit driving ● → ✓. Cleared the
  * moment that row's activity state moves off `turn_complete`.
+ *
+ * Process-scoped, and that used to be the whole record: the daemon's activity
+ * registry outlives the TUI, so relaunching kobe re-lit every completion you
+ * had already read (issue #22). The durable mark in `workspace/completion-seen`
+ * is what survives the restart; this Set stays the same-render answer.
  *
  * Keyed per ROW (task, or task+tab in the tree), not per task: a task owns
  * several tab rows, and they render in the same pass. With a task-wide key
@@ -212,20 +218,57 @@ const completionSeenIds = new Set<string>()
  *
  * `tabId` scopes the bit to one tab row; omit it for the flat sidebar's
  * task cards, which own the task's whole activity rollup.
+ *
+ * `durableSeen` is the persisted answer for the SAME completion (see
+ * {@link useDurableCompletionSeen}) — ORed in rather than folded into the
+ * Set, because it is computed against the current completion's timestamp and
+ * therefore un-sets itself the moment a newer turn completes.
  */
 export function completionSeenFor(
   taskId: string,
   activityState: string | undefined,
   viewing: boolean,
   tabId?: string,
+  durableSeen = false,
 ): boolean {
-  const key = tabId === undefined ? taskId : `${taskId} ${tabId}`
+  const key = completionSeenKey(taskId, tabId)
   if (activityState === "turn_complete") {
     if (viewing) completionSeenIds.add(key)
   } else {
     completionSeenIds.delete(key)
   }
-  return completionSeenIds.has(key)
+  return completionSeenIds.has(key) || durableSeen
+}
+
+/** The stamp a row's seen mark is keyed on, or undefined when the row is not
+ *  sitting on a completion at all. */
+export function completionStampOf(activity: TaskEngineState | undefined): number | undefined {
+  return activity?.state === "turn_complete" ? activity.at : undefined
+}
+
+/**
+ * Persisted half of the seen bit (issue #22): read the stored mark at render
+ * time, and record this completion while you are looking at it.
+ *
+ * The write is an EFFECT on purpose — `kv.set` re-renders every KV consumer,
+ * so writing during render would update the provider while another component
+ * renders. A row with no KV provider (render tests, panes mounted outside the
+ * context) keeps the session-only behaviour.
+ */
+export function useDurableCompletionSeen(
+  taskId: string,
+  tabId: string | undefined,
+  completionAt: number | undefined,
+  viewing: boolean,
+): boolean {
+  const kv = useOptionalKV()
+  const key = completionSeenKey(taskId, tabId)
+  const seen = completionSeenAt(kv, key, completionAt)
+  useEffect(() => {
+    if (!kv || !viewing || completionAt === undefined || seen) return
+    markCompletionSeen(kv, key, completionAt)
+  }, [kv, key, completionAt, viewing, seen])
+  return seen
 }
 
 function useRowCardChrome(row: SidebarRow, shared: SidebarRowCardSharedProps, opts: { mainBranch: string }) {
@@ -251,7 +294,8 @@ function useRowCardChrome(row: SidebarRow, shared: SidebarRowCardSharedProps, op
     (changes.added > 0 ? `+${changes.added}`.length + 1 : 0) +
     (changes.deleted > 0 ? `−${changes.deleted}`.length + 1 : 0)
   const subtitleBudget = Math.max(6, shared.subtitleBudget - clusterCells)
-  const completionSeen = completionSeenFor(task.id, activity?.state, isSelected)
+  const durableSeen = useDurableCompletionSeen(task.id, undefined, completionStampOf(activity), isSelected)
+  const completionSeen = completionSeenFor(task.id, activity?.state, isSelected, undefined, durableSeen)
   // This worktree's transcript facts, read OUTSIDE the memo so the row
   // re-derives when its own mtime moves rather than on every map identity
   // change (the collector republishes the whole map per probe round).

@@ -21,7 +21,15 @@ import type { WorktreeChanges } from "../../../tui/panes/sidebar/worktree-change
 import { useTheme } from "../../context/theme"
 import { useT } from "../../i18n"
 import { resolveRowSelectionChrome } from "../../ui/row-selection-chrome"
-import { ChangeStats, JumpDigit, completionSeenFor, useChanges, useSpinnerFrame } from "./row-cards"
+import {
+  ChangeStats,
+  JumpDigit,
+  completionSeenFor,
+  completionStampOf,
+  useChanges,
+  useDurableCompletionSeen,
+  useSpinnerFrame,
+} from "./row-cards"
 
 /** Cells of indent per depth level — one (owner round: the rail is narrow,
  *  and the glyph column already separates the levels visually). */
@@ -206,8 +214,18 @@ export function TabTreeRow(props: {
   // recorded — the ✓ → ● → ✓ flip on every task switch.
   const viewing = shared.selectedTaskId === props.task.id && props.tab.active === true
   // Per-TAB seen bit: sibling tab rows of the same task render in this very
-  // pass and would otherwise share (and clear) one task-wide mark.
-  const completionSeen = carriesState ? completionSeenFor(props.task.id, activity?.state, viewing, props.tab.id) : false
+  // pass and would otherwise share (and clear) one task-wide mark. The
+  // durable half survives a kobe restart, which the daemon's activity entry
+  // does too — without it every read completion came back ● (issue #22).
+  const durableSeen = useDurableCompletionSeen(
+    props.task.id,
+    props.tab.id,
+    carriesState ? completionStampOf(activity) : undefined,
+    viewing,
+  )
+  const completionSeen = carriesState
+    ? completionSeenFor(props.task.id, activity?.state, viewing, props.tab.id, durableSeen)
+    : false
   const baseView = buildSidebarRowView({
     task: props.task,
     activity,

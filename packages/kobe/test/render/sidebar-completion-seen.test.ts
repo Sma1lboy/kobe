@@ -47,4 +47,16 @@ describe("completionSeenFor", () => {
     expect(completionSeenFor(task, "turn_complete", false, "tab-2")).toBe(false)
     expect(completionSeenFor(task, "turn_complete", false, "tab-1")).toBe(true)
   })
+
+  // Regression (owner report 2026-08-12, issue #22): quitting kobe empties
+  // this Set while the DAEMON keeps reporting the same `turn_complete`, so a
+  // relaunch re-lit every completion already read. A fresh process is exactly
+  // this: nothing in the Set, and the persisted mark as the only witness.
+  it("a completion the persisted mark covers is read on a fresh process", () => {
+    const task = "task-seen-5"
+    expect(completionSeenFor(task, "turn_complete", false, "tab-1", true)).toBe(true)
+    // A NEWER completion has a stamp the mark doesn't cover, so the durable
+    // answer arrives false and the lamp is unread again.
+    expect(completionSeenFor(task, "turn_complete", false, "tab-1", false)).toBe(false)
+  })
 })
