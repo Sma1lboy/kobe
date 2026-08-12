@@ -106,6 +106,13 @@ export interface PromptTarget {
    */
   readonly tab?: string
   /**
+   * Engine to PIN on a `--tab new` tab (`send --vendor`), when it should not
+   * simply inherit the task's. Recorded on the minted tab exactly like the
+   * TUI's ctrl+e pick, so the tab keeps that engine across restarts and a
+   * later `set-vendor` on the task does not silently move it.
+   */
+  readonly tabVendor?: VendorId
+  /**
    * This delivery is the FIRST prompt of a task the caller just created
    * (`add --prompt` / `fan-out`) — it gets the branch-rename coda (see
    * `PromptDeliveryIntent`'s `new-task` kind). `send` never sets it.

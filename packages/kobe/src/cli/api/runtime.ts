@@ -51,7 +51,7 @@ async function deliverHosted(target: PromptTarget, worktree: string, prompt: str
       const engineBin = interactiveEngineCommand(target.vendor, target.modelEffort)[0]
       return await deliverToExactTab(host.rpc, target.id, target.tab, worktree, prompt, { engineBin })
     }
-    const newTab = target.tab === "new" ? mintCliTab(target.id) : undefined
+    const newTab = target.tab === "new" ? mintCliTab(target.id, target.tabVendor) : undefined
     const argv = interactiveEngineCommand(target.vendor, target.modelEffort)
     const launch = buildEngineSessionLaunch({
       task: { id: target.id, kind: target.kind, vendor: target.vendor, repo: target.repo },

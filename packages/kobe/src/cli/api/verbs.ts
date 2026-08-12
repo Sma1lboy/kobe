@@ -190,6 +190,11 @@ export const VERBS: readonly VerbSpec[] = [
           'Tab addressing: "new" spawns the prompt in a fresh engine tab; "tab-N" delivers to that exact alive tab (error when dead/absent). Omitted = the canonical engine tab.',
       },
       {
+        ...F.vendor(),
+        description:
+          "Engine for a `--tab new` tab — the API twin of the TUI's ctrl+e pick. Lets one worktree run two agents on the same files (e.g. hand the stuck work to codex without leaving the branch). Pinned to that tab, so it survives restarts and a later set-vendor. Only valid with --tab new.",
+      },
+      {
         name: "plain",
         type: "bool",
         required: false,

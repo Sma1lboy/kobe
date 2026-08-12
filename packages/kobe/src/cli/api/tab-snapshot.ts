@@ -25,6 +25,7 @@ import type { PtySessionExit } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import { loadStateFile, patchStateFile } from "../../state/store.ts"
 import { terminalTabsKey } from "../../tui-react/workspace/terminal-tabs-persist.ts"
 import { type TabsState, type TerminalTab, initialTabs } from "../../tui/workspace/terminal-tabs-core.ts"
+import type { VendorId } from "../../types/vendor.ts"
 
 /**
  * One tab row `get-task` returns: the persisted snapshot fields the sidebar
@@ -207,7 +208,7 @@ export function publishCliTabSnapshot(taskId: string): void {
  * state.json is unwritable, so the id is returned regardless and the
  * snapshot write failure only costs sidebar visibility.
  */
-export function mintCliTab(taskId: string): string {
+export function mintCliTab(taskId: string, vendor?: VendorId): string {
   let tabId = "tab-1"
   try {
     const key = terminalTabsKey(taskId)
@@ -218,7 +219,10 @@ export function mintCliTab(taskId: string): string {
     patchStateFile({
       [key]: {
         ...state,
-        tabs: [...state.tabs, { kind: "engine", id: tabId, title: null, ordinal }],
+        // `vendor` present = this tab is PINNED to an engine other than the
+        // task's default (`send --vendor`), the same field the TUI's ctrl+e
+        // pick writes. Absent, the tab follows the task like every other.
+        tabs: [...state.tabs, { kind: "engine", id: tabId, title: null, ordinal, ...(vendor ? { vendor } : {}) }],
         activeId: tabId,
         nextOrdinal: ordinal + 1,
       },
