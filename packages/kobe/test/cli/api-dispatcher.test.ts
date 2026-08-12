@@ -9,6 +9,7 @@
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { invokeVerb } from "../../src/cli/api-cmd.ts"
+import { dispatcherEnvPayload } from "../../src/cli/api/dispatcher.ts"
 import { normalizeIndex } from "../../src/orchestrator/index/store-codec.ts"
 import { FakeClient, expectApiError, recordingDelivery, stubRuntime, taskFixture } from "./api-handler-fixtures.ts"
 
@@ -30,6 +31,18 @@ beforeEach(() => {
 afterEach(() => {
   restoreEnv("KOBE_TASK_ID", savedTaskId)
   restoreEnv("KOBE_TAB_ID", savedTabId)
+})
+
+describe("dispatcherEnvPayload", () => {
+  it("carries both ids, floors a missing tab, and stays empty without a task id", () => {
+    expect(dispatcherEnvPayload({ KOBE_TASK_ID: "d1", KOBE_TAB_ID: "tab-4" })).toEqual({
+      dispatcherTaskId: "d1",
+      dispatcherTabId: "tab-4",
+    })
+    expect(dispatcherEnvPayload({ KOBE_TASK_ID: "d1" })).toEqual({ dispatcherTaskId: "d1", dispatcherTabId: "tab-1" })
+    expect(dispatcherEnvPayload({ KOBE_TAB_ID: "tab-4" })).toEqual({})
+    expect(dispatcherEnvPayload({})).toEqual({})
+  })
 })
 
 describe("create records the dispatcher ($KOBE_TASK_ID/$KOBE_TAB_ID)", () => {

@@ -10,9 +10,10 @@ import { kobeApiInvocation } from "../../engine/interactive-command.ts"
 import type { TaskStatus } from "../../types/task.ts"
 import type { VendorId } from "../../types/vendor.ts"
 import type { DaemonRpc } from "../daemon-session.ts"
-import { daemonOf, dispatcherEnvPayload, simpleRpc } from "./handler-helpers.ts"
+import { dispatcherEnvPayload, readOwnDispatcher, resolveDispatcherTab } from "./dispatcher.ts"
+import { daemonOf, simpleRpc } from "./handler-helpers.ts"
 import { resolveActiveTaskId } from "./runtime.ts"
-import { ApiError, type ApiRuntime, type VerbContext } from "./types.ts"
+import { ApiError, type VerbContext } from "./types.ts"
 
 /**
  * Peer provenance: a `send` issued from INSIDE another kobe task is one
@@ -145,58 +146,6 @@ export async function add(ctx: VerbContext): Promise<unknown> {
     session: delivered.session,
     delivered: delivered.delivered,
   }
-}
-
-/**
- * The dispatcher recorded on the CALLER's own task, when the caller is a
- * kobe session with one. `null` (keep the active-task default) when the
- * caller isn't a kobe session, the task predates the field or was created
- * outside a kobe session, or the env id is stale.
- */
-async function readOwnDispatcher(daemon: DaemonRpc): Promise<SerializedTask["dispatcher"] | null> {
-  const selfId = process.env.KOBE_TASK_ID
-  if (!selfId) return null
-  try {
-    const res = await daemon.request<{ task: SerializedTask }>("task.get", { taskId: selfId })
-    return res.task.dispatcher ?? null
-  } catch {
-    return null
-  }
-}
-
-/**
- * Pick the tab a dispatcher-defaulted `send` lands on: the exact tab the
- * work was dispatched from first, the dispatcher task's canonical live
- * engine tab when that tab has died, and NEVER a silent spawn — with
- * nothing alive the send fails loud with a typed error, per the 2026-08-12
- * collaboration-verb design principle (a fallback must not impersonate
- * success).
- */
-async function resolveDispatcherTab(
-  runtime: ApiRuntime,
-  dispatcher: { readonly taskId: string; readonly tabId: string },
-): Promise<string | undefined> {
-  const { tabs, running } = await runtime.taskTabs(dispatcher.taskId)
-  // The dispatched-from tab first, addressed only when it reads ALIVE: the
-  // tab join now also lists live sessions the persisted snapshot never
-  // registered (issue #20), so "present and alive" is the honest liveness
-  // test and a tab that is merely gone from the snapshot still gets the
-  // canonical fallback below instead of a TAB_NOT_FOUND at delivery.
-  if (tabs.some((t) => t.id === dispatcher.tabId && t.alive)) return dispatcher.tabId
-  // Dead dispatcher tab → the task's canonical live engine (tab omitted).
-  // Gated on a live engine tab existing: entering the canonical delivery
-  // path with nothing alive would silently boot a NEW engine (issue #19's
-  // failure mode) instead of reaching the dispatcher.
-  if (running) return undefined
-  throw new ApiError(
-    `dispatcher tab ${dispatcher.tabId} on task ${dispatcher.taskId} is dead and the task has no live engine tab — the reply has nowhere to land`,
-    "DISPATCHER_UNREACHABLE",
-    {
-      dispatcher,
-      hint: "address an alive target explicitly with --task-id/--tab (see `kobe api pty-list`), or notify the user with `kobe api notify`",
-      nextCommandArgs: ["api", "pty-list"],
-    },
-  )
 }
 
 export async function send(ctx: VerbContext): Promise<unknown> {

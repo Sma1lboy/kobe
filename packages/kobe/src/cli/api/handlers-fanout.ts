@@ -8,8 +8,9 @@ import type { SerializedTask } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import { DEFAULT_FEEDBACK_CATEGORY_SLUG, submitFeedback } from "../../lib/feedback.ts"
 import { ulid } from "../../orchestrator/index/ulid.ts"
 import type { VendorId } from "../../types/vendor.ts"
+import { dispatcherEnvPayload } from "./dispatcher.ts"
 import { FANOUT_CAP, buildCountPlan, parseAgentsSpec } from "./flags.ts"
-import { daemonOf, dispatcherEnvPayload } from "./handler-helpers.ts"
+import { daemonOf } from "./handler-helpers.ts"
 import { ApiError, type VerbContext } from "./types.ts"
 
 export async function fanOut(ctx: VerbContext): Promise<unknown> {
