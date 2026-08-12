@@ -3,7 +3,7 @@ name: kobe
 description: Use when controlling kobe tasks, parallel coding attempts, hosted agent sessions, task lifecycle, or the daemon-owned issue tracker from a shell.
 ---
 
-<!-- kobe-skill-version: 18 — bump in lockstep with KOBE_SKILL_VERSION (src/lib/skill-install.ts). -->
+<!-- kobe-skill-version: 19 — bump in lockstep with KOBE_SKILL_VERSION (src/lib/skill-install.ts). -->
 
 # kobe shell control
 
@@ -107,6 +107,7 @@ the first row that fits:
 | "split", "side by side", "keep an eye on X while…" | a new region in the CURRENT tab | `kobe api pane-open --command "…"` |
 | names a tab: "tell the agent in tab 3" | that exact tab | `kobe api send --task-id <id> --tab tab-3 --prompt "…"` |
 | a LOCATION word: "in this workspace/worktree/checkout", "on this branch", "here", "same task" | THIS task, a NEW Terminal Tab | `kobe api send --task-id "$KOBE_TASK_ID" --tab new --prompt "…"` |
+| names an ENGINE for the same files: "let codex take over here", "try this one with claude instead" | THIS task, a new tab pinned to that engine | `kobe api send --task-id "$KOBE_TASK_ID" --tab new --vendor codex --prompt "…"` |
 | **anything else — no row above matched** | a NEW task — new worktree + branch | `kobe api add --repo "$PWD" --prompt "…"` |
 
 Order is the tiebreak: a count ("3 ways in this workspace") beats a location
@@ -174,6 +175,10 @@ kobe api send --prompt "succeeded: <one line> (branch <final branch>)"
 kobe api inspect --task-id <id>
 kobe api send --task-id <id> --tab tab-3 --prompt "<turn>"  # exact alive tab
 kobe api send --task-id <id> --tab new --prompt "<turn>"    # fresh engine tab
+# Same worktree, DIFFERENT agent — the API twin of the TUI's ctrl+e pick. The
+# engine is pinned to that tab (survives restarts, unaffected by a later
+# set-vendor) and the task's own vendor is left alone. --tab new only.
+kobe api send --task-id <id> --tab new --vendor codex --prompt "<turn>"
 
 kobe api get-task --task-id <id>
 kobe api collect --task-ids <id1>,<id2>,<id3> --pretty

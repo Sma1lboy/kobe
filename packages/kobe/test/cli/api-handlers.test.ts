@@ -169,6 +169,31 @@ describe("send handler", () => {
     expect(calls[1].target.tab).toBe("tab-3")
   })
 
+  it("a new tab can run a DIFFERENT engine than the task (two agents, one worktree)", async () => {
+    const client = new FakeClient({ "task.get": () => ({ task: taskFixture({ id: "abc", vendor: "claude" }) }) })
+    const { calls, deliver } = recordingDelivery()
+    await invokeVerb("send", ["--task-id", "abc", "--prompt", "hi", "--tab", "new", "--vendor", "codex"], {
+      client,
+      runtime: stubRuntime({ deliverPrompt: deliver }),
+    })
+    // The delivery runs codex and the tab records it, while the TASK's own
+    // vendor is untouched — a second agent in the worktree is not a switch.
+    expect(calls[0].target).toMatchObject({ vendor: "codex", tabVendor: "codex" })
+    expect(client.requests.some((r) => r.name === "task.setVendor")).toBe(false)
+  })
+
+  it("refuses --vendor without --tab new instead of silently running the task's engine", async () => {
+    const client = new FakeClient({ "task.get": () => ({ task: taskFixture({ id: "abc" }) }) })
+    await expectApiError(
+      () =>
+        invokeVerb("send", ["--task-id", "abc", "--prompt", "hi", "--tab", "tab-3", "--vendor", "codex"], {
+          client,
+          runtime: stubRuntime(),
+        }),
+      "BAD_FLAG",
+    )
+  })
+
   it("rejects a malformed --tab before any delivery", async () => {
     const client = new FakeClient({ "task.get": () => ({ task: taskFixture({ id: "abc" }) }) })
     await expectApiError(

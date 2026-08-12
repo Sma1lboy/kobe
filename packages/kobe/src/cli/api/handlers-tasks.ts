@@ -13,7 +13,7 @@ import type { DaemonRpc } from "../daemon-session.ts"
 import { dispatcherEnvPayload, readOwnDispatcher, resolveDispatcherTab } from "./dispatcher.ts"
 import { daemonOf, simpleRpc } from "./handler-helpers.ts"
 import { resolveActiveTaskId } from "./runtime.ts"
-import { ApiError, type VerbContext } from "./types.ts"
+import { ApiError, type VerbContext, helpStep } from "./types.ts"
 
 /**
  * Peer provenance: a `send` issued from INSIDE another kobe task is one
@@ -155,6 +155,18 @@ export async function send(ctx: VerbContext): Promise<unknown> {
   if (tab && tab !== "new" && !/^tab-[A-Za-z0-9-]+$/.test(tab)) {
     throw new ApiError(`--tab must be "new" or a tab id like tab-2 (got ${JSON.stringify(tab)})`, "BAD_TAB")
   }
+  // A pinned engine only means something on a tab being CREATED: an alive
+  // tab already runs whatever it runs, and the canonical tab belongs to the
+  // task's own vendor. Refuse rather than silently ignore — a caller that
+  // asked for codex must not get claude and a success exit.
+  const tabVendor = ctx.args.vendor()
+  if (tabVendor && tab !== "new") {
+    throw new ApiError(
+      `--vendor only applies to a new tab; pass --tab new (got --tab ${tab ?? "<canonical>"})`,
+      "BAD_FLAG",
+      helpStep("send"),
+    )
+  }
   let taskId = ctx.args.str("task-id")
   if (!taskId) {
     // Inside a sub-task, a bare `send` is the reply verb: it defaults to the
@@ -186,10 +198,14 @@ export async function send(ctx: VerbContext): Promise<unknown> {
       id: taskId,
       worktreePath: res.task.worktreePath,
       kind: res.task.kind,
-      vendor: res.task.vendor as VendorId | undefined,
-      modelEffort: res.task.modelEffort,
+      // The pinned engine wins for THIS delivery's argv; the task's own
+      // vendor stays untouched (a second agent in the worktree is not a
+      // change of the task's engine).
+      vendor: tabVendor ?? (res.task.vendor as VendorId | undefined),
+      modelEffort: tabVendor ? undefined : res.task.modelEffort,
       repo: res.task.repo,
       tab,
+      tabVendor,
     },
     text,
   )
