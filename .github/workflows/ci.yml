@@ -170,11 +170,15 @@ jobs:
   docs-site:
     # The public docs site (packages/kobe-docs) had no CI coverage at all:
     # root `lint` and `typecheck` skip the package, and its only path to
-    # production was a hand-run `bun run deploy` from a laptop. So a broken
-    # MDX page, a docs/ link the sync rewrites into nothing, or a page added
-    # to docs/ but never registered in sync-docs.mjs's SECTIONS stayed green
-    # until someone deployed. `build` = sync + Fumadocs MDX + `next build`
-    # (which also runs tsc), so one job covers all three. ~11s locally.
+    # production is a hand-run `bun run deploy` from a laptop — so a docs/
+    # edit that breaks the site stayed green until someone deployed.
+    # `build` = sync-docs.mjs + Fumadocs MDX + `next build` (which also runs
+    # tsc); the sync script has no try/catch, so it fails the job when a
+    # SECTIONS entry points at a renamed/missing docs/ file, a synced page
+    # loses the H1 its title comes from, or a referenced docs/assets/ image
+    # is gone. It does NOT catch a new docs/ page that was never added to
+    # SECTIONS (silently unsynced) or a dead cross-link (rewritten to a
+    # GitHub blob URL) — those still need review. ~11s locally.
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
