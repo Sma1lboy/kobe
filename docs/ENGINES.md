@@ -15,16 +15,18 @@ Task = git worktree + engine session + branch
 | Claude Code | `claude` | ✓ | ✓ | ✓ | ✓ |
 | Codex | `codex` | ✓ | ✓ (after you trust hooks) | ✓ | ✓ + effort levels |
 | GitHub Copilot | `copilot` | ✓ | partial | ✓ | — |
-| Kimi Code | `kimi` | ✓ | — | — | — |
+| Kimi Code | `kimi` | ✓ | ✓ | handoff only | — |
 | Anything you register | custom | — | — | — | — |
 
 **Claude Code is the default** and the most complete: its quota probe drives
 rate-limit auto-resume and the Settings usage dashboard.
 
-**Kimi is partial.** Rove finds the binary and reads its login state, so it
-launches and shows your account. But its session format is unverified, so
-there's no history reader — auto-title keeps the placeholder and
-`rove api read-output` reports `engine_unsupported` rather than guessing.
+**Kimi is partial.** Rove finds the binary, reads its login state, and can
+locate each session's transcript — enough to watch it for activity and to
+hand the conversation to another engine. It still doesn't *parse* that
+transcript (the wire format is unverified), so auto-title keeps the
+placeholder and `rove api read-output` reports `engine_unsupported` rather
+than guessing.
 
 ## Picking an engine
 
@@ -105,9 +107,11 @@ a usage limit mid-task. The new engine starts fresh with a first prompt that
 points it at the old session's transcript and asks it to state where the
 previous one stopped — that sentence is how you check the handoff landed.
 
-Handoffs work claude ⇄ codex in both directions. A handoff *from* Copilot,
-Kimi, or a custom engine is refused with a reason (Rove can't name their
-transcript); a handoff *to* them works fine.
+Handoffs work in every direction between the four built-ins — the receiving
+agent is handed the previous transcript's *path* and reads it in whatever
+format it finds, so no format ever has to be converted. Only a **custom**
+engine can't be a handoff source (Rove doesn't know its session store); that
+case is refused with a reason. A handoff *to* a custom engine works fine.
 
 ## Custom engines
 
@@ -140,7 +144,8 @@ Engines own their own history. Rove reads it, never writes it.
 |---|---|
 | `claude` | `~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl` |
 | `codex` | `~/.codex/sessions/<YYYY>/<MM>/<DD>/rollout-*.jsonl` |
-| `copilot` | `~/.copilot/session-state/<id>/` |
+| `copilot` | `~/.copilot/session-state/<id>/events.jsonl` |
+| `kimi` | `~/.kimi-code/sessions/<workspace>/<session>/agents/main/wire.jsonl` |
 
 That's why a crash never loses a conversation, and why history survives
 `rove reset` and a machine reboot.
