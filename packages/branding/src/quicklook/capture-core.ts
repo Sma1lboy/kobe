@@ -2,6 +2,49 @@ import { rename, writeFile } from "node:fs/promises"
 import { dirname, join } from "node:path"
 import type { CaptureFrame, CaptureLine, ResolvedReplaySpec } from "./replay-spec"
 
+const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g
+const REDACTED = "you@example.com"
+// CSI / OSC / two-byte escapes, in the order they must be tried.
+const ANSI_TOKEN = new RegExp(`\u001b\\[[0-9;?]*[A-Za-z]|\u001b\\][^\u001b\u0007]*(?:\u0007|\u001b\\\\)|\u001b.`, "g")
+
+/**
+ * Blank the account identity Claude Code prints in its welcome box ("<email>'s
+ * Organization"), which would otherwise ship inside a public README asset.
+ *
+ * This is the ONE declared exception to "every frame is the product's own
+ * rendering" — a marketing capture must not publish the operator's address.
+ * Framing around it is not an option: the camera falls back to a wide shot
+ * whenever a stage changes fewer than `camera.minChangedCells`, which is
+ * exactly the quiet "both agents working" beat the demo exists to show.
+ *
+ * The replacement is padded to the matched length because a serialized line
+ * positions each run by absolute column — a shorter substitution would slide
+ * the rest of the row.
+ */
+export function redactAccountIdentity(line: string): string {
+  const pad = (match: string) => REDACTED.slice(0, match.length).padEnd(match.length, " ")
+  // Redact TEXT ONLY. A serialized line interleaves SGR escapes with content,
+  // and an address regex run over the raw string happily eats the parameter
+  // tail in front of it (`…;153m` + `o2620624@…` reads as one local part),
+  // truncating the escape and corrupting every cell that follows.
+  let out = ""
+  let last = 0
+  for (const match of line.matchAll(ANSI_TOKEN)) {
+    const at = match.index ?? 0
+    out += line.slice(last, at).replace(EMAIL, pad) + match[0]
+    last = at + match[0].length
+  }
+  return out + line.slice(last).replace(EMAIL, pad)
+}
+
+const redactFrames = (frames: readonly CaptureFrame[]): CaptureFrame[] =>
+  frames.map((frame) => ({
+    ...frame,
+    lines: frame.lines.map((line) =>
+      typeof line === "string" ? redactAccountIdentity(line) : { ...line, rawAnsi: redactAccountIdentity(line.rawAnsi) },
+    ),
+  }))
+
 export interface CaptureTerminal {
   start(): Promise<void>
   snapshot(): Promise<readonly string[]>
@@ -237,7 +280,7 @@ export async function runReplayCapture(
     const document: CaptureDocument = {
       cols: spec.viewport.cols,
       rows: spec.viewport.rows,
-      frames,
+      frames: redactFrames(frames),
       meta: spec.theme === undefined ? {} : { theme: spec.theme },
     }
     validateCapture(document)

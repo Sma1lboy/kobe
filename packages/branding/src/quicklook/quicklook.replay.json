@@ -32,31 +32,14 @@
       "pattern": "from branch",
       "timeoutMs": 8000
     },
-    "stubReady": {
-      "pattern": "ready \u203a",
-      "timeoutMs": 30000
-    },
-    "enginePicker": {
-      "pattern": "New conversation",
-      "timeoutMs": 8000
-    },
-    "shellPrompt": {
-      "pattern": "kobe-demo$",
-      "timeoutMs": 15000
-    },
-    "fanOutDone": {
-      "pattern": "\"groupId\"",
-      "timeoutMs": 45000
-    },
-    "landed": {
-      "pattern": "\"landedOn\"",
-      "timeoutMs": 25000
+    "engineReady": {
+      "pattern": "edits",
+      "timeoutMs": 90000
     }
   },
   "text": {
-    "refactorPrompt": "Refactor src/session.ts: collapse the double refresh into one guarded renewal.",
-    "fanOutCommand": "kobe api fan-out --repo \"$PWD\" --count 2 --title \"session refresh\" --prompt \"Try an independent approach.\"",
-    "landCommand": "kobe api land --task-id \"$KOBE_TASK_ID\""
+    "sessionPrompt": "Refactor src/session.ts: collapse the double refresh into one guarded renewal, then commit it.",
+    "clientPrompt": "Add a 5s request timeout to createClient in src/client.ts, then commit it."
   },
   "flows": {
     "createTask": {
@@ -79,170 +62,145 @@
     {
       "at": 2.2,
       "action": "typeTextWhenReady",
-      "waitFor": "stubReady",
-      "textRef": "refactorPrompt",
+      "waitFor": "engineReady",
+      "textRef": "sessionPrompt",
       "msPerChar": 15,
-      "settleMs": 400,
+      "settleMs": 800,
       "submit": true,
       "submitDelayMs": 400
     },
     {
+      "at": 4,
+      "action": "sleep",
+      "ms": 10000
+    },
+    {
       "at": 5,
-      "action": "key",
-      "key": "C-e"
+      "action": "flow",
+      "flow": "createTask",
+      "engine": "claude"
     },
     {
-      "at": 5.1,
-      "action": "waitFor",
-      "waitFor": "enginePicker"
-    },
-    {
-      "at": 5.7,
-      "action": "key",
-      "key": "Left"
-    },
-    {
-      "at": 6.2,
-      "action": "key",
-      "key": "Enter"
-    },
-    {
-      "at": 6.3,
-      "action": "waitFor",
-      "waitFor": "shellPrompt"
+      "at": 5.2,
+      "action": "typeTextWhenReady",
+      "waitFor": "engineReady",
+      "textRef": "clientPrompt",
+      "msPerChar": 15,
+      "settleMs": 800,
+      "submit": true,
+      "submitDelayMs": 400
     },
     {
       "at": 7,
-      "action": "typeText",
-      "textRef": "fanOutCommand",
-      "msPerChar": 15,
-      "submit": true,
-      "submitDelayMs": 300
-    },
-    {
-      "at": 7.1,
-      "action": "waitFor",
-      "waitFor": "fanOutDone"
-    },
-    {
-      "at": 9.5,
       "action": "sleep",
-      "ms": 2000
+      "ms": 75000
     },
     {
-      "at": 10,
+      "at": 9,
       "action": "key",
       "key": "C-q"
     },
     {
-      "at": 10.4,
+      "at": 9.3,
       "action": "key",
-      "key": "j"
+      "key": "k"
     },
     {
-      "at": 10.8,
+      "at": 9.6,
       "action": "key",
       "key": "Enter"
     },
     {
-      "at": 11.2,
+      "at": 10,
       "action": "sleep",
-      "ms": 1200
+      "ms": 4000
     },
     {
-      "at": 12,
+      "at": 11,
       "action": "key",
       "key": "C-a"
     },
     {
-      "at": 12.2,
+      "at": 11.2,
       "action": "key",
       "key": "l"
     },
     {
-      "at": 12.6,
+      "at": 11.5,
       "action": "key",
       "key": "]"
     },
     {
-      "at": 13,
+      "at": 11.8,
       "action": "sleep",
-      "ms": 1500
+      "ms": 2500
     },
     {
-      "at": 13.4,
+      "at": 12,
       "action": "key",
       "key": "d"
     },
     {
-      "at": 13.6,
+      "at": 12.2,
       "action": "sleep",
-      "ms": 3500
+      "ms": 6000
     },
     {
-      "at": 14.3,
+      "at": 12.8,
       "action": "key",
-      "key": "C-a"
+      "key": "q"
     },
     {
-      "at": 14.4,
+      "at": 13.2,
       "action": "key",
-      "key": "h"
+      "key": "C-q"
     },
     {
-      "at": 14.5,
+      "at": 13.5,
       "action": "key",
-      "key": "C-e"
+      "key": "j"
     },
     {
-      "at": 14.6,
-      "action": "waitFor",
-      "waitFor": "enginePicker"
-    },
-    {
-      "at": 15,
-      "action": "key",
-      "key": "Left"
-    },
-    {
-      "at": 15.4,
+      "at": 13.8,
       "action": "key",
       "key": "Enter"
     },
     {
-      "at": 15.5,
-      "action": "waitFor",
-      "waitFor": "shellPrompt"
+      "at": 14.2,
+      "action": "sleep",
+      "ms": 4000
     },
     {
-      "at": 15.8,
+      "at": 15,
+      "action": "key",
+      "key": "C-a"
+    },
+    {
+      "at": 15.2,
+      "action": "key",
+      "key": "l"
+    },
+    {
+      "at": 15.5,
       "action": "sleep",
-      "ms": 500
+      "ms": 2000
     },
     {
       "at": 16,
-      "action": "typeText",
-      "textRef": "landCommand",
-      "msPerChar": 15,
-      "submit": true,
-      "submitDelayMs": 300
+      "action": "key",
+      "key": "d"
     },
     {
       "at": 16.2,
-      "action": "waitFor",
-      "waitFor": "landed"
-    },
-    {
-      "at": 17,
       "action": "sleep",
-      "ms": 2500
+      "ms": 7000
     }
   ],
   "regions": {
     "chat": {
       "c0": 33,
       "c1": 125,
-      "r0": 1,
+      "r0": 11,
       "r1": 43
     },
     "dialog": {
@@ -254,7 +212,7 @@
     "input": {
       "c0": 33,
       "c1": 125,
-      "r0": 1,
+      "r0": 11,
       "r1": 43
     },
     "review": {
@@ -268,54 +226,61 @@
       "c1": 45,
       "r0": 1,
       "r1": 43
+    },
+    "workspace": {
+      "c0": 0,
+      "c1": 120,
+      "r0": 11,
+      "r1": 43
     }
   },
   "stages": [
     {
       "name": "boot",
       "from": 0,
-      "to": 5.1
+      "to": 4.8
     },
     {
-      "name": "dialog",
-      "from": 5.1,
-      "to": 10.5,
+      "name": "task-one",
+      "from": 4.8,
+      "to": 12.4,
       "region": "dialog"
     },
     {
-      "name": "type-prompt",
-      "from": 10.5,
-      "to": 16.0,
+      "name": "prompt-one",
+      "from": 12.4,
+      "to": 29.7,
       "region": "input"
     },
     {
-      "name": "fan-out",
-      "from": 16.0,
-      "to": 22.5,
-      "region": "chat"
+      "name": "task-two",
+      "from": 29.7,
+      "to": 36,
+      "region": "dialog"
     },
     {
       "name": "parallel",
-      "from": 22.5,
-      "to": 26.7
+      "from": 36,
+      "to": 110,
+      "region": "workspace"
     },
     {
-      "name": "attempt",
-      "from": 26.7,
-      "to": 32.1,
+      "name": "review-one",
+      "from": 110,
+      "to": 119.4,
+      "region": "chat"
+    },
+    {
+      "name": "review-two",
+      "from": 119.4,
+      "to": 122.4,
       "region": "chat"
     },
     {
       "name": "diff",
-      "from": 32.1,
-      "to": 37.3,
-      "region": "review"
-    },
-    {
-      "name": "land",
-      "from": 37.3,
+      "from": 122.4,
       "to": "capture-end",
-      "region": "chat"
+      "region": "review"
     },
     {
       "name": "wrap",
@@ -360,7 +325,8 @@
   },
   "delivery": {
     "speedCuts": [
-      1
+      1,
+      4
     ],
     "posterAt": 5
   }

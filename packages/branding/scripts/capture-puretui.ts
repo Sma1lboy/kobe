@@ -71,6 +71,27 @@ async function refresh(now: number): Promise<Session> {
 }
 `
 
+/**
+ * A SECOND independent file, so the replay's two concurrent tasks touch
+ * disjoint code. That is the whole point being demonstrated — each task owns a
+ * worktree and a branch, so two agents edit the same repo at the same time
+ * without seeing or clobbering each other. One shared file would show a merge
+ * story instead.
+ */
+const FIXTURE_CLIENT_TS = `import { getSession } from "./session"
+
+export function createClient(baseUrl: string) {
+  return {
+    async fetch(path: string): Promise<Response> {
+      const session = await getSession(Date.now())
+      return fetch(\`\${baseUrl}\${path}\`, {
+        headers: { authorization: \`Bearer \${session.token}\` },
+      })
+    },
+  }
+}
+`
+
 const createFixtureRepository = async (demoRoot: string): Promise<string> => {
   const fixtureRepo = join(demoRoot, "fixture-repo")
   await mkdir(join(fixtureRepo, "src"), { recursive: true })
@@ -79,6 +100,7 @@ const createFixtureRepository = async (demoRoot: string): Promise<string> => {
   await run("git", ["config", "user.name", "kobe capture"], fixtureRepo)
   await writeFile(join(fixtureRepo, "README.md"), "# PureTUI replay fixture\n")
   await writeFile(join(fixtureRepo, "src", "session.ts"), FIXTURE_SESSION_TS)
+  await writeFile(join(fixtureRepo, "src", "client.ts"), FIXTURE_CLIENT_TS)
   await run("git", ["add", "-A"], fixtureRepo)
   await run("git", ["commit", "-q", "-m", "fixture"], fixtureRepo)
   // Self-remote so `origin/main` resolves: the Files pane's Branch (vs-base)

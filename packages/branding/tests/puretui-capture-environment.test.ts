@@ -3,6 +3,7 @@ import { mkdtemp, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import { type CapturePureTuiOptions, capturePureTui } from "../scripts/capture-puretui"
+import { isEngineSessionMarker } from "../src/quicklook/puretui-terminal"
 import * as pureTuiTerminal from "../src/quicklook/puretui-terminal"
 
 type CaptureEnvironment = (demoRoot: string, shellPrompt?: string) => Record<string, string>
@@ -97,5 +98,27 @@ describe("PureTUI capture environment", () => {
     const command = "/usr/bin/env TEST_CAPTURE=1 claude --model test"
     const state = await runZeroCapture(command)
     expect(state["engineCommand.claude"]).toBe(command)
+  })
+})
+
+describe("engine session markers", () => {
+  test("scrubs the markers an outer engine session sets for its children", () => {
+    // Captured from inside Claude Code, these would make the recorded engine
+    // believe it is a nested child and paint a transcript-off warning.
+    for (const key of [
+      "CLAUDECODE",
+      "CLAUDE_CODE_CHILD_SESSION",
+      "CLAUDE_CODE_SESSION_ID",
+      "CLAUDE_CODE_ENTRYPOINT",
+      "CLAUDE_PID",
+      "CLAUDE_EFFORT",
+    ]) {
+      expect(isEngineSessionMarker(key)).toBe(true)
+    }
+  })
+
+  test("keeps CLAUDE_CONFIG_DIR, which kobe reads for history and the quota line", () => {
+    expect(isEngineSessionMarker("CLAUDE_CONFIG_DIR")).toBe(false)
+    expect(isEngineSessionMarker("PATH")).toBe(false)
   })
 })

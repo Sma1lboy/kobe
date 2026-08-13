@@ -50,12 +50,24 @@ type PendingRequest = {
 
 type Diagnostics = { snapshot: string; pid?: number; demoRoot: string }
 
+/**
+ * Session markers an engine CLI sets for its own children. Capturing from
+ * inside such a session would otherwise hand the recorded engine a parent it
+ * does not have — Claude Code answers an inherited `CLAUDE_CODE_CHILD_SESSION`
+ * with a "Transcript saving is off" warning across its input box, which no
+ * user launching kobe from a normal terminal ever sees. `CLAUDE_CONFIG_DIR` is
+ * NOT a marker: kobe reads it for engine history and the quota status line.
+ */
+export const isEngineSessionMarker = (key: string): boolean =>
+  key === "CLAUDECODE" || (key.startsWith("CLAUDE_") && key !== "CLAUDE_CONFIG_DIR")
+
 const inheritedEnvironment = (): Record<string, string> =>
   Object.fromEntries(
     Object.entries(process.env).filter(
       ([key, value]) =>
         value !== undefined &&
         !key.startsWith("KOBE_") &&
+        !isEngineSessionMarker(key) &&
         key !== "HOME" &&
         key !== "USERPROFILE" &&
         !key.startsWith("XDG_") &&

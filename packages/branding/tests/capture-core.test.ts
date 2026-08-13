@@ -7,6 +7,7 @@ import {
   type CaptureDocument,
   type CaptureOutput,
   type CaptureTerminal,
+  redactAccountIdentity,
   runReplayCapture,
   writeCaptureAtomically,
 } from "../src/quicklook/capture-core"
@@ -308,5 +309,34 @@ describe("capture core", () => {
     } finally {
       await rm(root, { recursive: true, force: true })
     }
+  })
+})
+
+describe("account identity redaction", () => {
+  test("blanks an address without shifting the rest of the row", () => {
+    const line = `\u001b[9;20H\u001b[0;38;2;153;153;153mo2620624@gmail.com's Organization\u001b[0m`
+    const out = redactAccountIdentity(line)
+
+    expect(out).not.toContain("o2620624@gmail.com")
+    expect(out).toContain("'s Organization")
+    // A serialized line positions every run by absolute column, so a shorter
+    // substitution would slide the rest of the row.
+    expect(out.length).toBe(line.length)
+  })
+
+  test("never eats the SGR parameters in front of the address", () => {
+    // `…;153m` + `o2620624@…` reads as one local part to an address regex run
+    // over the raw line: the escape gets truncated and every following cell
+    // renders at the wrong place. Redaction must only touch text runs.
+    const line = `\u001b[0;38;2;153;153;153mo2620624@gmail.com's`
+    const out = redactAccountIdentity(line)
+
+    expect(out).toContain(`\u001b[0;38;2;153;153;153m`)
+    expect(out).not.toContain("153mo2620624")
+  })
+
+  test("leaves rows carrying no address untouched", () => {
+    const line = `\u001b[3;5H\u25cf Update(src/client.ts)`
+    expect(redactAccountIdentity(line)).toBe(line)
   })
 })

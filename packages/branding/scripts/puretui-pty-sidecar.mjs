@@ -10,12 +10,20 @@ const require = createRequire(import.meta.url)
 
 const delay = (ms) => new Promise((resolveDelay) => setTimeout(resolveDelay, ms))
 
+// Mirrors isEngineSessionMarker in src/quicklook/puretui-terminal.ts: a
+// capture started from inside an engine session must not hand the recorded
+// engine a parent it does not have. CLAUDE_CONFIG_DIR is not a marker — kobe
+// reads it for engine history and the quota status line.
+export const isEngineSessionMarker = (key) =>
+  key === "CLAUDECODE" || (key.startsWith("CLAUDE_") && key !== "CLAUDE_CONFIG_DIR")
+
 const inheritedEnvironment = (environment) =>
   Object.fromEntries(
     Object.entries(environment).filter(
       ([key, value]) =>
         value !== undefined &&
         !key.startsWith("KOBE_") &&
+        !isEngineSessionMarker(key) &&
         key !== "HOME" &&
         key !== "USERPROFILE" &&
         !key.startsWith("XDG_") &&
