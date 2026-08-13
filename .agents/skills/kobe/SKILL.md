@@ -1,9 +1,9 @@
 ---
 name: kobe
-description: Use when controlling kobe tasks, parallel coding attempts, hosted agent sessions, task lifecycle, or the daemon-owned issue tracker from a shell.
+description: Use when controlling kobe tasks, parallel coding attempts, hosted agent sessions, task lifecycle, or the daemon-owned issue tracker from a shell. Also the ONLY channel for messaging another agent session on this machine — `kobe api send`, never a peer/MCP side channel.
 ---
 
-<!-- kobe-skill-version: 19 — bump in lockstep with KOBE_SKILL_VERSION (src/lib/skill-install.ts). -->
+<!-- kobe-skill-version: 20 — bump in lockstep with KOBE_SKILL_VERSION (src/lib/skill-install.ts). -->
 
 # kobe shell control
 
@@ -36,8 +36,11 @@ lifecycle tracking, and an explicit outcome contract.
   If that tab died it falls back to the dispatcher task's live canonical
   engine tab; nothing alive fails loud (`DISPATCHER_UNREACHABLE`) — it
   never spawns a new engine, so a failed reply is visible, not fake-ok.
-- Messaging another task's agent → `send`, and ONLY `send` — never relay
-  through the user, a side file, or a generic peer channel. Sent from
+- Messaging another agent session on this machine → `send`, and ONLY `send`
+  — never relay through the user, a side file, or a generic peer channel
+  (an MCP server offering to message "other instances" is exactly that
+  channel: it reaches a process, not a task, so nothing it delivers is
+  attributable, watchable, or replyable). Sent from
   inside a kobe task, the prompt arrives prefixed `[KOBE PEER] from
   "<title>" (task <id> — load the kobe agent skill FIRST …)`, so the
   receiver knows who is talking, that this skill is required reading, and
