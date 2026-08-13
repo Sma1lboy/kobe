@@ -7,12 +7,15 @@
  * carry a topic of their own). Same data the landing page renders.
  */
 
+import { activeCliName } from "./rename-compat.ts"
+
 const SEARCH_TIMEOUT_MS = 5_000
+const CLI_NAME = activeCliName()
 
 /** First-party examples under Sma1lboy/kobe-plugins/ — also the offline fallback. */
 const FIRST_PARTY: readonly { ref: string; desc: string }[] = [
   { ref: "Sma1lboy/kobe-plugins/notify", desc: "Desktop/ntfy notifications when an agent finishes or needs input" },
-  { ref: "Sma1lboy/kobe-plugins/github-start", desc: "Start a kobe task from a GitHub issue or PR" },
+  { ref: "Sma1lboy/kobe-plugins/github-start", desc: "Start a Rove task from a GitHub issue or PR" },
   { ref: "Sma1lboy/kobe-plugins/worktree-include", desc: "Copy .worktreeinclude-matched files into new worktrees" },
   { ref: "Sma1lboy/kobe-plugins/linear-start", desc: "Pick a Linear issue (fzf) and start a task on its branch" },
   { ref: "Sma1lboy/kobe-plugins/lazygit", desc: "lazygit on the task worktree, as a pane tab" },
@@ -70,5 +73,5 @@ export async function searchMarketplace(query: string | undefined): Promise<void
     const stars = e.stars !== undefined ? `★${e.stars}` : e.firstParty ? "first-party" : ""
     console.log(`${e.ref.padEnd(width)}${stars.padEnd(12)}${e.desc}`)
   }
-  console.log("\ninstall: kobe plugin install <owner/repo[/subdir]> — browse: https://kobe.sma1lboy.me/plugins")
+  console.log(`\ninstall: ${CLI_NAME} plugin install <owner/repo[/subdir]> — browse: https://kobe.sma1lboy.me/plugins`)
 }

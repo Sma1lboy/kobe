@@ -1,15 +1,15 @@
-# Writing kobe plugins
+# Writing Rove plugins
 
 The developer-facing reference: everything a plugin can declare, every event
-kobe fires, every environment variable it injects, and every way to call
+Rove fires, every environment variable it injects, and every way to call
 back in. Design rationale lives in [design/plugins.md](./design/plugins.md)
 and [design/plugin-events.md](./design/plugin-events.md); this page is the
 contract.
 
 A plugin is **a directory with a `kobe-plugin.toml` manifest** plus any argv
 commands your machine can run: Bash, Node, Bun, Python, Rust, a prebuilt
-binary. There is no SDK: the whole `kobe` CLI and the daemon socket are the
-plugin API. Kobe owns the host surface (install, validation, event dispatch,
+binary. There is no SDK: the whole `rove` CLI and the daemon socket are the
+plugin API. Rove owns the host surface (install, validation, event dispatch,
 env injection, panes, settings UI, run logs); you own the implementation.
 
 ## Quickstart
@@ -27,8 +27,8 @@ on = "agent.turn-complete"
 command = ["sh", "-c", "echo \"$KOBE_PLUGIN_TASK_TITLE finished a turn\" >> \"$KOBE_PLUGIN_STATE_DIR/log\""]
 EOF
 
-kobe plugin link .            # register your working directory (dev loop)
-kobe plugin log you.hello     # inspect hook runs (exit codes, output, timing)
+rove plugin link .            # register your working directory (dev loop)
+rove plugin log you.hello     # inspect hook runs (exit codes, output, timing)
 ```
 
 ## Optional SDK (TypeScript)
@@ -61,9 +61,9 @@ Package README has full examples: `packages/kobe-plugin-sdk/README.md`.
 Publish: push a public GitHub repo (one plugin per subdirectory is fine),
 add the topic **`kobe-plugin`** → it appears in the marketplace
 ([kobe.sma1lboy.me/plugins](https://kobe.sma1lboy.me/plugins) and
-`kobe plugin search`) automatically. Users install with
-`kobe plugin install owner/repo[/subdir]` and stay fresh with
-`kobe plugin outdated` / `kobe plugin update --all` (an update is a clean
+`rove plugin search`) automatically. Users install with
+`rove plugin install owner/repo[/subdir]` and stay fresh with
+`rove plugin outdated` / `rove plugin update --all` (an update is a clean
 reinstall of the managed checkout; config/state survive).
 
 ## Manifest reference
@@ -72,7 +72,7 @@ reinstall of the managed checkout; config/state survive).
 id = "you.example"               # letters/digits/dot/colon/underscore/hyphen
 name = "Example"
 version = "0.1.0"
-min_kobe_version = "0.8.24"      # install refuses older kobe
+min_kobe_version = "0.8.24"      # install refuses older Rove versions
 description = "…"                # optional
 platforms = ["macos", "linux"]   # optional; item-level `platforms` overrides
 
@@ -82,7 +82,7 @@ command = ["npm", "install"]     # self-provision deps INTO the plugin dir; `lin
 [[startup]]                      # once per daemon start, after the socket is ready; one-shot, not a daemon
 command = ["node", "restore.js"]
 
-[[actions]]                      # on-demand: kobe plugin action invoke you.example.greet [args…]
+[[actions]]                      # on-demand: rove plugin action invoke you.example.greet [args…]
 id = "greet"                     # local id, no dots; extra CLI args append to argv
 title = "Say hello"
 command = ["sh", "greet.sh"]
@@ -156,7 +156,7 @@ Envelope (`KOBE_PLUGIN_EVENT_JSON`):
 **The principle: any observable product moment is a candidate event.** The
 catalog grows as subsystems expose their edges (PR status and task status
 transitions are natural next ones). If your plugin needs a
-moment that isn't fired yet, ask via `kobe feedback` or a GitHub issue; the
+moment that isn't fired yet, ask via `rove feedback` or a GitHub issue; the
 plumbing (`ui.reportEvent` → plugin sink) makes additions cheap.
 
 ## Environment contract
@@ -165,9 +165,9 @@ Every plugin command gets, on top of the user's environment:
 
 | Variable | Meaning |
 |---|---|
-| `KOBE_BIN_PATH` | exec this to call back into kobe |
+| `KOBE_BIN_PATH` | exec this to call back into Rove |
 | `KOBE_SOCKET_PATH` | daemon unix socket, for raw JSON requests |
-| `KOBE_HOME_DIR` | set when kobe runs against a non-default home (keep passing it through) |
+| `KOBE_HOME_DIR` | set when Rove runs against a non-default home (keep passing it through) |
 | `KOBE_PLUGIN_ID`, `KOBE_PLUGIN_ROOT` | who you are, where your files are |
 | `KOBE_PLUGIN_CONFIG_DIR` | user-editable config (`.env` etc.); survives reinstall |
 | `KOBE_PLUGIN_STATE_DIR` | your durable state; survives reinstall |
@@ -181,11 +181,11 @@ managed checkouts replaced on reinstall. Settings you declare in
 `[[settings]]` arrive as plain vars in your config `.env`; source it
 (`. "$KOBE_PLUGIN_CONFIG_DIR/.env"`) or read it yourself.
 
-## Calling back into kobe
+## Calling back into Rove
 
 **CLI (recommended, portable):** exec `$KOBE_BIN_PATH` with any command.
-The high-value verbs live under `kobe api`: machine-readable list via
-`kobe api schema`, human list via `kobe api help`. Highlights:
+The high-value verbs live under `rove api`: machine-readable list via
+`rove api schema`, human list via `rove api help`. Highlights:
 
 ```bash
 "$KOBE_BIN_PATH" api add --repo <dir> --title T --prompt "…"   # create task + start engine
@@ -210,15 +210,15 @@ the CLI unless you need push channels.
 - **User keybindings**: users bind chords themselves in
   `~/.kobe/settings/keybindings.yaml`:
   `plugins: { ctrl+b: pane:you.example.board, f6: action:you.example.greet }`.
-  Ship the suggestion in your README; kobe ships no default plugin chords.
+  Ship the suggestion in your README; Rove ships no default plugin chords.
 - **Files pane**: `[[file_handlers]]` claims opens by pattern.
-- **Host input dialog**: `kobe api prompt --title "…"` (SDK: `promptUser()`)
+- **Host input dialog**: `rove api prompt --title "…"` (SDK: `promptUser()`)
   pops the TUI's standard input dialog and blocks for the answer: `{value}`
   on submit, `{cancelled, reason}` on esc/timeout. Use it instead of
   hand-rolling in-pane prompts.
 - **Settings → Plugins**: enable/disable, declared surfaces, last run,
   and your `[[settings]]` editors.
-- **CLI**: `kobe plugin action invoke`, `kobe plugin pane open`, `kobe
+- **CLI**: `rove plugin action invoke`, `rove plugin pane open`, `rove
   plugin log`.
 
 ## Ground rules

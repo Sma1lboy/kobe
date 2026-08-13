@@ -22,10 +22,10 @@ function firePluginBinding(binding: PluginKeyBinding): void {
   const [cmd, ...rest] = [...kobeCliInvocation(), ...verb]
   try {
     const child = spawn(cmd as string, rest, { detached: true, stdio: "ignore" })
-    child.on("error", (err) => console.warn(`[kobe/plugins] ${binding.target}: ${String(err)}`))
+    child.on("error", (err) => console.warn(`[rove/plugins] ${binding.target}: ${String(err)}`))
     child.unref()
   } catch (err) {
-    console.warn(`[kobe/plugins] ${binding.target}: ${String(err)}`)
+    console.warn(`[rove/plugins] ${binding.target}: ${String(err)}`)
   }
 }
 

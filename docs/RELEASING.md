@@ -1,6 +1,6 @@
-# Releasing kobe
+# Releasing Rove
 
-kobe versioning + changelog are managed with [Changesets](https://github.com/changesets/changesets). The published package is `@sma1lboy/kobe` (`packages/kobe`); `packages/branding` is `private` and never published.
+Rove versioning + changelog are managed with [Changesets](https://github.com/changesets/changesets). The published package is `@sma1lboy/kobe` (`packages/kobe`); `packages/branding` is `private` and never published.
 
 ## The flow
 
@@ -16,7 +16,7 @@ This prompts for the bump type (**patch** / **minor** / **major**) and a summary
 
 - The summary is the **user-facing changelog line** — write it in product voice, present tense ("Add X", "Fix Y", or a short narrative). It lands verbatim under the next release.
 - A pure tooling / docs / CI change that doesn't touch the published package needs **no** changeset. If you want to record "intentionally nothing to release", run `bun run changeset -- --empty`.
-- Bump type: `patch` for fixes, `minor` for features, `major` for breaking changes. kobe is pre-1.0, so breaking changes still go `minor` by convention unless we decide otherwise.
+- Bump type: `patch` for fixes, `minor` for features, `major` for breaking changes. Rove is pre-1.0, so breaking changes still go `minor` by convention unless we decide otherwise.
 
 ### 2. Cutting a release — automatic (default)
 
@@ -53,7 +53,7 @@ With a green gate, it consumes every pending `.changeset/*.md`:
 
 If CI comes back red, **no tag exists and the version number is not burned**: `package.json` on `main` already carries X.Y.Z, so land the fix on `main` (no new changeset needed) and re-run `scripts/release.sh` — with zero pending changesets and an untagged committed version it enters **resume mode**: waits for CI at the fixed HEAD, then tags the same `vX.Y.Z` there. The same resume path covers answering `N` at the push prompt and a CI run cancelled by a newer main push.
 
-The push triggers `.github/workflows/release.yml`, which gates on **lint + typecheck + unit tests (fast + socket) + build**, waits on the same **behavior** suite `ci.yml`'s PR gate runs, then `npm publish`es and extracts the new `CHANGELOG.md` section as the GitHub release body. npm is the sole distribution channel — standalone binaries were dropped 2026-08-02 (nothing consumed them; `packages/kobe/scripts/compile.ts` still builds one locally on demand). The same publish job also piggyback-publishes **`@sma1lboy/kobe-plugin-sdk`** whenever its (independently changeset-versioned) current version isn't on npm yet — the SDK has no tag of its own; an SDK-only release still rides the next kobe release.
+The push triggers `.github/workflows/release.yml`, which gates on **lint + typecheck + unit tests (fast + socket) + build**, waits on the same **behavior** suite `ci.yml`'s PR gate runs, then `npm publish`es and extracts the new `CHANGELOG.md` section as the GitHub release body. npm is the sole distribution channel — standalone binaries were dropped 2026-08-02 (nothing consumed them; `packages/kobe/scripts/compile.ts` still builds one locally on demand). The same publish job also piggyback-publishes **`@sma1lboy/kobe-plugin-sdk`** whenever its (independently changeset-versioned) current version isn't on npm yet — the SDK has no tag of its own; an SDK-only release still rides the next Rove release.
 
 ## Style rule — no soft wraps inside bullets or paragraphs
 
@@ -61,12 +61,12 @@ GitHub renders release bodies with GFM's hard-break extension: every single newl
 
 ## Breaking releases — the reset gate
 
-A release whose state/daemon/session format is incompatible with older installs must be added to `BREAKING_VERSIONS` in [`packages/kobe/src/version.ts`](../packages/kobe/src/version.ts) **in the same PR that ships the break** (the version you add is the one about to be released — confirm it against the pending changesets' bump). The changeset summary must say what breaks and that `kobe reset` is required.
+A release whose state/daemon/session format is incompatible with older installs must be added to `BREAKING_VERSIONS` in [`packages/kobe/src/version.ts`](../packages/kobe/src/version.ts) **in the same PR that ships the break** (the version you add is the one about to be released — confirm it against the pending changesets' bump). The changeset summary must say what breaks and that `rove reset` is required.
 
 What the list drives:
 
-- **Boot gate** (`src/cli/reset-gate.ts`): `state.json` remembers the last version that ran; when a launch crosses a `BREAKING_VERSIONS` entry (upgrade *or* downgrade), the TUI/web entrances refuse to start and print the `kobe reset` instructions. A completed `kobe reset` re-stamps the gate.
-- **`kobe update` warning**: installing a target across a breaking version prints a heads-up before the script runs; `kobe update --list` marks breaking versions.
+- **Boot gate** (`src/cli/reset-gate.ts`): `state.json` remembers the last version that ran; when a launch crosses a `BREAKING_VERSIONS` entry (upgrade *or* downgrade), the TUI/web entrances refuse to start and print the `rove reset` instructions. A completed `rove reset` re-stamps the gate.
+- **`rove update` warning**: installing a target across a breaking version prints a heads-up before the script runs; `rove update --list` marks breaking versions.
 
 Worktrees are never part of a reset — the gate's cost to the user is daemon/session teardown (plus the task index only if they choose `--hard`).
 

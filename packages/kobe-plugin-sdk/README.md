@@ -1,6 +1,6 @@
 # @sma1lboy/kobe-plugin-sdk
 
-Typed SDK for writing [kobe](https://github.com/Sma1lboy/kobe) plugins.
+Typed SDK for writing [Rove](https://github.com/Sma1lboy/kobe) plugins.
 
 **Optional by design.** The plugin contract stays plain env + CLI + unix
 socket — any language, no SDK required. This package is TypeScript sugar
@@ -9,11 +9,11 @@ event-name unions, envelope types, a daemon socket client, CLI helpers,
 and a tiny pane kit for terminal "pages". Zero dependencies, runs under
 Node ≥ 18 and Bun.
 
-The event/channel catalogs here are the **single source**: kobe's daemon
+The event/channel catalogs here are the **single source**: Rove's daemon
 imports them from this package's `./contract` module (a source-only,
 in-repo subpath — external consumers import the package root), so the
 host and the SDK agree by construction. The SDK versions independently
-via changesets; every kobe release publishes any not-yet-released SDK
+via changesets; every Rove release publishes any not-yet-released SDK
 version to npm.
 
 ```bash
@@ -71,13 +71,13 @@ frame()
 flow — that's what ghost-wraps in embedded terminals). Keep each row within
 `pane.cols`; CJK width is the author's concern.
 
-## Calling back into kobe
+## Calling back into Rove
 
 ```ts
 import { kobe, kobeJson, dispatch, listTasks, openPane } from "@sma1lboy/kobe-plugin-sdk"
 
 await dispatch(taskId, "run the tests")            // text into a live session
-const tasks = await listTasks()                    // kobe api list (JSON)
+const tasks = await listTasks()                    // Rove API task list (JSON)
 await openPane("you.example.board")                // open your own pane
 await kobe(["api", "issue-create", "--repo", ".", "--title", "found a bug"])
 ```

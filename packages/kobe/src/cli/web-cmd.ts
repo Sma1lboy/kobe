@@ -20,6 +20,9 @@ import { errorMessage } from "@/lib/error-message"
 import { ensureDaemonReachable } from "@sma1lboy/kobe-daemon/client/daemon-process"
 import { readRoveEnv, setRoveEnv } from "@sma1lboy/kobe-daemon/compat-env"
 import { DEFAULT_DAEMON_WEB_PORT } from "@sma1lboy/kobe-daemon/daemon/paths"
+import { activeCliName } from "./rename-compat.ts"
+
+const CLI_NAME = activeCliName()
 
 const DAEMON_WEB_HEALTH_MARKER = "kobe-web"
 const DAEMON_WEB_HEALTH_PATH = "/__kobe_web"
@@ -34,9 +37,9 @@ function homeLabel(): string {
 
 type PtyProcess = ReturnType<typeof Bun.spawn>
 
-const USAGE = `Usage: kobe web [options]
+const USAGE = `Usage: ${CLI_NAME} web [options]
 
-Launch the kobe web UI through daemon web transport on http://localhost:<port>.
+Launch the Rove web UI through daemon web transport on http://localhost:<port>.
 
 Options:
   --port <n>        Daemon web transport port (default ${DEFAULT_DAEMON_WEB_PORT}).
@@ -101,7 +104,7 @@ async function takeoverPtyPort(port: number): Promise<void> {
     return
   }
   if (body !== DAEMON_WEB_HEALTH_MARKER) {
-    throw new Error(`PTY port ${port} is in use by a non-kobe service; refusing to replace it`)
+    throw new Error(`PTY port ${port} is in use by a non-Rove service; refusing to replace it`)
   }
   const pids = await pidsOnPort(port)
   for (const pid of pids) {
@@ -150,7 +153,7 @@ async function ensureDaemonWeb(port: number, staticDir?: string): Promise<void> 
     body = (await res.text()).trim()
   } catch (err) {
     throw new Error(
-      `daemon web transport is not reachable on :${port}; run \`kobe daemon restart\` so the daemon picks up this build (${errorMessage(err)})`,
+      `daemon web transport is not reachable on :${port}; run \`${CLI_NAME} daemon restart\` so the daemon picks up this build (${errorMessage(err)})`,
     )
   }
   if (body !== DAEMON_WEB_HEALTH_MARKER) {
@@ -160,7 +163,7 @@ async function ensureDaemonWeb(port: number, staticDir?: string): Promise<void> 
     const res = await fetch(`http://127.0.0.1:${port}/`, { signal: AbortSignal.timeout(1500) })
     if (!res.ok) {
       throw new Error(
-        `daemon web transport is up on :${port} but is not serving web assets; run \`kobe daemon restart\` so it picks up ${staticDir}`,
+        `daemon web transport is up on :${port} but is not serving web assets; run \`${CLI_NAME} daemon restart\` so it picks up ${staticDir}`,
       )
     }
   }
@@ -183,7 +186,7 @@ export async function runWebSubcommand(args: readonly string[]): Promise<void> {
   if (portIdx !== -1) {
     const value = Number.parseInt(args[portIdx + 1] ?? "", 10)
     if (!Number.isFinite(value)) {
-      process.stderr.write("kobe web: --port needs a number\n")
+      process.stderr.write(`${CLI_NAME} web: --port needs a number\n`)
       process.exit(2)
     }
     port = value
@@ -195,7 +198,7 @@ export async function runWebSubcommand(args: readonly string[]): Promise<void> {
     const staticDir = routesOnly ? undefined : resolveStaticDir()
     if (!routesOnly && !staticDir) {
       throw new Error(
-        "web assets are missing from this kobe build; run `bun run build` in packages/kobe, or `bun run dev` in packages/kobe-web from a source checkout",
+        "web assets are missing from this Rove build; run `bun run build` in packages/kobe, or `bun run dev` in packages/kobe-web from a source checkout",
       )
     }
     await ensureDaemonWeb(port, staticDir)
@@ -210,14 +213,14 @@ export async function runWebSubcommand(args: readonly string[]): Promise<void> {
     }
 
     if (routesOnly) {
-      process.stdout.write(`kobe daemon web transport listening on http://localhost:${port} (routes only)\n`)
+      process.stdout.write(`${CLI_NAME} daemon web transport listening on http://localhost:${port} (routes only)\n`)
       process.stdout.write(`  home: ${homeLabel()}\n`)
     } else {
       pty = await startPtyServer({ webPort: port, takeover })
-      process.stdout.write(`kobe web → http://localhost:${port}\n`)
+      process.stdout.write(`${CLI_NAME} web → http://localhost:${port}\n`)
       process.stdout.write(`  home: ${homeLabel()}\n`)
       if (!pty) {
-        process.stderr.write("kobe web: PTY server not found; terminal tabs will be unavailable\n")
+        process.stderr.write(`${CLI_NAME} web: PTY server not found; terminal tabs will be unavailable\n`)
       }
     }
 
@@ -231,14 +234,14 @@ export async function runWebSubcommand(args: readonly string[]): Promise<void> {
     })
     void pty?.exited.then(() => {
       if (!stopped) {
-        process.stderr.write("kobe web: PTY server exited\n")
+        process.stderr.write(`${CLI_NAME} web: PTY server exited\n`)
         stop()
         process.exit(1)
       }
     })
     await new Promise<void>(() => {})
   } catch (err) {
-    process.stderr.write(`kobe web: ${errorMessage(err)}\n`)
+    process.stderr.write(`${CLI_NAME} web: ${errorMessage(err)}\n`)
     process.exit(1)
   }
 }

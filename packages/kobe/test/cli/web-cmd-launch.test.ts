@@ -123,7 +123,7 @@ describe("runWebSubcommand full launch", () => {
   it("fails with exit 1 when the built SPA is missing from this build", async () => {
     mocks.existsSync.mockReturnValue(false)
     await expect(runWebSubcommand([])).rejects.toThrow("exit 1")
-    expect(err()).toContain("web assets are missing from this kobe build")
+    expect(err()).toContain("web assets are missing from this Rove build")
     expect(mocks.ensureDaemonReachable).not.toHaveBeenCalled()
   })
 
@@ -199,7 +199,7 @@ describe("runWebSubcommand full launch", () => {
       "localhost:45176/__kobe_web": { body: "totally-not-kobe" },
     })
     await expect(runWebSubcommand([])).rejects.toThrow("exit 1")
-    expect(err()).toContain("PTY port 45176 is in use by a non-kobe service")
+    expect(err()).toContain("PTY port 45176 is in use by a non-Rove service")
   })
 
   it("--no-takeover never probes the PTY port", async () => {

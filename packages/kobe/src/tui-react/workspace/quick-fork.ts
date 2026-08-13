@@ -98,7 +98,7 @@ export async function runQuickFork(
     await hooks.enterTask(task.id)
     return task.id
   } catch (err) {
-    console.error("[kobe workspace] quick-fork task.create failed:", err)
+    console.error("[rove workspace] quick-fork task.create failed:", err)
     hooks.notifyError(`Couldn't fork task: ${errorMessage(err)}`)
     return undefined
   }

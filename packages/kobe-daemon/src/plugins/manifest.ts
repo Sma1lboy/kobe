@@ -235,7 +235,7 @@ export function parsePluginManifest(text: string): ParsedPluginManifest {
       platforms: asPlatforms(t.platforms, `events[${i}].platforms`),
     }
     if (!(PLUGIN_EVENT_NAMES as readonly string[]).includes(on)) {
-      warnings.push(`unknown event \`${on}\`; this hook will never fire on this kobe version`)
+      warnings.push(`unknown event \`${on}\`; this hook will never fire on this Rove version`)
     }
     return [hook]
   })

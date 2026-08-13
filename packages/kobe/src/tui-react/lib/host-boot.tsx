@@ -284,6 +284,6 @@ export async function connectOrchestratorBestEffort(logContext: string): Promise
   // still owns the init sequence, logs the failure cause under `logContext`,
   // and disposes a half-built orchestrator instead of leaking it.
   const orch = await connectPaneOrchestrator({ logTag: logContext, connect: connectOrStartDaemon })
-  if (!orch) console.error(`[kobe ${logContext}] daemon unavailable; cannot create task`)
+  if (!orch) console.error(`[rove ${logContext}] daemon unavailable; cannot create task`)
   return orch
 }

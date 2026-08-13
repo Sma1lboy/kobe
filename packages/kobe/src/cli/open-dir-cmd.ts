@@ -15,6 +15,7 @@
 import { statSync } from "node:fs"
 import { resolve } from "node:path"
 import { expandTilde } from "../lib/path-home.ts"
+import { activeCliName } from "./rename-compat.ts"
 
 /**
  * True when the first CLI arg is EXPLICIT path syntax (`kobe .`, `kobe ..`,
@@ -43,7 +44,7 @@ export async function runOpenDirectory(arg: string): Promise<void> {
     isDir = false
   }
   if (!isDir) {
-    process.stderr.write(`kobe: "${arg}" is not a directory (resolved to ${dir}).\n`)
+    process.stderr.write(`${activeCliName()}: "${arg}" is not a directory (resolved to ${dir}).\n`)
     process.exit(1)
   }
   const { connectIfRunning } = await import("@sma1lboy/kobe-daemon/client/daemon-process")

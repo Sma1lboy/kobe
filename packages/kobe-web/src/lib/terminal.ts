@@ -76,7 +76,7 @@ export async function sendPtyText(
     // targeted restart hint instead of surfacing a generic status error.
     if (err instanceof ApiError && err.status === 404 && !err.detail) {
       throw new Error(
-        "the PTY server doesn't know /pty/send — restart `kobe web` (the sidecar doesn't hot-reload)",
+        "the PTY server doesn't know /pty/send — restart `rove web` (the sidecar doesn't hot-reload)",
       )
     }
     throw err

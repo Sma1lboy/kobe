@@ -29,7 +29,7 @@ async function main(): Promise<void> {
     log: (event, message) => console.log(`[pty-host ${event}] ${message}`),
     onStop: () => process.exit(0),
   })
-  console.log(`kobe pty-host (node): listening on ${server.socketPath}`)
+  console.log(`rove pty-host (node): listening on ${server.socketPath}`)
 
   const shutdown = async (): Promise<void> => {
     await server.close()

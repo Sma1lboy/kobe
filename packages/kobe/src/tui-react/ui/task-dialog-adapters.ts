@@ -68,7 +68,7 @@ export interface BaseCreateTaskContextDeps {
   readonly notifyInfo: (message: string) => void
   readonly selectedId: () => string | null
   readonly setSelectedId: (id: string | null) => void
-  /** Forensic log tag — `[kobe tasks]` (Tasks pane) vs `[kobe workspace]`. */
+  /** Forensic log tag — `[rove tasks]` (Tasks pane) vs `[rove workspace]`. */
   readonly logPrefix: string
   /** Enter (switch into) a task — the pane's `switchTo` / the workspace's `activateTask`. */
   readonly enterTask: (id: string) => Promise<void>

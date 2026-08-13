@@ -77,7 +77,7 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
   // hello — replaceable, same recoverability the unconditional unlink
   // provided) socket may still be cleared below.
   if ((await probeDaemonSocket(socketPath)) === "alive") {
-    throw new Error(`kobe daemon: another daemon is already serving ${socketPath} — refusing to replace it`)
+    throw new Error(`rove daemon: another daemon is already serving ${socketPath} — refusing to replace it`)
   }
   const clients = new Set<ClientState>()
   const webClients = new Set<{ subscribed: boolean; holdsLifetime: boolean }>()

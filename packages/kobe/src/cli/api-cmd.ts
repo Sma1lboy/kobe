@@ -172,7 +172,7 @@ export async function runApiSubcommand(argv: readonly string[]): Promise<void> {
     try {
       session = await openDaemonSession()
     } catch (err) {
-      fail(`could not reach or start the kobe daemon: ${errorMessage(err)}`, "BAD_DAEMON", 2, {
+      fail(`could not reach or start the Rove daemon: ${errorMessage(err)}`, "BAD_DAEMON", 2, {
         hint: "check whether the daemon is up (and why it is not), then retry the same command",
         nextCommandArgs: ["daemon", "status"],
       })

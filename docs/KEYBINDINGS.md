@@ -1,13 +1,13 @@
 # Keybindings
 
-**Press `F1` inside kobe** for the live, localized keymap — it's always
+**Press `F1` inside Rove** for the live, localized keymap — it's always
 correct, including your own overrides. This page is the stable vocabulary.
 
 ## How keys work
 
 Two things decide what a key does:
 
-- **Where** — a key is either Kobe-wide, or owned by the focused pane.
+- **Where** — a key is either Rove-wide, or owned by the focused pane.
 - **How** — one press, or the prefix followed by a second key.
 
 Which gives you three patterns:
@@ -15,11 +15,11 @@ Which gives you three patterns:
 | Pattern | Example | Used for |
 |---|---|---|
 | Bare letter | `n`, `a`, `d` | Actions in the focused pane |
-| One press | `ctrl+t`, `ctrl+w` | Frequent Kobe-wide actions |
+| One press | `ctrl+t`, `ctrl+w` | Frequent Rove-wide actions |
 | Prefix sequence | `ctrl+a` then `i` | Everything less frequent |
 
 Inside the embedded engine terminal, unclaimed keys go straight to the engine
-— kobe only reserves its explicit chords. The prefix still works there, so
+— Rove only reserves its explicit chords. The prefix still works there, so
 the command menu is reachable from every pane. Press `ctrl+q` to leave the
 terminal without opening it.
 
@@ -172,7 +172,7 @@ darwin:                  # platform overlays win per chord
 
 ### Plugin chords
 
-kobe ships none — every plugin chord is your own choice:
+rove ships none — every plugin chord is your own choice:
 
 ```yaml
 plugins:

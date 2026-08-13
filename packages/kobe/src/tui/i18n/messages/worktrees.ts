@@ -7,11 +7,11 @@
 export const en = {
   title: "Worktrees",
   loading: "Loading worktrees…",
-  noProjects: "No local projects known to kobe yet.",
+  noProjects: "No local projects known to Rove yet.",
   noWorktrees: "No worktrees.",
 
   badge: {
-    kobeManaged: "kobe",
+    kobeManaged: "rove",
     dirty: "dirty",
     remoteOn: "on remote",
     remoteOff: "not pushed",
@@ -46,7 +46,7 @@ export const en = {
     confirmTitle: "Land branch?",
     confirmBody:
       'Merge "{branch}" into the base repo\'s current branch? A dirty base checkout is refused; conflicts abort with a file list.',
-    noTask: "This worktree isn't tracked as a kobe task — nothing to land.",
+    noTask: "This worktree isn't tracked as a Rove task — nothing to land.",
     conflict: "Land hit conflicts (merge aborted). Resolve by hand: {files}",
     dirtyBase: "The base checkout has uncommitted changes — commit or stash them, then land.",
     failed: "Land failed: {error}",
@@ -59,11 +59,11 @@ export const en = {
 export const zh: typeof en = {
   title: "工作树",
   loading: "正在加载 worktree…",
-  noProjects: "kobe 还没有已知的本地项目。",
+  noProjects: "Rove 还没有已知的本地项目。",
   noWorktrees: "没有 worktree。",
 
   badge: {
-    kobeManaged: "kobe",
+    kobeManaged: "rove",
     dirty: "有改动",
     remoteOn: "已推送",
     remoteOff: "未推送",
@@ -97,7 +97,7 @@ export const zh: typeof en = {
     button: "合入",
     confirmTitle: "合入分支？",
     confirmBody: '把 "{branch}" 合入基仓库当前分支？基础检出有未提交改动会被拒绝；冲突会中止并给出文件清单。',
-    noTask: "该 worktree 未作为 kobe 任务被跟踪——没有可合入的对象。",
+    noTask: "该 worktree 未作为 Rove 任务被跟踪——没有可合入的对象。",
     conflict: "合入遇到冲突（已中止）。请手动解决：{files}",
     dirtyBase: "基础检出有未提交改动——请先提交或 stash，再合入。",
     failed: "合入失败：{error}",

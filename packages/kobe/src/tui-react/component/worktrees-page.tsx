@@ -146,7 +146,7 @@ export function WorktreesPage(props: { orchestrator: RemoteOrchestrator | null; 
         if (confirmed === true) await deleteInBackground(row, true)
         return
       }
-      console.error(`[kobe worktrees] ${t("worktrees.delete.failed", { error: String(err) })}`)
+      console.error(`[rove worktrees] ${t("worktrees.delete.failed", { error: String(err) })}`)
     }
   }
 
@@ -168,7 +168,7 @@ export function WorktreesPage(props: { orchestrator: RemoteOrchestrator | null; 
     if (!orch || busyPath) return
     const taskId = taskIdForPath(orch, row.path)
     if (!taskId) {
-      console.error(`[kobe worktrees] ${t("worktrees.land.noTask")}`)
+      console.error(`[rove worktrees] ${t("worktrees.land.noTask")}`)
       return
     }
     const ok = await DialogConfirm.show(
@@ -183,17 +183,17 @@ export function WorktreesPage(props: { orchestrator: RemoteOrchestrator | null; 
     try {
       const res = await orch.landTask(taskId)
       console.error(
-        `[kobe worktrees] ${t("worktrees.land.done", { branch: res.branch, landedOn: res.landedOn, commit: res.commit })}`,
+        `[rove worktrees] ${t("worktrees.land.done", { branch: res.branch, landedOn: res.landedOn, commit: res.commit })}`,
       )
       refetch()
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err)
       if (LAND_CONFLICT_RE.test(msg)) {
-        console.error(`[kobe worktrees] ${t("worktrees.land.conflict", { files: msg })}`)
+        console.error(`[rove worktrees] ${t("worktrees.land.conflict", { files: msg })}`)
       } else if (MAIN_DIRTY_RE.test(msg)) {
-        console.error(`[kobe worktrees] ${t("worktrees.land.dirtyBase")}`)
+        console.error(`[rove worktrees] ${t("worktrees.land.dirtyBase")}`)
       } else {
-        console.error(`[kobe worktrees] ${t("worktrees.land.failed", { error: msg })}`)
+        console.error(`[rove worktrees] ${t("worktrees.land.failed", { error: msg })}`)
       }
     } finally {
       setBusyPath(null)

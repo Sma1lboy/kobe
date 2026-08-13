@@ -18,7 +18,7 @@ export function bindByIds(handlers: Record<string, Binding["cmd"]>): Binding[] {
     const chords = binding?.keys ?? []
     const prefixChords = binding?.prefixKeys ?? []
     if (chords.length === 0 && prefixChords.length === 0) {
-      console.warn(`[kobe/keybindings] bindByIds: id="${id}" has no chords (or doesn't exist in KobeKeymap)`)
+      console.warn(`[rove/keybindings] bindByIds: id="${id}" has no chords (or doesn't exist in KobeKeymap)`)
       continue
     }
     chords.forEach((key, slot) => out.push({ key, cmd, slot, id }))

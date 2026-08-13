@@ -1,7 +1,7 @@
 # Sessions: what survives what
 
-Short answer: **quitting kobe stops nothing.** Only a reboot or an explicit
-`kobe reset` ends your running sessions.
+Short answer: **quitting Rove stops nothing.** Only a reboot or an explicit
+`rove reset` ends your running sessions.
 
 ## What survives
 
@@ -9,8 +9,8 @@ Short answer: **quitting kobe stops nothing.** Only a reboot or an explicit
 |---|---|---|---|---|
 | Quit the TUI | ✓ | ✓ | ✓ | ✓ |
 | Drop your SSH connection | ✓ | ✓ | ✓ | ✓ |
-| `kobe daemon restart` | ✓ | ✓ | ✓ | ✓ |
-| Reboot, or `kobe reset` | — | — | ✓ | ✓ resumable |
+| `rove daemon restart` | ✓ | ✓ | ✓ | ✓ |
+| Reboot, or `rove reset` | — | — | ✓ | ✓ resumable |
 
 ![The TUI detaches while the engine process, scrollback ring, and task list stay lit below](assets/detach-survives.png)
 
@@ -24,14 +24,14 @@ disk. Your *conversations* still come back, because the engine wrote them.
 ```mermaid
 flowchart TB
   subgraph clients["Attach clients (N, disposable)"]
-    tui["kobe (TUI)"]
-    web["kobe web (browser)"]
+    tui["Rove (TUI)"]
+    web["rove web (browser)"]
   end
-  subgraph daemon["kobe daemon (state, refcounted)"]
+  subgraph daemon["rove daemon (state, refcounted)"]
     orch[Orchestrator]
     idx["tasks.json"]
   end
-  subgraph host["kobe pty-host (engine lifetime)"]
+  subgraph host["rove pty-host (engine lifetime)"]
     p1["engine PTY — task A"]
     p2["engine PTY — task B"]
     ring["per-session scrollback ring"]
@@ -53,11 +53,11 @@ flowchart TB
   In practice that makes the daemon resident as long as any task has an open
   tab (a task's last tab can't be closed, so "no live sessions" means every
   task archived or torn down). Restarting it is routine:
-  `kobe daemon restart`.
+  `rove daemon restart`.
 - **The PTY host** owns every engine and shell process, plus their
   scrollback. It's deliberately a *separate* process from the daemon, so a
   daemon restart never kills a running engine. Like the tmux server, it exits
-  on its own only after sitting at zero live sessions. `kobe reset` is the
+  on its own only after sitting at zero live sessions. `rove reset` is the
   explicit teardown.
 
 ## Detaching and reattaching
@@ -65,7 +65,7 @@ flowchart TB
 There's no detach command — quitting **is** detaching. `ctrl+q`, closing the
 terminal, an SSH drop: the connection closes and the engine keeps running.
 
-Reattaching is just running `kobe` again. A fresh TUI finds the background
+Reattaching is just running `rove` again. A fresh TUI finds the background
 sessions and reopens them. The existing session always wins, so reattaching
 never restarts anything.
 
@@ -76,7 +76,7 @@ local to each one.
 **Two exceptions to "everything survives a quit":**
 
 - Archiving a task stops its sessions. A janitor sweeps sessions whose task
-  is no longer live, so a headless `kobe api archive` can't leak an engine
+  is no longer live, so a headless `rove api archive` can't leak an engine
   that runs forever.
 - An engine that exits on its own is kept as a dead session with its
   scrollback intact, so you can still see *how* it died.
@@ -86,13 +86,13 @@ local to each one.
 Two buffers, both bounded:
 
 - **What a reattach replays** — the PTY host keeps ~512 KiB of recent output
-  per session, in memory only. When the host ends (reboot, `kobe reset`), it's
+  per session, in memory only. When the host ends (reboot, `rove reset`), it's
   gone.
 - **How far you can scroll** — `terminal.scrollbackRows` in Settings →
   General → Terminal, default 1000 rows. Applies to terminals started after
   the change.
 
-Reattach has a fast path: if a tab was only hidden, kobe replays just the
+Reattach has a fast path: if a tab was only hidden, Rove replays just the
 bytes written since it was parked, so waking it is bit-identical to never
 having left. Attaching from a different-sized terminal resizes the session —
 last attach wins, like tmux.
@@ -100,7 +100,7 @@ last attach wins, like tmux.
 ## Resuming a conversation
 
 Process survival and conversation survival are different things. The
-conversation is the engine's own file on disk, so it outlives every kobe
+conversation is the engine's own file on disk, so it outlives every Rove
 process, including a reboot.
 
 - Claude tabs pin their conversation up front, so a tab that already ran
@@ -109,12 +109,12 @@ process, including a reboot.
   relaunch fresh.
 - A tab found dead on attach gets **one** automatic resume attempt. If that
   dies too, the tab closes rather than respawning forever.
-- `ctrl+a` `y` opens the resume picker for the active task — kobe's mirror of
+- `ctrl+a` `y` opens the resume picker for the active task — Rove's mirror of
   claude-code's `/resume`. It lists every session in the task's worktree.
 
-## kobe web as a second client
+## rove web as a second client
 
-`kobe web` is a second live client of the same daemon: same tasks, same
+`rove web` is a second live client of the same daemon: same tasks, same
 issues, same event stream. An open browser tab keeps the daemon alive exactly
 like an attached TUI does.
 

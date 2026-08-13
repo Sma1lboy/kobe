@@ -137,8 +137,8 @@ export async function resolveNodePtyHostSpawn(deps: NodePtyHostResolution = {}):
   const node = resolveNodeBinary(deps.env ?? process.env, exists, platform)
   if (!node) {
     throw new Error(
-      "kobe: the Windows PTY host runs under node, but no node was found on PATH. " +
-        "Install Node.js (https://nodejs.org) and restart kobe — engine and terminal sessions cannot start without it.",
+      "Rove: the Windows PTY host runs under node, but no node was found on PATH. " +
+        "Install Node.js (https://nodejs.org) and restart Rove — engine and terminal sessions cannot start without it.",
     )
   }
 
@@ -147,12 +147,12 @@ export async function resolveNodePtyHostSpawn(deps: NodePtyHostResolution = {}):
 
   const entry = resolve(here, PTY_HOST_NODE_ENTRY)
   if (!exists(entry)) {
-    throw new Error(`kobe: no Windows PTY host found (looked for ${packaged} and ${entry})`)
+    throw new Error(`Rove: no Windows PTY host found (looked for ${packaged} and ${entry})`)
   }
   const cache = resolve(here, PTY_HOST_NODE_DEV_CACHE)
   const built = await bundle(entry, cache)
   if (!built.success) {
-    throw new Error(`kobe: could not build the Windows PTY host — ${built.logs.map(String).join("; ")}`)
+    throw new Error(`Rove: could not build the Windows PTY host — ${built.logs.map(String).join("; ")}`)
   }
   return [node, cache]
 }
@@ -177,7 +177,7 @@ export async function ensurePtyHostReachable(): Promise<string> {
     if (await testDaemonResponds(socketPath)) return socketPath
     await new Promise((resolveTimer) => setTimeout(resolveTimer, 100))
   }
-  throw new Error(`kobe: pty host did not start (or stayed wedged) at ${socketPath}`)
+  throw new Error(`rove: pty host did not start (or stayed wedged) at ${socketPath}`)
 }
 
 /**

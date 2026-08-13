@@ -119,7 +119,7 @@ const createFixtureRepository = async (demoRoot: string): Promise<string> => {
  * stale N lets that prompt swallow the boot wait. Bump in lockstep; the test
  * asserts against this constant so the two can't drift apart again.
  */
-export const CAPTURE_SKILL_HINT_VERSION = 20
+export const CAPTURE_SKILL_HINT_VERSION = 21
 
 const prepareCaptureState = async (demoRoot: string, fixtureRepo: string, claudeCommand?: string): Promise<void> => {
   const configDir = join(demoRoot, "home", ".config", "kobe")

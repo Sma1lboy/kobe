@@ -56,7 +56,7 @@ export function fitSocketPath(naturalPath: string, homeDir: string, role: string
   const suffix = pidTag === undefined ? "" : `-${pidTag}`
   const fallback = join(tmpdir(), `kobe-${tag}-${role}${suffix}.sock`)
   if (Buffer.byteLength(fallback, "utf8") <= SOCKET_PATH_SAFETY_LIMIT) return fallback
-  throw new Error(`kobe socket path exceeds ${SOCKET_PATH_SAFETY_LIMIT} bytes even after fallback: ${fallback}`)
+  throw new Error(`daemon socket path exceeds ${SOCKET_PATH_SAFETY_LIMIT} bytes even after fallback: ${fallback}`)
 }
 
 /**
@@ -130,10 +130,10 @@ export function defaultDaemonLogPath(homeDir = readRoveEnv("HOME_DIR") ?? homedi
 }
 
 /**
- * Log file for kobe's CLIENT-side processes (the in-tmux Tasks/Ops panes
+ * Log file for Rove's CLIENT-side processes (the in-tmux Tasks/Ops panes
  * and the front-end attach). Unlike the daemon, these run inside an
  * opentui alternate-screen pane, so their `console.*` output is swallowed
- * by the TUI and a stray "[kobe tasks] daemon subscribe unavailable" never
+ * by the TUI and a stray "[rove tasks] daemon subscribe unavailable" never
  * reaches a human. Routing connection-lifecycle diagnostics to a real file
  * — next to `daemon.log` under `<home>/.kobe/` — is the only way a pane's
  * disconnect / reconnect churn is observable after the fact (the reason the

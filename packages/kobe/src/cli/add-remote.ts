@@ -17,6 +17,9 @@ import { remoteControlSocketPath } from "../env.ts"
 import { RemoteExecHost, type RemoteSpec } from "../exec/exec-host.ts"
 import { getKeychainPassword, isKeychainSupported, remoteKeychainRef, setKeychainPassword } from "../exec/keychain.ts"
 import { addRemoteRepo, isRemoteProjectsEnabled } from "../state/repos.ts"
+import { activeCliName } from "./rename-compat.ts"
+
+const CLI_NAME = activeCliName()
 
 export interface ParsedFlags {
   host?: string
@@ -27,12 +30,13 @@ export interface ParsedFlags {
   password?: true
 }
 
-const USAGE =
-  "Usage: kobe add --remote --host <host> --user <user> --path <basePath>\n" +
-  "                [--port N] [--key [path] | --password]\n\n" +
-  "Register an SSH-backed project. Worktrees + the engine run on <host> under\n" +
-  "<basePath>. Choose ONE auth: --key [path] (ssh-agent when path omitted) or\n" +
-  "--password (prompted, stored in the OS keychain — never in state.json).\n"
+const USAGE = `Usage: ${CLI_NAME} add --remote --host <host> --user <user> --path <basePath>
+                [--port N] [--key [path] | --password]
+
+Register an SSH-backed project. Worktrees + the engine run on <host> under
+<basePath>. Choose ONE auth: --key [path] (ssh-agent when path omitted) or
+--password (prompted, stored in the OS keychain — never in state.json).
+`
 
 export function parseRemoteFlags(args: readonly string[]): ParsedFlags {
   const f: ParsedFlags = {}
@@ -81,7 +85,7 @@ export function parseRemoteFlags(args: readonly string[]): ParsedFlags {
 }
 
 function fail(msg: string): never {
-  process.stderr.write(`kobe add --remote: ${msg}\n\n${USAGE}`)
+  process.stderr.write(`${CLI_NAME} add --remote: ${msg}\n\n${USAGE}`)
   process.exit(2)
 }
 

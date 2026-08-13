@@ -46,7 +46,7 @@ describe("issue-chat prompts", () => {
     expect(prompt).toContain("directly in the project checkout")
     expect(prompt).not.toContain("task worktree")
     expect(prompt).not.toContain("merge the task branch")
-    expect(prompt).toContain("kobe api issue-set-status --repo . --id 7 --status done")
+    expect(prompt).toContain("rove api issue-set-status --repo . --id 7 --status done")
   })
 
   test("a blank body leaves no dangling blank section", () => {

@@ -1,7 +1,7 @@
 /**
  * First-run onboarding — the pure apply half. Matters because it edits the
  * user's REAL shell rc: the append must be idempotent (an onboarding re-run
- * or a `kobe completions` marker already present must never stack duplicate
+ * or a `rove completions` marker already present must never stack duplicate
  * source lines), and fish must get an autoload file, not an rc edit.
  */
 
@@ -34,8 +34,8 @@ describe("installCompletions", () => {
     const rc = installCompletions("zsh", home)
     expect(rc).toBe(join(home, ".zshrc"))
     const content = readFileSync(rc, "utf8")
-    expect(content).toContain("source <(kobe completions zsh)")
-    expect(content).toContain("command -v kobe")
+    expect(content).toContain("source <(rove completions zsh)")
+    expect(content).toContain("command -v rove")
   })
 
   it("is idempotent — a second run never stacks a duplicate line", () => {
@@ -43,25 +43,25 @@ describe("installCompletions", () => {
     installCompletions("zsh", home)
     installCompletions("zsh", home)
     const content = readFileSync(join(home, ".zshrc"), "utf8")
-    expect(content.match(/kobe completions zsh/g)).toHaveLength(1)
+    expect(content.match(/rove completions zsh/g)).toHaveLength(1)
   })
 
-  it("preserves an existing rc and respects a hand-rolled kobe completions block", () => {
+  it("preserves an existing rc and respects a hand-rolled rove completions block", () => {
     const home = freshHome()
     const rc = join(home, ".bashrc")
-    writeFileSync(rc, "# mine\nsource ~/.bash_completion.d/kobe # kobe completions via fpath\n")
+    writeFileSync(rc, "# mine\nsource ~/.bash_completion.d/rove # rove completions via fpath\n")
     installCompletions("bash", home)
     const content = readFileSync(rc, "utf8")
     expect(content).toContain("# mine")
     // The marker was already present → nothing appended.
-    expect(content).not.toContain("source <(kobe completions bash)")
+    expect(content).not.toContain("source <(rove completions bash)")
   })
 
   it("fish gets an autoloaded completions file, no rc edit", () => {
     const home = freshHome()
     const path = installCompletions("fish", home)
-    expect(path).toBe(join(home, ".config", "fish", "completions", "kobe.fish"))
-    expect(readFileSync(path, "utf8")).toBe("kobe completions fish | source\n")
+    expect(path).toBe(join(home, ".config", "fish", "completions", "rove.fish"))
+    expect(readFileSync(path, "utf8")).toBe("rove completions fish | source\n")
     expect(existsSync(join(home, ".config", "fish", "config.fish"))).toBe(false)
   })
 })

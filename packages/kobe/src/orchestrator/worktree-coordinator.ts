@@ -179,7 +179,7 @@ export class WorktreeCoordinator {
     try {
       await this.worktrees.remove(worktreePath, { force: true })
     } catch (err) {
-      console.error(`[kobe] ensureWorktree rollback failed for ${worktreePath}:`, err)
+      console.error(`[rove] ensureWorktree rollback failed for ${worktreePath}:`, err)
     }
   }
 

@@ -24,7 +24,7 @@ export class ErrorBoundary extends Component<Props, State> {
 
   componentDidCatch(error: Error, info: ErrorInfo): void {
     // Surface to the console for dev; the card shows the user-facing message.
-    console.error("[kobe-web] render error:", error, info.componentStack)
+    console.error("[rove-web] render error:", error, info.componentStack)
   }
 
   reset = (): void => {
@@ -38,7 +38,7 @@ export class ErrorBoundary extends Component<Props, State> {
       <div className="flex h-screen items-center justify-center bg-bg p-6 text-fg">
         <div className="w-[28rem] max-w-full border border-kobe-red/40 bg-surface p-5">
           <div className="font-mono text-[13px] font-bold text-primary">
-            [kobe web]
+            [rove web]
           </div>
           <h1 className="mt-3 text-[16px] font-semibold text-fg">
             Something broke rendering this view.

@@ -64,7 +64,7 @@ export function ShowWorkspace(props: {
               if (!taskId) return
               void props.orchestrator
                 .setVendor(taskId, vendor)
-                .catch((err) => console.error("[kobe workspace] task.setVendor failed:", err))
+                .catch((err) => console.error("[rove workspace] task.setVendor failed:", err))
             }
           : undefined
       }

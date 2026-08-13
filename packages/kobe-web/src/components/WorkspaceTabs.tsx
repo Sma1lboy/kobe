@@ -381,7 +381,7 @@ export function WorkspaceTabs() {
           <div className="flex h-full items-center justify-center px-6 text-center">
             <div className="max-w-md">
               <div className="font-mono text-[13px] font-bold text-primary">
-                [kobe web]
+                [rove web]
               </div>
               <h1 className="mt-4 text-[18px] font-semibold text-fg">
                 {!task

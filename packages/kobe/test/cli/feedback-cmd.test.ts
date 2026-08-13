@@ -160,7 +160,7 @@ describe("submitFeedback (real module, scripted gh)", () => {
     expect(secondArgs).toEqual(expect.arrayContaining(["-f", "repositoryId=R_1", "-f", "categoryId=C_feedback"]))
     const bodyArg = secondArgs.find((a) => a.startsWith("body="))
     expect(bodyArg).toContain("Bug body")
-    expect(bodyArg).toContain("Submitted from kobe")
+    expect(bodyArg).toContain("Submitted from Rove")
   })
 
   it("throws when the category slug does not exist", async () => {

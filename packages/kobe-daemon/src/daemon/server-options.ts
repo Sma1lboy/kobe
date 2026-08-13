@@ -11,7 +11,7 @@ import type { UpdateInfo } from "./contracts.ts"
 import type { DaemonRuntimeAdapter } from "./runtime.ts"
 
 export interface DaemonServerOptions {
-  /** Product/runtime behavior injected by the kobe composition root. */
+  /** Product/runtime behavior injected by the Rove composition root. */
   readonly runtime: DaemonRuntimeAdapter
   readonly socketPath?: string
   readonly pidPath?: string

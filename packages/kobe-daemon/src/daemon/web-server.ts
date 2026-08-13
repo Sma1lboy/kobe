@@ -244,7 +244,7 @@ async function staticResponse(pathname: string, staticDir: string): Promise<Resp
   if (!resolved.startsWith(staticDir)) return new Response("forbidden", { status: 403 })
   const file = Bun.file(existsSync(resolved) ? resolved : join(staticDir, "index.html"))
   if (!(await file.exists())) {
-    return new Response("kobe web assets not built — run `bun --filter kobe-web build`", { status: 503 })
+    return new Response("Rove web assets not built — run `bun --filter kobe-web build`", { status: 503 })
   }
   return new Response(file)
 }
@@ -393,7 +393,7 @@ export async function probeWebPort(port: number, healthPath: string = DAEMON_WEB
 export async function startDaemonWebServer(opts: DaemonWebServerOptions): Promise<DaemonWebServer> {
   if (opts.takeover !== false && !(await probeWebPort(opts.port))) {
     throw new Error(
-      `web port ${opts.port} is already in use — leaving it alone and running socket-only (set KOBE_DAEMON_WEB_PORT to a free port, or 0/off to disable the web transport)`,
+      `web port ${opts.port} is already in use — leaving it alone and running socket-only (set ROVE_DAEMON_WEB_PORT to a free port, or 0/off to disable the web transport)`,
     )
   }
   const sseSends = new Set<SseSend>()

@@ -102,12 +102,12 @@ describe("kobe skill status", () => {
   it("reports an out-of-date skill (stamped) and an unstamped one", async () => {
     mocks.kobeSkillState.mockReturnValue({ installed: true, installedVersion: 1, currentVersion: 2, stale: true })
     await runSkillSubcommand(["status"])
-    expect(out()).toContain("⚠ out of date (installed v1, this kobe wants v2)")
+    expect(out()).toContain("⚠ out of date (installed v1, this Rove wants v2)")
 
     outSpy.mockClear()
     mocks.kobeSkillState.mockReturnValue({ installed: true, installedVersion: null, currentVersion: 2, stale: true })
     await runSkillSubcommand(["status"])
-    expect(out()).toContain("out of date (installed unstamped, this kobe wants v2)")
+    expect(out()).toContain("out of date (installed unstamped, this Rove wants v2)")
   })
 })
 
@@ -144,7 +144,7 @@ describe("kobe skill command", () => {
 describe("kobe skill print", () => {
   it("prints the bundled SKILL.md verbatim (the `kobe --skill` body)", async () => {
     await runSkillSubcommand(["print"])
-    expect(out()).toContain("# kobe shell control")
+    expect(out()).toContain("# Rove shell control")
     expect(out()).toContain("kobe-skill-version")
     expect(mocks.bunSpawn).not.toHaveBeenCalled()
   })

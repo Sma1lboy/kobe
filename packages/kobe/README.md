@@ -1,6 +1,6 @@
 # @sma1lboy/kobe
 
-The published kobe CLI and PureTUI package.
+The published Rove CLI and PureTUI package.
 
 ```bash
 bun install -g @sma1lboy/kobe
@@ -11,7 +11,7 @@ rove
 The package also keeps `kobe` as a compatibility alias. Both executable names
 use the existing `~/.kobe` and `~/.config/kobe` state paths.
 
-Plain `kobe` launches one React/opentui Workspace Host. Interactive engine and
+Plain `rove` launches one React/opentui Workspace Host. Interactive engine and
 shell processes are owned by the standalone PTY Host, so they survive TUI exits
 and daemon restarts.
 
@@ -22,11 +22,11 @@ Task = git worktree + hosted engine sessions + branch
 ## Main commands
 
 ```bash
-kobe --help
-kobe web
-kobe daemon status
-kobe daemon restart
-kobe api --help
+rove --help
+rove web
+rove daemon status
+rove daemon restart
+rove api --help
 ```
 
 Prompted API calls can run headlessly. `send`, prompted `add`, and `fan-out`
@@ -34,9 +34,9 @@ ensure the task Worktree and canonical `<taskId>::tab-1` hosted engine session
 without requiring an open TUI.
 
 ```bash
-kobe api add --repo . --prompt "implement the feature" --pretty
-kobe api send --task-id <id> --prompt "run tests"
-kobe api pty-list --pretty
+rove api add --repo . --prompt "implement the feature" --pretty
+rove api send --task-id <id> --prompt "run tests"
+rove api pty-list --pretty
 ```
 
 Press `F1` in the TUI for live help. Direct and prefix bindings are configured

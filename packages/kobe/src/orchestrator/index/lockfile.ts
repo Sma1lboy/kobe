@@ -101,14 +101,14 @@ export async function acquire(lockPath: string, opts: LockfileOptions = {}): Pro
 
   const alive = holderPid > 0 && isProcessAlive(holderPid)
   if (alive && !opts.forceTakeover) {
-    throw new LockfileError(`task index is locked by another kobe instance (pid ${holderPid})`, holderPid)
+    throw new LockfileError(`task index is locked by another Rove instance (pid ${holderPid})`, holderPid)
   }
 
   // Stale (or stolen): remove and re-create with our pid.
   // We log to stderr so the user sees the takeover happen — silent
   // takeovers are scary in concurrent contexts.
   console.warn(
-    `[kobe] removing stale lockfile at ${lockPath} (was held by pid ${holderPid}` +
+    `[rove] removing stale lockfile at ${lockPath} (was held by pid ${holderPid}` +
       `${alive ? ", forced" : ", process gone"})`,
   )
   try {

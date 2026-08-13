@@ -1,9 +1,9 @@
 import { AbsoluteFill, interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion"
 import { colors, monoStack } from "./colors"
 
-// Concept 1 — Bracket Chip [ kobe ]
+// Concept 1 — Bracket Chip [ rove ]
 // On-brand for the agent-deck "[Tab] label" hotkey grammar that runs through
-// kobe's UI. Brackets snap in, "kobe" types in, the cursor blinks.
+// Rove's UI. Brackets snap in, "rove" types in, the cursor blinks.
 // Reads as a button you can press — that's the point.
 
 export const BracketChip: React.FC = () => {
@@ -13,7 +13,7 @@ export const BracketChip: React.FC = () => {
   const leftBracket = spring({ frame: frame - 4, fps, config: { damping: 12, stiffness: 180 } })
   const rightBracket = spring({ frame: frame - 10, fps, config: { damping: 12, stiffness: 180 } })
 
-  const word = "kobe"
+  const word = "rove"
   const typeStart = 22
   const perChar = 5
   const chars = Math.max(0, Math.floor((frame - typeStart) / perChar))

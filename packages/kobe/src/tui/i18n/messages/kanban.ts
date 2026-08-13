@@ -11,7 +11,7 @@ export const en = {
   /** No saved projects / no tasks to derive repos from. */
   noRepos: "No projects yet — create a task first.",
   /** A repo section with zero issues. */
-  empty: "No issues — agents file them via `kobe api issue-create`.",
+  empty: "No issues — agents file them via `rove api issue-create`.",
   column: {
     backlog: "Backlog",
     inProgress: "In progress",
@@ -83,7 +83,7 @@ export const zh: typeof en = {
   hint: "tab 切项目 · ←↓↑→ 选卡片 · enter 详情 · n 新建 · d 删除 · r 刷新 · esc 关闭",
   loading: "正在加载 issues…",
   noRepos: "还没有项目——先创建一个任务。",
-  empty: "暂无 issue——agent 可通过 `kobe api issue-create` 创建。",
+  empty: "暂无 issue——agent 可通过 `rove api issue-create` 创建。",
   column: {
     backlog: "待办",
     inProgress: "进行中",

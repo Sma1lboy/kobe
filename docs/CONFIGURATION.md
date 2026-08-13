@@ -7,33 +7,33 @@ then `,`. This page is for when you want to edit them by hand.
 
 | Path | What | Written by |
 |---|---|---|
-| `~/.config/kobe/state.json` | All your preferences, as flat JSON | kobe (Settings, CLI); yours to hand-edit |
-| `~/.kobe/themes/*.json` | Installed themes | `kobe theme add`, or drop files in |
+| `~/.config/kobe/state.json` | All your preferences, as flat JSON | Rove (Settings, CLI); yours to hand-edit |
+| `~/.kobe/themes/*.json` | Installed themes | `rove theme add`, or drop files in |
 | `~/.kobe/settings/keybindings.yaml` | Keybinding overrides | You only |
 | `<repo>/.kobe/init.sh` + `init-prompt.md` | Per-repo worktree setup | You (committed to the repo) |
 
 Setting `ROVE_HOME_DIR` moves all of it somewhere else. `KOBE_HOME_DIR` remains
 a supported fallback; when both are set, `ROVE_HOME_DIR` wins. The directory
-names themselves deliberately stay `.kobe` and `.config/kobe` during the first
-rename phase, so existing state is reused without migration.
+names themselves deliberately stay `.kobe` and `.config/kobe`, so existing
+state is reused without migration.
 
 ## Editing settings
 
 ```sh
-kobe config          # open state.json in your editor
-kobe config --path   # just print the path
+rove config          # open state.json in your editor
+rove config --path   # just print the path
 ```
 
-kobe picks your editor in this order: `$VISUAL` / `$EDITOR` → your configured
+rove picks your editor in this order: `$VISUAL` / `$EDITOR` → your configured
 editor (`editor.kind` below) → the first installed of nvim, vim, emacs, nano.
 
-Restart kobe to apply a hand edit everywhere.
+Restart Rove to apply a hand edit everywhere.
 
 **Hand-editing is safe.** Unknown keys are ignored and bad values fall back to
 defaults, so a typo can't wedge the app — worst case a preference resets. If
-the file becomes invalid JSON, kobe renames it to
+the file becomes invalid JSON, Rove renames it to
 `state.json.corrupt-<timestamp>` and starts fresh rather than deleting it.
-Concurrent kobe processes re-read before writing, so they don't clobber each
+Concurrent Rove processes re-read before writing, so they don't clobber each
 other.
 
 ## Settings reference
@@ -57,7 +57,7 @@ already dismissed.
 
 ### Editor
 
-Used by the file tree's `e`, `ctrl+a` `o` (open worktree), and `kobe config`.
+Used by the file tree's `e`, `ctrl+a` `o` (open worktree), and `rove config`.
 
 | Key | Type | Default | What it does |
 |---|---|---|---|
@@ -78,7 +78,7 @@ it, the path is appended.
 | `engineCommand.<id>` | string | built-in | Launch command, e.g. `"engineCommand.claude": "claude --model opus"` |
 | `engineName.<id>` | string | built-in | Display name |
 | `customEngineIds` | string[] | `[]` | Your own engines — see [Custom engines](#custom-engines) |
-| `lastActiveVendor.<repo>` | engine id | unset | Per-project last used; outranks `defaultVendor`. Written by kobe |
+| `lastActiveVendor.<repo>` | engine id | unset | Per-project last used; outranks `defaultVendor`. Written by Rove |
 
 Launch commands are parsed shell-ish — quotes group arguments. Clear both
 `engineName.<id>` and `engineCommand.<id>` to reset an engine to its default.
@@ -159,13 +159,13 @@ Off by default. These can change without notice.
 
 ## Themes
 
-kobe bundles three themes — `claude`, `conductor`, and `tokyonight` — and ten
+rove bundles three themes — `claude`, `conductor`, and `tokyonight` — and ten
 more are one command away:
 
 ```sh
-kobe theme list
-kobe theme add https://kobe.sma1lboy.me/themes/gruvbox.json
-kobe theme remove gruvbox
+rove theme list
+rove theme add https://kobe.sma1lboy.me/themes/gruvbox.json
+rove theme remove gruvbox
 ```
 
 Available hosted: `catppuccin`, `dracula`, `everforest`, `gruvbox`,
@@ -180,14 +180,14 @@ same name. Writing one: [Themes](./themes.md).
 
 Full vocabulary: [Keybindings](./KEYBINDINGS.md). The configuration surface:
 
-- Edit `~/.kobe/settings/keybindings.yaml` by hand. kobe never writes it.
+- Edit `~/.kobe/settings/keybindings.yaml` by hand. Rove never writes it.
 - Changes **reload live** — no restart. Problems show up as warnings in
   Settings → Keybindings.
 - A direct override replaces that binding's whole chord list; `null` or `[]`
   unbinds it. Prefix overrides set second-stroke keys and keep the original
   pane scope. Platform overlays (`darwin:`, …) win per chord.
 - A `plugins:` section binds chords to installed plugin panes and actions.
-  kobe ships no default plugin chords.
+  Rove ships no default plugin chords.
 - Unknown ids are ignored with a warning — a typo never breaks the keymap.
 
 ## Notifications and sound
@@ -198,11 +198,11 @@ red outrank green when both fire for the same tab. Three delivery channels:
 - **Toasts** — in-TUI, 4.5 seconds. Error toasts always show, even with
   toasts disabled: a failure shouldn't vanish because you turned off
   completion popups.
-- **Desktop notification** — kobe emits an OSC 9 escape that iTerm2, kitty,
+- **Desktop notification** — Rove emits an OSC 9 escape that iTerm2, kitty,
   WezTerm, and Ghostty turn into a real OS notification; other terminals
   ignore it. Because it travels down the terminal stream, **it reaches you
   over SSH**. No separate switch.
-- **Sound** — a short chime when a background tab finishes. kobe uses the
+- **Sound** — a short chime when a background tab finishes. Rove uses the
   first player it finds on `PATH` (`afplay`, `ffplay`, `mpv`, `play`,
   `aplay`, …). With none installed it's silent and the terminal bell is the
   fallback.
@@ -224,7 +224,7 @@ Being in `customEngineIds` *is* the registration — there's no other step. Ids
 must match `^[a-z][a-z0-9_-]{0,47}$` and can't collide with a built-in;
 invalid ones are dropped on read.
 
-A custom engine launches and runs like any other, but kobe deliberately
+A custom engine launches and runs like any other, but Rove deliberately
 doesn't guess at its internals: no history reader, no account detection, no
 activity hooks, no session resume. More in [Engines](./ENGINES.md).
 
@@ -237,4 +237,4 @@ A repo can ship two files in its own `.kobe/` directory:
 - **`.kobe/init-prompt.md`** — sent as the engine's first message.
 
 Files committed in the repo win over any per-user override you set with
-`kobe repo set`.
+`rove repo set`.

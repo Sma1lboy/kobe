@@ -70,7 +70,7 @@ The suite currently pins:
 - built CLI update behavior;
 - `rove` identity plus `ROVE_*` precedence through both public entry points;
 - PureTUI terminal title publication when native PTY support is available;
-- headless `kobe api add --prompt` auto-starting `<taskId>::tab-1`;
+- headless `rove api add --prompt` auto-starting `<taskId>::tab-1`;
 - `send` reusing that exact hosted session;
 - archive stopping the hosted session without deleting the Worktree.
 
@@ -127,7 +127,7 @@ harness instance (a throwaway home with a richer fixture, say) is just an env
 var — the ground-truth path is unchanged.
 
 Both commands rebuild a disposable fixture under `.scratch/opentui-visual-*`
-(real git repo, real task, three issues via `kobe api`). Each journey gets a
+(real git repo, real task, three issues via `rove api`). Each journey gets a
 fresh `/harness` browser PTY and starts from the Workspace; the journeys are
 independent, not one long stateful session. CI and release run this exact
 command on Linux.

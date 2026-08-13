@@ -4,16 +4,19 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs"
 import { dirname } from "node:path"
 import { kvStatePath } from "../env.ts"
 import { binaryAvailable, resolveEditorCommand } from "../tui/lib/editor-launch.ts"
+import { activeCliName } from "./rename-compat.ts"
+
+const CLI_NAME = activeCliName()
 
 function printUsage(out: Pick<typeof process.stderr, "write">): void {
   out.write(
     [
-      "Usage: kobe config [--path]",
+      `Usage: ${CLI_NAME} config [--path]`,
       "",
-      "Open kobe's user config (state.json — theme, locale, engine + editor prefs)",
+      "Open Rove's user config (state.json — theme, locale, engine + editor prefs)",
       "in your editor. The editor is $VISUAL / $EDITOR, else your configured editor",
       "(Settings → General → Editor), else the first of nvim / vim / emacs / nano.",
-      "kobe re-reads the file on its next launch.",
+      "Rove re-reads the file on its next launch.",
       "",
       "Options:",
       "  --path        Print the config file path and exit (don't open an editor)",
@@ -35,7 +38,7 @@ export async function runConfigSubcommand(argv: readonly string[] = []): Promise
   }
   const unknown = argv.find((a) => a.length > 0)
   if (unknown !== undefined) {
-    process.stderr.write(`kobe config: unexpected argument "${unknown}"\n`)
+    process.stderr.write(`${CLI_NAME} config: unexpected argument "${unknown}"\n`)
     printUsage(process.stderr)
     process.exit(2)
   }
@@ -50,7 +53,7 @@ export async function runConfigSubcommand(argv: readonly string[] = []): Promise
   const resolved = await resolveEditorCommand(path)
   if (!resolved || !(await binaryAvailable(resolved.bin))) {
     process.stderr.write(
-      `kobe config: no editor found — set $EDITOR (or Settings → General → Editor), or edit directly:\n  ${path}\n`,
+      `${CLI_NAME} config: no editor found — set $EDITOR (or Settings → General → Editor), or edit directly:\n  ${path}\n`,
     )
     process.exit(1)
   }

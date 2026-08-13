@@ -28,11 +28,14 @@ import {
   savePluginRegistry,
 } from "@sma1lboy/kobe-daemon/plugins/registry"
 import { PluginCliError, installPlugin, linkPlugin } from "./plugin-install.ts"
+import { activeCliName } from "./rename-compat.ts"
+
+const CLI_NAME = activeCliName()
 
 function printUsage(out: NodeJS.WriteStream): void {
   out.write(
     [
-      "usage: kobe plugin <command>",
+      `usage: ${CLI_NAME} plugin <command>`,
       "",
       "  install <owner/repo[/subdir]> [--yes] [--ref <rev>]   clone from GitHub, preview, build, register",
       "  link <dir>                                            register a local plugin directory (dev)",
@@ -73,14 +76,16 @@ function loadAll(): LoadedEntry[] {
 
 function requireEntry(id: string): PluginRegistryEntry {
   const entry = loadPluginRegistry().plugins.find((p) => p.id === id)
-  if (!entry) throw new PluginCliError(`no plugin registered as \`${id}\`; see \`kobe plugin list\``)
+  if (!entry) throw new PluginCliError(`no plugin registered as \`${id}\`; see \`${CLI_NAME} plugin list\``)
   return entry
 }
 
 function listPlugins(): void {
   const all = loadAll()
   if (all.length === 0) {
-    console.log("no plugins installed. Try: kobe plugin install <owner/repo> — browse the `kobe-plugin` GitHub topic.")
+    console.log(
+      `no plugins installed. Try: ${CLI_NAME} plugin install <owner/repo> — browse the \`kobe-plugin\` GitHub topic.`,
+    )
     return
   }
   for (const { entry, manifest } of all) {
@@ -141,17 +146,17 @@ function invokeAction(qualified: string, extraArgs: string[]): void {
       return action ? { entry, action } : undefined
     })
     .find(Boolean)
-  if (!hit) throw new PluginCliError(`no action \`${qualified}\`; see \`kobe plugin action list\``)
+  if (!hit) throw new PluginCliError(`no action \`${qualified}\`; see \`${CLI_NAME} plugin action list\``)
 
   // Extra CLI args are appended to the action's argv so an action can take
-  // an argument (`kobe plugin action invoke p.start <url>`).
+  // an argument (`<active CLI> plugin action invoke p.start <url>`).
   const [cmd, ...args] = [...hit.action.command, ...extraArgs]
   const res = spawnSync(cmd as string, args, {
     cwd: hit.entry.root,
     stdio: "inherit",
     env: buildPluginEnv({
       socketPath: defaultDaemonSocketPath(),
-      binPath: "kobe",
+      binPath: CLI_NAME,
       pluginId: hit.entry.id,
       pluginRoot: hit.entry.root,
       extra: { KOBE_PLUGIN_ACTION_ID: hit.action.id, KOBE_PLUGIN_INVOKE_CWD: process.cwd() },
@@ -168,7 +173,7 @@ function resolvePaneQualified(qualified: string): { pluginId: string; entrypoint
     .find(({ entry, manifest }) =>
       (manifest as PluginManifest).panes.some((p) => p.id === qualified.slice(entry.id.length + 1)),
     )
-  if (!hit) throw new PluginCliError(`no pane \`${qualified}\`; see \`kobe plugin list\``)
+  if (!hit) throw new PluginCliError(`no pane \`${qualified}\`; see \`${CLI_NAME} plugin list\``)
   return { pluginId: hit.entry.id, entrypoint: qualified.slice(hit.entry.id.length + 1) }
 }
 
@@ -183,7 +188,7 @@ async function openPane(pluginId: string, entrypoint: string, taskFlag: string |
   // one `sh -lc` script, env contract riding an `env` prefix, cwd = worktree.
   const argv = buildPaneArgv(loaded.entry.id, loaded.entry.root, pane, {
     socketPath: defaultDaemonSocketPath(),
-    binPath: "kobe",
+    binPath: CLI_NAME,
   })
 
   const { openDaemonSession } = await import("./daemon-session.ts")
@@ -321,17 +326,19 @@ export async function runPluginSubcommand(rest: string[]): Promise<void> {
         process.exit(2)
         return
       }
-      default:
-        printUsage(command === undefined || command === "help" ? process.stdout : process.stderr)
-        if (command !== undefined && command !== "help") process.exit(2)
+      default: {
+        const isHelp = command === undefined || command === "help" || command === "--help" || command === "-h"
+        printUsage(isHelp ? process.stdout : process.stderr)
+        if (!isHelp) process.exit(2)
         return
+      }
     }
   } catch (err) {
     if (err instanceof PluginCliError) {
-      console.error(`kobe plugin: ${err.message}`)
+      console.error(`${CLI_NAME} plugin: ${err.message}`)
       process.exit(1)
     }
-    console.error(`kobe plugin: ${errorMessage(err)}`)
+    console.error(`${CLI_NAME} plugin: ${errorMessage(err)}`)
     process.exit(1)
   }
 }

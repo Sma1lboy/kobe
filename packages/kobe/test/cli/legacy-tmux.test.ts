@@ -99,7 +99,7 @@ describe("legacy tmux process inspection", () => {
     expect(lines[1]).toContain("3 process(es) across 2 pane(s), 9.0 MB RSS total")
     expect(lines).toContain("             bun: 2 proc, 6.0 MB")
     expect(lines).toContain("             claude: 1 proc, 3.0 MB")
-    expect(lines.at(-1)).toContain("kobe reset")
+    expect(lines.at(-1)).toContain("rove reset")
   })
 })
 

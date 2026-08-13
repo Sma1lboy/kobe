@@ -1,10 +1,13 @@
 import { readFileSync } from "node:fs"
 import { submitFeedback } from "../lib/feedback.ts"
+import { activeCliName } from "./rename-compat.ts"
+
+const CLI_NAME = activeCliName()
 
 const FEEDBACK_USAGE = [
-  "Usage: kobe feedback --title <text> (--body <text> | --body-file <path>) [--category <slug>]",
+  `Usage: ${CLI_NAME} feedback --title <text> (--body <text> | --body-file <path>) [--category <slug>]`,
   "",
-  "Create a GitHub Discussion in the kobe repository using the GitHub CLI.",
+  "Create a GitHub Discussion in the Rove repository using the GitHub CLI.",
   "",
   "Requires:",
   "  gh auth login",
@@ -27,7 +30,7 @@ type ParsedFeedbackArgs = {
 }
 
 function usageError(message: string): never {
-  process.stderr.write(`kobe feedback: ${message}\n\n${FEEDBACK_USAGE}\n`)
+  process.stderr.write(`${CLI_NAME} feedback: ${message}\n\n${FEEDBACK_USAGE}\n`)
   process.exit(2)
 }
 

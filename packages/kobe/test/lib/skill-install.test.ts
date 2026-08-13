@@ -12,6 +12,7 @@ import {
   npxSkillsArgv,
   npxSkillsCommand,
   parseSkillVersion,
+  skillInstallCommand,
 } from "../../src/lib/skill-install.ts"
 
 const dirs: string[] = []
@@ -103,6 +104,13 @@ describe("npxSkillsArgv / npxSkillsCommand", () => {
     expect(npxSkillsCommand({ source: "/b", agent: ["claude-code", "codex"] })).toBe(
       "npx skills add /b --skill kobe --global --agent claude-code --agent codex",
     )
+  })
+})
+
+describe("skillInstallCommand", () => {
+  it("follows the invoked canonical or compatibility entry", () => {
+    expect(skillInstallCommand({ ROVE_INVOKED_AS: "rove" })).toBe("rove skill install")
+    expect(skillInstallCommand({ ROVE_INVOKED_AS: "kobe" })).toBe("kobe skill install")
   })
 })
 

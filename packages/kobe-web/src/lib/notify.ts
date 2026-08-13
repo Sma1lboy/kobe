@@ -204,7 +204,7 @@ function fire(
   tag: string,
 ): void {
   try {
-    const n = new Notification(`kobe: ${taskLabel}`, { body, tag })
+    const n = new Notification(`Rove: ${taskLabel}`, { body, tag })
     n.onclick = () => {
       window.focus()
       navigate?.(taskId)

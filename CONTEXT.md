@@ -1,4 +1,4 @@
-# kobe domain context
+# Rove domain context
 
 Use these terms consistently in code, docs, issues, and reviews.
 
@@ -20,7 +20,7 @@ engine Session when it could be confused with a live Hosted PTY session.
 
 ## Runtime
 
-**Workspace Host** — the single React PureTUI process started by plain `kobe`.
+**Workspace Host** — the single React PureTUI process started by plain `rove`.
 It renders Sidebar | Terminal Tabs | Files and holds daemon GUI lifetime.
 
 **Terminal Tab** — one engine, shell, editor, or diff command in the Workspace
@@ -30,7 +30,7 @@ Host. A tab's process lives in a Hosted PTY under key
 **Split** — the content-neutral tree inside a Terminal Tab. A Split leaf is not
 called a pane.
 
-**PTY Host** — the standalone `kobe pty-host` process. It owns interactive
+**PTY Host** — the standalone `rove pty-host` process. It owns interactive
 children, buffers output, and lets TUI/API clients attach and detach. Engine
 sessions therefore survive TUI exits and daemon restarts. Only explicit
 `pty.kill`, tab close, task archive/delete, or host teardown ends them.
@@ -78,7 +78,7 @@ behavior.
 
 The shared launch builder in `src/engine/session-launch.ts` composes shell
 launch, repository init, engine protocol, and the first prompt. PureTUI tabs and
-headless `kobe api send/add/fan-out` use the same builder.
+headless `rove api send/add/fan-out` use the same builder.
 
 ## Retired vocabulary
 

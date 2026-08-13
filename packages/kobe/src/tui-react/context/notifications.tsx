@@ -80,7 +80,7 @@ export function NotificationsProvider(props: { children?: ReactNode }) {
       // Unsupported terminals ignore the unknown OSC silently.
       if ((prefs["notifications.sound.enabled"] as boolean | undefined) !== false) {
         try {
-          process.stdout.write(`\x07${osc9(`kobe — ${input.title}`)}`)
+          process.stdout.write(`\x07${osc9(`Rove — ${input.title}`)}`)
         } catch {
           /* swallow — bell/OSC is best-effort */
         }

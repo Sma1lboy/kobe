@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest"
 import { KOBE_TERMINAL_TITLE_SEQUENCE, publishKobeTerminalTitle } from "../../src/tui/lib/outer-terminal-title.ts"
 
 describe("publishKobeTerminalTitle", () => {
-  it("writes the OSC 0 kobe title to a terminal", () => {
+  it("writes the OSC 0 rove title to a terminal", () => {
     const write = vi.fn()
     expect(publishKobeTerminalTitle({ isTTY: true, write })).toBe(true)
     expect(write).toHaveBeenCalledOnce()

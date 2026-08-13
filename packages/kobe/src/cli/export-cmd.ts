@@ -19,14 +19,17 @@
 import { displayWidth } from "../lib/display-width.ts"
 import type { Task } from "../types/task.ts"
 import { DEFAULT_TASK_VENDOR } from "../types/task.ts"
+import { activeCliName } from "./rename-compat.ts"
+
+const CLI_NAME = activeCliName()
 
 type ExportFormat = "json" | "csv" | "table"
 
 const EXPORT_USAGE = [
-  "Usage: kobe export [--json | --csv | --format <json|csv|table>]",
+  `Usage: ${CLI_NAME} export [--json | --csv | --format <json|csv|table>]`,
   "",
   "Print the task list (from ~/.kobe/tasks.json) to stdout. Read-only and",
-  "daemon-free — works with the kobe daemon down.",
+  "daemon-free — works with the Rove daemon down.",
   "",
   "Options:",
   "  --json                  JSON array of tasks (default)",
@@ -56,7 +59,7 @@ function toRow(task: Task): Record<Column, string> {
 }
 
 function usageError(message: string): never {
-  process.stderr.write(`kobe export: ${message}\n\n${EXPORT_USAGE}\n`)
+  process.stderr.write(`${CLI_NAME} export: ${message}\n\n${EXPORT_USAGE}\n`)
   process.exit(2)
 }
 

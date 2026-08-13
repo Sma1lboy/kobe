@@ -134,7 +134,7 @@ export class PtyRegistry {
     }
     if (parked.length > 0 && isDev()) {
       const rss = Math.round(process.memoryUsage().rss / (1024 * 1024))
-      console.error(`[kobe pty] parked ${parked.length} idle terminal(s); ${this.map.size} live; rss=${rss}MB`)
+      console.error(`[rove pty] parked ${parked.length} idle terminal(s); ${this.map.size} live; rss=${rss}MB`)
     }
     return parked
   }

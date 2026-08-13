@@ -106,7 +106,7 @@ export async function performInit(
     })
   ) {
     throw new Error(
-      `kobe daemon is protocol v${daemonVersion} (min v${daemonMin}); this client is v${DAEMON_PROTOCOL_VERSION} (min v${MIN_COMPATIBLE_PROTOCOL_VERSION}). Restart the daemon (\`kobe daemon restart\`) or upgrade kobe.`,
+      `Rove daemon is protocol v${daemonVersion} (min v${daemonMin}); this client is v${DAEMON_PROTOCOL_VERSION} (min v${MIN_COMPATIBLE_PROTOCOL_VERSION}). Restart the daemon (\`rove daemon restart\`) or upgrade Rove.`,
     )
   }
   // Reject a daemon serving a DIFFERENT home BEFORE any of its state is

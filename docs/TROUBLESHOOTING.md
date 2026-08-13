@@ -5,26 +5,26 @@ One section per symptom; keep entries short and command-exact.
 
 ## Copy from the embedded terminal doesn't reach my clipboard (especially over SSH)
 
-**How copy works.** kobe's embedded terminal is a full-mouse TUI: it enables
+**How copy works.** Rove's embedded terminal is a full-mouse TUI: it enables
 the terminal's mouse reporting (clicks focus panes, tabs are clickable, the
-wheel routes to the app). Mouse reporting hands drag-selection to kobe, so
+wheel routes to the app). Mouse reporting hands drag-selection to Rove, so
 your terminal emulator's native selection no longer participates. Every
-mouse-enabled TUI (tmux, `vim` with `mouse=a`) makes the same trade. kobe
+mouse-enabled TUI (tmux, `vim` with `mouse=a`) makes the same trade. Rove
 implements its own grid selection instead: drag to select (pane-aware, works
 inside splits), release to copy. Delivery is dual-channel:
 
-1. a pipe into the platform clipboard command on the machine kobe runs on
+1. a pipe into the platform clipboard command on the machine Rove runs on
    (`pbcopy` / `wl-copy` / `xclip` / `xsel`), and
 2. an **OSC52** escape sequence written to the tty.
 
-**The SSH case.** When you SSH into the machine running kobe, channel 1 lands
+**The SSH case.** When you SSH into the machine running Rove, channel 1 lands
 on the *remote* machine's clipboard, not yours. The only channel that can
 reach the clipboard of the machine you are physically at is OSC52: it travels
 back through the SSH tty and is executed by your local terminal emulator.
 
 ```mermaid
 flowchart LR
-  kobe["kobe (remote)"] -- "OSC52" --> tty["ssh tty"]
+  Rove["Rove (remote)"] -- "OSC52" --> tty["ssh tty"]
   tty --> app["your terminal app"]
   app --> clip["your clipboard"]
 ```
@@ -39,7 +39,7 @@ the **receiving terminal app** (the one drawing pixels in front of you):
 | kitty / WezTerm | Allowed or ask, configurable |
 | Terminal.app (macOS) | **Unsupported**: no fix; use another terminal or the escape hatch below |
 
-**tmux in the path?** If kobe itself runs inside a remote tmux session, tmux
+**tmux in the path?** If Rove itself runs inside a remote tmux session, tmux
 swallows OSC52 unless told to forward it:
 
 ```tmux
@@ -49,26 +49,26 @@ set -g set-clipboard on
 **Escape hatch that always works:** hold **Option** (macOS) / **Shift**
 (most Linux terminals) while dragging. That bypasses mouse reporting entirely
 and uses your terminal's native local selection + copy, which always lands on
-your local clipboard, at the cost of selecting across the whole kobe
+your local clipboard, at the cost of selecting across the whole Rove
 window (no pane awareness), exactly like tmux.
 
-**Remote workflows:** the kobe web dashboard sidesteps all of this. The
+**Remote workflows:** the rove web dashboard sidesteps all of this. The
 browser owns the clipboard.
 
-## Right-click opens my terminal's menu instead of kobe's
+## Right-click opens my terminal's menu instead of Rove's
 
 **Why.** The outer terminal's context menu lives in the app layer, ahead of
 the TTY: it decides what to do with a right-click before mouse reporting
 ever sees it. iTerm2 (and several other emulators) keep right-click for
-their own menu by default, so kobe's row menu never gets the event. No TUI
+their own menu by default, so Rove's row menu never gets the event. No TUI
 can take that back from inside the terminal — the fix is a terminal
-setting, not a kobe one.
+setting, not a Rove one.
 
 **iTerm2** ships an official escape hatch for exactly this
 ([Pointer preferences](https://iterm2.com/3.3/documentation-preferences-pointer.html)):
 
 - Settings → **Pointer** → check *"Ctrl-click reported to apps, does not
-  open menu"*. **Ctrl+left-click** is then reported to kobe as a
+  open menu"*. **Ctrl+left-click** is then reported to Rove as a
   right-click and the row menu opens; plain right-click keeps iTerm2's
   menu, so you lose nothing.
 - Alternatively, Settings → Pointer → *Mouse Button Actions* can rebind
@@ -89,7 +89,7 @@ The wheel follows real terminal-emulator semantics, in order:
 1. the embedded app enabled mouse tracking (claude's transcript, `vim`,
    `less --mouse`) → the wheel is forwarded; the app scrolls itself;
 2. fullscreen app without mouse tracking → 3 arrow keys per tick;
-3. plain shell → kobe's local scrollback (same channel as
+3. plain shell → Rove's local scrollback (same channel as
    `ctrl+pgup` / `ctrl+pgdn`; scroll to the bottom to resume following).
 
 If scrolling "does nothing" inside an app, that app received the events and
@@ -97,20 +97,20 @@ chose not to scroll. Check its own mouse setting (e.g. `:set mouse=a`).
 
 ## Memory stays high after upgrading from a pre-0.8 build
 
-kobe 0.8 replaced the old tmux runtime with the PureTUI + Hosted PTY backend,
+rove 0.8 replaced the old tmux runtime with the PureTUI + Hosted PTY backend,
 but upgrading the package does not stop sessions that a pre-0.8 build already
 left running. Those old `tmux -L kobe` sessions keep their `bun` / engine
 process groups resident, so memory can look unchanged after the upgrade.
 
-`kobe doctor` now reports them:
+`rove doctor` now reports them:
 
 ```
 legacy tmux: ⚠ tmux 3.5a — 2 pre-v0.8 session(s) on `kobe`
              20 process(es) across 8 pane(s), 1008.5 MB RSS total
-             → run `kobe reset` to stop this retired runtime safely
+             → run `rove reset` to stop this retired runtime safely
 ```
 
-**Fix:** `kobe reset`. It stops the daemon and Hosted PTY host, then SIGTERMs
+**Fix:** `rove reset`. It stops the daemon and Hosted PTY host, then SIGTERMs
 each legacy pane process group before killing the retired tmux server (a bare
 `tmux kill-server` would leak engines that ignore `SIGHUP`). Worktrees and the
 task index are untouched; add `--hard` only if you also want to wipe task/UI

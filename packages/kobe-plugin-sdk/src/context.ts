@@ -14,11 +14,11 @@ export interface PluginContext {
   readonly configDir: string
   /** Your durable state dir (survives reinstall). */
   readonly stateDir: string
-  /** Exec this to call back into kobe. */
+  /** Exec this to call back into Rove. */
   readonly binPath: string
   /** Daemon unix socket for raw JSON frames. */
   readonly socketPath: string
-  /** Set when kobe runs against a non-default home; pass it through. */
+  /** Set when Rove runs against a non-default home; pass it through. */
   readonly homeDir?: string
   /** Entrypoint-specific fields (absent outside that entrypoint kind). */
   readonly event?: string
@@ -31,7 +31,7 @@ export interface PluginContext {
 
 function required(env: NodeJS.ProcessEnv, key: string): string {
   const value = env[key]
-  if (!value) throw new Error(`${key} is not set — is this process running as a kobe plugin command?`)
+  if (!value) throw new Error(`${key} is not set — is this process running as a Rove plugin command?`)
   return value
 }
 

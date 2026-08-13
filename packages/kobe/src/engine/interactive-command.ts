@@ -261,8 +261,8 @@ export function kobeApiInvocation(): string {
     return [...kobeCliInvocation(), "api"].map(quote).join(" ")
   } catch {
     // import.meta.resolve is unavailable in some hosts (vitest's SSR
-    // transform) — bare `kobe api` is the best-effort fallback there.
-    return "kobe api"
+    // transform) — bare `rove api` is the best-effort fallback there.
+    return "rove api"
   }
 }
 
@@ -278,8 +278,8 @@ export function kobeApiInvocation(): string {
  */
 export function statusReportProtocol(taskId: string, api: string = kobeApiInvocation()): string {
   return [
-    `You are running inside kobe (a local multi-session task manager) as task ${taskId}.`,
-    "kobe tracks a lifecycle status for this task on a board.",
+    `You are running inside Rove (a local multi-session task manager) as task ${taskId}.`,
+    "Rove tracks a lifecycle status for this task on a board.",
     "When you have COMPLETED the work requested in this session and verified it, report it by running:",
     `  ${api} set-status --task-id ${taskId} --status in_review`,
     "Run it only when the work is genuinely done — never while you are asking the user a question, waiting for input, or mid-task.",
@@ -296,15 +296,15 @@ export function statusReportProtocol(taskId: string, api: string = kobeApiInvoca
  */
 export function noteFilingProtocol(taskId: string, api: string = kobeApiInvocation()): string {
   return [
-    "kobe shares hard-won discoveries between its parallel sessions as one-line field notes.",
+    "Rove shares hard-won discoveries between its parallel sessions as one-line field notes.",
     "When you RESOLVE a non-obvious, repo-level gotcha (a build flag, a flaky test, an environment quirk, an API trap), file it:",
     `  ${api} note --task-id ${taskId} --text "<one line: the verified conclusion>"`,
     "File only verified conclusions another session could act on — never progress logs, opinions, or details specific to your own task. A handful per session at most.",
     // A pointer, not a curriculum: the injected protocol must stay small
     // (every session pays for it in context), so the coordination verbs are
-    // taught by the kobe agent skill / `kobe api schema`, and this line only
+    // taught by the Rove agent skill / the active CLI's `api schema`, and this line only
     // says where to look — the herdr SKILL.md layering, applied here.
-    `For delegating or parallelizing WORK from this session, prefer kobe's own verbs (fan-out / add --prompt / send / dispatch) over ad-hoc subprocesses — discover them via \`${api} schema\` or the kobe agent skill.`,
+    `For delegating or parallelizing WORK from this session, prefer Rove's own verbs (fan-out / add --prompt / send / dispatch) over ad-hoc subprocesses — discover them via \`${api} schema\` or the Rove agent skill.`,
   ].join("\n")
 }
 
@@ -398,8 +398,8 @@ export function withWorktreeProtocol(
  */
 export function dispatcherProtocol(taskId: string, api: string = kobeApiInvocation()): string {
   return [
-    `You are running inside kobe (a local multi-session task manager) as this repository's DISPATCHER (task ${taskId}, the repo's main session).`,
-    "kobe runs multiple worktree task sessions on this repo in parallel. When one of them resolves a non-obvious gotcha, it files a one-line field note; kobe forwards each note to you as a user message prefixed with [KOBE FIELD NOTE].",
+    `You are running inside Rove (a local multi-session task manager) as this repository's DISPATCHER (task ${taskId}, the repo's main session).`,
+    "Rove runs multiple worktree task sessions on this repo in parallel. When one of them resolves a non-obvious gotcha, it files a one-line field note; Rove forwards each note to you as a user message prefixed with [KOBE FIELD NOTE].",
     "Your job is routing that knowledge, fully autonomously — never ask the user for permission:",
     `  - See the fleet: \`${api} collect --repo .\` (status, running, change counts per task), or \`--task-ids id1,id2\` for specific tasks.`,
     `  - Relay a note to a task that would benefit: \`${api} dispatch --task-id <id> --prompt "[dispatcher] FYI from <author task>: <note verbatim>"\`.`,

@@ -251,7 +251,7 @@ if (!FAST) {
   const proc = Bun.spawnSync(["bun", "run", "scripts/compile.ts"], { cwd: PKG_ROOT, stdout: "ignore", stderr: "pipe" })
   if (proc.exitCode !== 0) throw new Error(`compile smoke failed:\n${proc.stderr.toString().slice(-800)}`)
   record("binary-compile-ms", performance.now() - t0, "ms")
-  const bin = join(PKG_ROOT, "release-bin/kobe")
+  const bin = join(PKG_ROOT, "release-bin/rove")
   record("binary-size-mb", statSync(bin).size / 1048576, "MB")
   // The native-addon red line trips at RUNTIME import, not at bundling —
   // the compiled artifact must actually start.
@@ -262,7 +262,7 @@ if (!FAST) {
 if (JSON_MODE) {
   console.log(JSON.stringify({ golden: GOLDEN, fast: FAST, results }, null, 2))
 } else {
-  console.log(`kobe perf-golden${FAST ? " (--fast: binary metrics skipped)" : ""}`)
+  console.log(`rove perf-golden${FAST ? " (--fast: binary metrics skipped)" : ""}`)
   for (const r of results) {
     const bound = r.metric.endsWith("-min") ? `≥${r.ceiling}` : `≤${r.ceiling}`
     console.log(

@@ -14,12 +14,15 @@ import {
 } from "@sma1lboy/kobe-daemon/daemon/paths"
 import { kobeStateDir, kvStatePath } from "../env.ts"
 import { stopLegacyTmux } from "./legacy-tmux.ts"
+import { activeCliName } from "./rename-compat.ts"
 import { stampResetGate } from "./reset-gate.ts"
+
+const CLI_NAME = activeCliName()
 
 function printUsage(out: Pick<typeof process.stderr, "write">): void {
   out.write(
     [
-      "Usage: kobe reset [--hard] [--yes]",
+      `Usage: ${CLI_NAME} reset [--hard] [--yes]`,
       "",
       "Recover a wedged install: stop the daemon, Hosted PTY host, and any pre-v0.8 tmux sessions.",
       "This ends background terminal and engine sessions; the next launch starts fresh.",
@@ -71,7 +74,7 @@ export async function runResetSubcommand(argv: readonly string[]): Promise<void>
   const known = new Set(["--hard", "--yes", "-y"])
   const unknown = argv.find((arg) => !known.has(arg))
   if (unknown !== undefined) {
-    process.stderr.write(`kobe reset: unknown argument "${unknown}"\n\n`)
+    process.stderr.write(`${CLI_NAME} reset: unknown argument "${unknown}"\n\n`)
     printUsage(process.stderr)
     process.exit(2)
   }
@@ -82,8 +85,8 @@ export async function runResetSubcommand(argv: readonly string[]): Promise<void>
   const tasksPath = join(kobeStateDir(), "tasks.json")
   const statePath = kvStatePath()
 
-  console.log("kobe reset will:")
-  console.log("  • stop the kobe daemon (graceful → SIGTERM → SIGKILL)")
+  console.log(`${CLI_NAME} reset will:`)
+  console.log("  • stop the Rove daemon (graceful → SIGTERM → SIGKILL)")
   console.log(`  • remove its socket + pidfile (${daemonSocket})`)
   console.log("  • stop the standalone Hosted PTY host and all background terminal/engine sessions")
   console.log("  • stop any pre-v0.8 tmux sessions after SIGTERM-ing their pane process groups")
@@ -141,5 +144,5 @@ export async function runResetSubcommand(argv: readonly string[]): Promise<void>
     await removeStateFile(statePath, "UI state")
   } else stampResetGate()
 
-  console.log("\nkobe: reset complete. Relaunch kobe to start fresh.")
+  console.log(`\n${CLI_NAME}: reset complete. Relaunch Rove to start fresh.`)
 }

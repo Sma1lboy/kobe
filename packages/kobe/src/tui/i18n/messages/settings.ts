@@ -26,7 +26,7 @@ export const en = {
     theme: "Theme",
     themeHint: "l to enter list · j/k to highlight · enter to apply",
     language: "Language",
-    languageHint: "Display language for kobe's UI. l to enter list · j/k to highlight · enter to apply.",
+    languageHint: "Display language for Rove's UI. l to enter list · j/k to highlight · enter to apply.",
     transparent: "Transparent background",
     transparentHint: "Drops the renderer's bg fill so the host terminal shows through. `t` toggles.",
     on: "[x] on",
@@ -112,12 +112,12 @@ export const en = {
   },
   plugins: {
     title: "Plugins",
-    hint: "Plugins registered in ~/.kobe/plugins.json. enter (or click) toggles one on or off — the daemon watches the file, so the change applies live. Rows indented under a plugin are the settings it declares; enter edits one, and the value reaches the plugin on its next run. Install and remove them from the shell: `kobe plugin install <owner/repo>`, `kobe plugin link <dir>`.",
+    hint: "Plugins registered in ~/.kobe/plugins.json. enter (or click) toggles one on or off — the daemon watches the file, so the change applies live. Rows indented under a plugin are the settings it declares; enter edits one, and the value reaches the plugin on its next run. Install and remove them from the shell: `rove plugin install <owner/repo>`, `rove plugin link <dir>`.",
     empty:
-      "No plugins registered. Install one with `kobe plugin install <owner/repo>` — browse the `kobe-plugin` topic on GitHub.",
+      "No plugins registered. Install one with `rove plugin install <owner/repo>` — browse the `kobe-plugin` topic on GitHub.",
     sourceLink: "linked {path}",
     sourceGithub: "{spec}",
-    updateAvailable: "update available — kobe plugin update",
+    updateAvailable: "update available — rove plugin update",
     declares: "{actions} actions · {events} events · {panes} panes",
     manifestUnreadable: "manifest unreadable",
     lastRun: "· last run {label} {status} {ago} ago",
@@ -138,7 +138,7 @@ export const en = {
     prefixTitle: "Command layer ({prefix})",
     /** One-paragraph grammar summary; {prefix} live first stroke, {timeout} live second-stroke window in ms */
     prefixHint:
-      "Bare keys act in the focused pane; a small one-press set covers frequent Kobe actions; {prefix} opens the command map ({timeout}ms second-stroke window — hold on and a guide appears). Prefix bindings keep their pane scope and modal rules.",
+      "Bare keys act in the focused pane; a small one-press set covers frequent Rove actions; {prefix} opens the command map ({timeout}ms second-stroke window — hold on and a guide appears). Prefix bindings keep their pane scope and modal rules.",
     /** Shown as the {prefix} value when the user disabled the prefix in YAML */
     prefixDisabled: "disabled",
     /** Trailing note listing non-rebindable ids; hidden when there are none */
@@ -150,7 +150,7 @@ export const en = {
   },
   feedback: {
     title: "Feedback",
-    hint: "Sends a GitHub Discussion to the kobe repo through `gh`. Requires `gh auth login`; category defaults to Feedback.",
+    hint: "Sends a GitHub Discussion to the Rove repo through `gh`. Requires `gh auth login`; category defaults to Feedback.",
     titleLabel: "title",
     titlePlaceholder: "Short summary",
     descriptionLabel: "description",
@@ -160,17 +160,17 @@ export const en = {
   dev: {
     reset: "Reset UI state",
     resetHint:
-      "Clears ~/.config/kobe/state.json and ~/.kobe/tasks.json, then quits kobe — relaunch to start fresh. Working session / Archive lists, pane sizes, theme, model picks all reset. Worktrees on disk and Claude Code session history are not touched.",
+      "Clears ~/.config/kobe/state.json and ~/.kobe/tasks.json, then quits Rove — relaunch to start fresh. Working session / Archive lists, pane sizes, theme, model picks all reset. Worktrees on disk and Claude Code session history are not touched.",
     resetButton: "[enter] Reset",
     restart: "Restart backend",
     restartHint:
-      "Stops the kobe daemon and quits this kobe window so the next launch spawns a fresh daemon — picks up daemon / orchestrator / engine edits without a process kill. Other attached kobe windows will lose their connection too.",
+      "Stops the Rove daemon and quits this Rove window so the next launch spawns a fresh daemon — picks up daemon / orchestrator / engine edits without a process kill. Other attached Rove windows will lose their connection too.",
     restartButton: "[enter] Restart",
     doctorHint:
-      "Daemon wedged or unresponsive? From a shell, run `kobe daemon restart`, then relaunch kobe. Hosted engine sessions stay alive across a daemon restart.",
+      "Daemon wedged or unresponsive? From a shell, run `rove daemon restart`, then relaunch Rove. Hosted engine sessions stay alive across a daemon restart.",
     experimental: "Experimental",
     remoteHint:
-      "Remote projects (SSH): register a project whose git worktrees + engine run on another host over SSH, driven from this local kobe. Unfinished — file/diff panes still degrade for remote. Enables `kobe add --remote`.",
+      "Remote projects (SSH): register a project whose git worktrees + engine run on another host over SSH, driven from this local Rove. Unfinished — file/diff panes still degrade for remote. Enables `rove add --remote`.",
     remoteOn: "[x] Remote projects (on)",
     remoteOff: "[ ] Remote projects (off)",
     autoStatusHint:
@@ -178,11 +178,11 @@ export const en = {
     autoStatusOn: "[x] Auto status flow (on)",
     autoStatusOff: "[ ] Auto status flow (off)",
     dispatcherHint:
-      "Field-notes dispatcher: task sessions file one-line gotchas (`kobe api note`), the daemon forwards each to the repo's main session, and that session relays them to the in-flight tasks that benefit (`kobe api dispatch`). Web-hosted sessions receive the relays today.",
+      "Field-notes dispatcher: task sessions file one-line gotchas (`rove api note`), the daemon forwards each to the repo's main session, and that session relays them to the in-flight tasks that benefit (`rove api dispatch`). Web-hosted sessions receive the relays today.",
     dispatcherOn: "[x] Field-notes dispatcher (on)",
     dispatcherOff: "[ ] Field-notes dispatcher (off)",
     archivedHistoryHint:
-      "Archived history preview (beta): opening an archived task shows a read-only `kobe history` pane (session selector + transcript) in the engine slot instead of relaunching the engine. Its transcript survives worktree removal because the engine store is keyed by the worktree path. Shared with the web dashboard.",
+      "Archived history preview (beta): opening an archived task shows a read-only `rove history` pane (session selector + transcript) in the engine slot instead of relaunching the engine. Its transcript survives worktree removal because the engine store is keyed by the worktree path. Shared with the web dashboard.",
     archivedHistoryOn: "[x] Archived history preview (on)",
     archivedHistoryOff: "[ ] Archived history preview (off)",
   },
@@ -209,7 +209,7 @@ export const zh: typeof en = {
     theme: "主题",
     themeHint: "l 进入列表 · j/k 高亮 · enter 应用",
     language: "语言",
-    languageHint: "kobe 界面的显示语言。l 进入列表 · j/k 高亮 · enter 应用。",
+    languageHint: "Rove 界面的显示语言。l 进入列表 · j/k 高亮 · enter 应用。",
     transparent: "透明背景",
     transparentHint: "去掉渲染器的背景填充，让宿主终端透出来。按 `t` 切换。",
     on: "[x] 开",
@@ -291,12 +291,12 @@ export const zh: typeof en = {
   },
   plugins: {
     title: "插件",
-    hint: "在 ~/.kobe/plugins.json 里注册的插件。enter（或点击）切换启用/禁用——daemon 监听该文件，改动实时生效。插件下方缩进的行是它声明的设置项，enter 编辑，新值在插件下次运行时生效。安装与移除在 shell 里做：`kobe plugin install <owner/repo>`、`kobe plugin link <dir>`。",
+    hint: "在 ~/.kobe/plugins.json 里注册的插件。enter（或点击）切换启用/禁用——daemon 监听该文件，改动实时生效。插件下方缩进的行是它声明的设置项，enter 编辑，新值在插件下次运行时生效。安装与移除在 shell 里做：`rove plugin install <owner/repo>`、`rove plugin link <dir>`。",
     empty:
-      "尚未注册任何插件。用 `kobe plugin install <owner/repo>` 安装一个——可在 GitHub 的 `kobe-plugin` 话题下浏览。",
+      "尚未注册任何插件。用 `rove plugin install <owner/repo>` 安装一个——可在 GitHub 的 `kobe-plugin` 话题下浏览。",
     sourceLink: "本地链接 {path}",
     sourceGithub: "{spec}",
-    updateAvailable: "有新版本 — kobe plugin update",
+    updateAvailable: "有新版本 — rove plugin update",
     declares: "{actions} 个动作 · {events} 个事件 · {panes} 个面板",
     manifestUnreadable: "manifest 无法解析",
     lastRun: "· 上次运行 {label} {status} {ago}前",
@@ -315,7 +315,7 @@ export const zh: typeof en = {
     notCreated: "  (尚未创建)",
     prefixTitle: "命令层（{prefix}）",
     prefixHint:
-      "裸键作用于当前聚焦面板；少量单次快捷键覆盖高频 Kobe 操作；{prefix} 打开命令层（第二击窗口 {timeout}ms — 稍等会出现命令指南）。Prefix 绑定保持原有的面板作用域和 modal 规则。",
+      "裸键作用于当前聚焦面板；少量单次快捷键覆盖高频 Rove 操作；{prefix} 打开命令层（第二击窗口 {timeout}ms — 稍等会出现命令指南）。Prefix 绑定保持原有的面板作用域和 modal 规则。",
     prefixDisabled: "已禁用",
     fixed: "固定（不可重绑定）：{ids}。",
     example: "示例",
@@ -325,7 +325,7 @@ export const zh: typeof en = {
   },
   feedback: {
     title: "反馈",
-    hint: "通过 `gh` 向 kobe 仓库发一条 GitHub Discussion。需要 `gh auth login`；分类默认为 Feedback。",
+    hint: "通过 `gh` 向 Rove 仓库发一条 GitHub Discussion。需要 `gh auth login`；分类默认为 Feedback。",
     titleLabel: "标题",
     titlePlaceholder: "简短概括",
     descriptionLabel: "描述",
@@ -335,17 +335,17 @@ export const zh: typeof en = {
   dev: {
     reset: "重置 UI 状态",
     resetHint:
-      "清空 ~/.config/kobe/state.json 和 ~/.kobe/tasks.json，然后退出 kobe——重新启动即可从头开始。工作会话 / 归档列表、面板尺寸、主题、模型选择都会重置。磁盘上的 worktree 和 Claude Code 会话历史不受影响。",
+      "清空 ~/.config/kobe/state.json 和 ~/.kobe/tasks.json，然后退出 Rove——重新启动即可从头开始。工作会话 / 归档列表、面板尺寸、主题、模型选择都会重置。磁盘上的 worktree 和 Claude Code 会话历史不受影响。",
     resetButton: "[enter] 重置",
     restart: "重启后端",
     restartHint:
-      "停止 kobe daemon 并退出当前 kobe 窗口，下次启动会拉起一个全新的 daemon——无需杀进程即可应用 daemon / orchestrator / engine 的改动。其他已连接的 kobe 窗口也会断开连接。",
+      "停止 Rove daemon 并退出当前 Rove 窗口，下次启动会拉起一个全新的 daemon——无需杀进程即可应用 daemon / orchestrator / engine 的改动。其他已连接的 Rove 窗口也会断开连接。",
     restartButton: "[enter] 重启",
     doctorHint:
-      "daemon 卡住或无响应？在 shell 里运行 `kobe daemon restart`，然后重新启动 kobe。Hosted PTY 引擎会话不会因 daemon 重启而退出。",
+      "daemon 卡住或无响应？在 shell 里运行 `rove daemon restart`，然后重新启动 Rove。Hosted PTY 引擎会话不会因 daemon 重启而退出。",
     experimental: "实验性",
     remoteHint:
-      "远程项目（SSH）：注册一个 git worktree + 引擎都通过 SSH 跑在另一台主机上、由本地 kobe 驱动的项目。尚未完成——文件/diff 面板对远程仍会降级。启用 `kobe add --remote`。",
+      "远程项目（SSH）：注册一个 git worktree + 引擎都通过 SSH 跑在另一台主机上、由本地 Rove 驱动的项目。尚未完成——文件/diff 面板对远程仍会降级。启用 `rove add --remote`。",
     remoteOn: "[x] 远程项目 (开)",
     remoteOff: "[ ] 远程项目 (关)",
     autoStatusHint:
@@ -353,11 +353,11 @@ export const zh: typeof en = {
     autoStatusOn: "[x] 自动状态流转 (开)",
     autoStatusOff: "[ ] 自动状态流转 (关)",
     dispatcherHint:
-      "现场笔记调度器：任务会话提交一行经验（`kobe api note`），daemon 将每条转发给仓库的主会话，主会话再把它们转达给能受益的进行中任务（`kobe api dispatch`）。目前由 Web 托管的会话会收到转达。",
+      "现场笔记调度器：任务会话提交一行经验（`rove api note`），daemon 将每条转发给仓库的主会话，主会话再把它们转达给能受益的进行中任务（`rove api dispatch`）。目前由 Web 托管的会话会收到转达。",
     dispatcherOn: "[x] 现场笔记调度器 (开)",
     dispatcherOff: "[ ] 现场笔记调度器 (关)",
     archivedHistoryHint:
-      "归档历史预览（beta）：打开已归档的任务时，引擎位置改为只读的 `kobe history` 面板（会话选择器 + 对话记录），而不是重新启动引擎。引擎记录按 worktree 路径存储，所以 worktree 被删除后历史仍然可读。与 Web 仪表盘共用同一开关。",
+      "归档历史预览（beta）：打开已归档的任务时，引擎位置改为只读的 `rove history` 面板（会话选择器 + 对话记录），而不是重新启动引擎。引擎记录按 worktree 路径存储，所以 worktree 被删除后历史仍然可读。与 Web 仪表盘共用同一开关。",
     archivedHistoryOn: "[x] 归档历史预览 (开)",
     archivedHistoryOff: "[ ] 归档历史预览 (关)",
   },

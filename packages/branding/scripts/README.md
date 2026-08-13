@@ -1,7 +1,13 @@
 # quicklook replay
 
+> Historical replay pipeline only. Its checked-in capture predates the Rove
+> identity, and the direct-PTY capture path below is not an accepted source for
+> current product screenshots. Current visual assets must be captured through
+> the fixed browser `/harness` path in `docs/HARNESS.md`; do not copy replay
+> output into the README, docs, or landing page.
+
 The `quicklook-replay` Remotion composition renders the checked-in terminal
-capture at `src/quicklook/frames.json` — the README demo video. It replays
+capture at `src/quicklook/frames.json`. It replays
 the storyboard in `src/quicklook/quicklook.replay.json` through the real
 PureTUI Workspace Host and Hosted PTY runtime: create a task and prompt it,
 start a SECOND task while the first agent is still mid-turn, let both work,
@@ -13,10 +19,10 @@ single prompt): that mode multiplies token spend for one deliverable, and it
 is not what the demo should be selling. The two prompts touch DISJOINT files
 so "agents never trample each other" is visible on screen rather than claimed.
 
-Ship the `quicklook-replay-4x` cut: a real turn takes tens of seconds, so the
-1x capture runs minutes.
+The `quicklook-replay-4x` cut exists for archival replay work: a real turn
+takes tens of seconds, so the 1x capture runs minutes.
 
-## Regenerate
+## Historical regeneration (not shippable visual evidence)
 
 ```bash
 bun --filter @sma1lboy/kobe build          # the capture drives the BUILT cli
@@ -24,18 +30,15 @@ cd packages/branding
 KOBE_REPLAY_CLAUDE_COMMAND='claude --permission-mode acceptEdits --allowedTools "Bash(git *)"' \
 bun run capture:puretui --keep-demo-root
 bun x remotion render src/index.ts quicklook-replay-4x out/demo.mp4
-cp out/demo.mp4 ../../docs/assets/demo.mp4
-# the inline README GIF, at the same 960×540 / 10fps as the checked-in asset
 bun x remotion render src/index.ts quicklook-replay-4x out/demo.gif \
   --codec=gif --scale=0.75 --every-nth-frame=3
-cp out/demo.gif ../../docs/assets/demo.gif
 ```
 
 - **The replay drives the REAL Claude Code**, not a stub: the demo has to show
   the product people actually install, down to its welcome box, tool calls and
   turn summaries. `scripts/fixtures/claude-demo` still exists for offline work
   on the pipeline itself, but a stub recording is not shippable — it renders a
-  one-line fake banner, and kobe's live `ps`-walk labels its tab `shell`
+  one-line fake banner, and Rove's live `ps`-walk labels its tab `shell`
   (correctly: the process IS a shell script), contradicting the pane beside it.
 - `--permission-mode acceptEdits` covers file edits only. Both agents are asked
   to COMMIT, and a shell command still stops on "This command requires
@@ -59,9 +62,9 @@ cp out/demo.gif ../../docs/assets/demo.gif
   trust?" dialog; one under `/tmp` shows it in every worktree and the capture
   hangs. The default demo root sits inside this repo, so this is normally
   invisible — trust the repo root once if a capture stalls at boot.
-- **Build first.** The sidecar prefers `packages/kobe/dist/cli/kobe.js` and
-  only falls back to source. Prompt codas kobe writes into a session embed
-  `kobeCliInvocation()`, which renders the bare `kobe` a user actually sees
+- **Build first.** The sidecar prefers `packages/kobe/dist/cli/rove.js` and
+  only falls back to source. Prompt codas Rove writes into a session embed
+  the active CLI invocation, which renders the canonical bare `rove`
   only from a `.js` entry — captured from source it bakes the capture host's
   absolute bun + repo paths into the recording.
 - The shell prompt is pinned by the spec (`capture.shellPrompt`), exported as
@@ -69,16 +72,16 @@ cp out/demo.gif ../../docs/assets/demo.gif
   NOT rely on the operator's login shell: a POSIX `sh` honours an inherited
   PS1 and reads no rc file that would overwrite it, while dash's bare `$` and
   bash's `bash-5.x$` differ per machine.
-- The typed `kobe` in shell tabs resolves through `bun run`'s
-  `node_modules/.bin` PATH prepend — put a `kobe` shim there
-  (`packages/branding/node_modules/.bin/kobe` →
-  `exec bun <repo>/packages/kobe/dist/cli/kobe.js "$@"`) so the shell beats
+- The typed `rove` in shell tabs resolves through `bun run`'s
+  `node_modules/.bin` PATH prepend — put a `rove` shim there
+  (`packages/branding/node_modules/.bin/rove` →
+  `exec bun <repo>/packages/kobe/dist/cli/rove.js "$@"`) so the shell beats
   drive THIS checkout's built CLI, not a stale global install. The shim lives
   in gitignored `node_modules` and must be re-created after a fresh install.
 - `scripts/fixtures/claude-demo` is `#!/bin/sh` and must stay POSIX: use
   octal (`\342\200\272`) escapes, never `\xHH`, which dash's `printf` prints
   literally — the `ready ›` wait marker silently stops matching off macOS.
-- Kobe state and the fixture repository stay isolated under a throwaway
+- Rove state and the fixture repository stay isolated under a throwaway
   `.capture-home-puretui-*` demo root (retained for review; the CLI prints
   the path). Engine subprocesses keep the host's normal home directory.
 
@@ -100,7 +103,7 @@ cp out/demo.gif ../../docs/assets/demo.gif
   word as its own run, and the serialized snapshot carries SGR codes at each
   boundary, so `accept edits on` is stored as `accept`/`edits`/`on` and the
   literal never appears — `engineReady` waits on the bare word `edits`. Waits
-  on kobe's UI or on shell output (`"groupId"`, the pinned prompt) are
+  on Rove's UI or on shell output (`"groupId"`, the pinned prompt) are
   contiguous and may be phrases.
 - Wait patterns must be UNIQUE to the state they wait for. `"New task"` also
   matches the sidebar's own `+ New task` button, so it returned instantly and
@@ -124,12 +127,12 @@ cp out/demo.gif ../../docs/assets/demo.gif
 Camera and framing logic lives in `src/quicklook/QuickLookReplay.tsx`; ANSI
 parsing lives in `src/quicklook/ansi.ts`.
 
-## The README hero still
+## Historical hero still
 
-`docs/assets/workspace.png` comes from this same capture, not a separate
-session: render one frame with every stage temporarily un-regioned (the camera
-is zoomed in at every rich moment, and a hero needs the whole workspace), then
-restore the spec.
+The old replay-derived hero used one frame with every stage temporarily
+un-regioned. Do not use this flow for the current README image; capture it
+through `bun run visual:serve` plus `visual:shot` as documented in
+`docs/HARNESS.md`.
 
 ```bash
 # stages[].region removed in a scratch copy, then (30fps × the capture second
@@ -138,7 +141,6 @@ restore the spec.
 bun x remotion still src/index.ts quicklook-replay hero.png --frame=1630 --scale=2
 ```
 
-The browser `/harness` path is the ground truth for UI acceptance, but it is
-the wrong tool here: it starts a FRESH engine session, so the shot shows a
-welcome box instead of a finished turn, and the harness home has no engine
-credentials of its own.
+The browser `/harness` path is the sole ground truth for UI screenshots and
+acceptance. A richer fixture must still be driven through that path rather
+than by publishing this direct-PTY replay.

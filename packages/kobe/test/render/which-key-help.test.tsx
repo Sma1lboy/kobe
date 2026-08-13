@@ -59,7 +59,7 @@ describe("F1 keyboard reference", () => {
     act(() => mockInput.pressKey("F1"))
     await settle()
     const text = await frame()
-    expect(text).toContain("kobe — keybindings")
+    expect(text).toContain("Rove — keybindings")
     expect(text).toContain("Focused: Sidebar")
     expect(text).toContain("ONE PRESS")
     expect(text).toContain("AFTER PREFIX")
@@ -72,7 +72,7 @@ describe("which-key prefix guide", () => {
     const { frame } = await renderComponent(<PrefixHud left={1} width={22} />, { width: 80, height: 24 })
     const text = await frame()
     expect(text).toContain("ctrl+a ⋯")
-    expect(text).not.toContain("more Kobe commands")
+    expect(text).not.toContain("more Rove commands")
   })
 
   it("expands reachable commands after the learner delay", async () => {
@@ -89,7 +89,7 @@ describe("which-key prefix guide", () => {
     )
     const { frame } = await renderComponent(<PrefixHud left={1} width={22} />, { width: 120, height: 30 })
     const text = await frame()
-    expect(text).toContain("ctrl+a — more Kobe commands")
+    expect(text).toContain("ctrl+a — more Rove commands")
     expect(text).toContain("Views")
     expect(text).toContain("Tasks")
     expect(text).toContain("Tools")

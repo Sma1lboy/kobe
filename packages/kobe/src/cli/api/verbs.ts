@@ -115,7 +115,7 @@ export const VERBS: readonly VerbSpec[] = [
   {
     name: "get-task",
     summary:
-      "Read one task's metadata + terminal tabs. `.running` = any hosted engine tab is live; `.tabs[]` (id/kind/vendor/liveVendor/lastTitle/alive) is the discovery read for `send --tab tab-N`; `.task.dispatcher` = the kobe session (task+tab) that created it, when one did.",
+      "Read one task's metadata + terminal tabs. `.running` = any hosted engine tab is live; `.tabs[]` (id/kind/vendor/liveVendor/lastTitle/alive) is the discovery read for `send --tab tab-N`; `.task.dispatcher` = the Rove session (task+tab) that created it, when one did.",
     flags: [F.taskId()],
     handler: getTask,
   },
@@ -177,7 +177,7 @@ export const VERBS: readonly VerbSpec[] = [
   {
     name: "send",
     summary:
-      "Paste a follow-up prompt into a task's running engine (one full turn). Without --task-id, a task spawned from another kobe session replies to its dispatcher's tab (then that task's live canonical engine; nothing alive = DISPATCHER_UNREACHABLE, never a silent spawn); otherwise the active task. Sent from inside another kobe task ($KOBE_TASK_ID), the prompt is prefixed with [KOBE PEER] provenance — who sent it and how to reply (tab-precise) — so agent-to-agent messaging needs no coordinator.",
+      "Paste a follow-up prompt into a task's running engine (one full turn). Without --task-id, a task spawned from another Rove session replies to its dispatcher's tab (then that task's live canonical engine; nothing alive = DISPATCHER_UNREACHABLE, never a silent spawn); otherwise the active task. Sent from inside another Rove task ($KOBE_TASK_ID), the prompt is prefixed with [KOBE PEER] provenance — who sent it and how to reply (tab-precise) — so agent-to-agent messaging needs no coordinator.",
     flags: [
       F.taskId(false),
       F.prompt(true, "Text pasted + submitted into the engine pane."),
@@ -236,7 +236,7 @@ export const VERBS: readonly VerbSpec[] = [
   PANE_CLOSE_VERB,
   {
     name: "feedback",
-    summary: "Create a GitHub Discussion in the kobe repo's Feedback category through `gh`.",
+    summary: "Create a GitHub Discussion in the Rove repo's Feedback category through `gh`.",
     flags: [
       { name: "title", type: "string", required: true, placeholder: "T", description: "Discussion title." },
       { name: "body", type: "string", required: true, placeholder: "TEXT", description: "Discussion body." },
@@ -257,7 +257,7 @@ export const VERBS: readonly VerbSpec[] = [
   {
     name: "notify",
     summary:
-      "Show a toast in every attached kobe UI — broadcast over the daemon's notice.event channel. Agents/scripts use it to surface 'done / needs input / error' moments without touching the task's session.",
+      "Show a toast in every attached Rove UI — broadcast over the daemon's notice.event channel. Agents/scripts use it to surface 'done / needs input / error' moments without touching the task's session.",
     flags: [
       {
         name: "title",
@@ -460,13 +460,13 @@ export const VERBS: readonly VerbSpec[] = [
   },
   {
     name: "discover-adoptable",
-    summary: "List existing git worktrees in a repo not yet tracked as kobe tasks. Returns { worktrees }.",
+    summary: "List existing git worktrees in a repo not yet tracked as Rove tasks. Returns { worktrees }.",
     flags: [F.repo()],
     handler: (ctx) => simpleRpc(ctx, "worktree.discoverAdoptable", { repo: ctx.args.requirePath("repo") }),
   },
   {
     name: "adopt",
-    summary: "Import an existing git worktree as a kobe task. Returns { task }.",
+    summary: "Import an existing git worktree as a Rove task. Returns { task }.",
     flags: [
       F.repo(),
       {

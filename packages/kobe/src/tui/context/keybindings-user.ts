@@ -87,7 +87,7 @@ export function applyUserKeybindings(): UserKeybindingsReport {
     if (owner) warnings.push(`plugins: ${p.chord} shadows ${owner.id}`)
   }
 
-  for (const w of warnings) console.warn(`[kobe/keybindings] ${w}`)
+  for (const w of warnings) console.warn(`[rove/keybindings] ${w}`)
   cached = { path: file.path, exists: true, applied, plugins: plugins.entries, warnings }
   return cached
 }

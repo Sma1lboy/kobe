@@ -58,7 +58,7 @@ export class PipeTaskPty implements TaskPtyLike {
     this.proc.stderr?.on("data", (chunk: string) => this.append(chunk))
     this.proc.stdin?.on("error", () => this.markDead(false))
     this.proc.on("error", (err) => {
-      this.append(`\n[kobe terminal] failed to start shell: ${err.message}\n`)
+      this.append(`\n[Rove terminal] failed to start shell: ${err.message}\n`)
       this.markDead(false)
     })
     this.proc.on("exit", () => this.markDead(false))

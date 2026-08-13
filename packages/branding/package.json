@@ -2,7 +2,7 @@
   "name": "kobe-branding",
   "version": "0.0.0",
   "private": true,
-  "description": "Animated logo concepts for kobe (Remotion). Source lives here; rendered outputs land in ../../docs/assets/brand/ and are committed.",
+  "description": "Animated logo concepts for Rove (Remotion). Source lives here; rendered outputs land in ../../docs/assets/brand/ and are committed.",
   "scripts": {
     "studio": "remotion studio src/index.ts",
     "still:bracket": "remotion still src/index.ts bracket-chip ../../docs/assets/brand/bracket-chip.png --frame=80",

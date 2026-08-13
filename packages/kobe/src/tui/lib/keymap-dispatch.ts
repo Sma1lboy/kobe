@@ -286,7 +286,7 @@ function warnShadowedMatch(
       if (!shadowWarned.has(shadowed.key)) {
         shadowWarned.add(shadowed.key)
         console.error(
-          `[kobe keymap] "${shadowed.key}" matched two ENABLED bindings — the lower one is shadowed by LIFO order. Gate one of them off (see tui-react/lib/keymap.ts header).`,
+          `[rove keymap] "${shadowed.key}" matched two ENABLED bindings — the lower one is shadowed by LIFO order. Gate one of them off (see tui-react/lib/keymap.ts header).`,
         )
       }
       return

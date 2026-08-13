@@ -94,7 +94,7 @@ h1, h2, h3 { overflow-wrap: anywhere; min-width: 0; }
 /* ---- quicklook ---- */
 .quicklook { position: relative; margin-top: var(--space-xl); }
 .quicklook figure { border: var(--rule-hair) solid var(--color-rule); border-radius: var(--radius-card); overflow: hidden; background: var(--color-well); }
-.quicklook video { display: block; width: 100%; height: auto; }
+.quicklook img { display: block; width: 100%; height: auto; }
 .equation { margin-top: var(--space-md); display: flex; justify-content: center; }
 .equation-inner { display: flex; align-items: center; gap: var(--space-sm); font-size: var(--text-md); color: var(--color-muted); flex-wrap: wrap; justify-content: center; }
 .equation .lhs { color: var(--color-faint); }

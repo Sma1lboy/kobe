@@ -1,15 +1,15 @@
 /**
- * `digest` — the RULER. An aggregate read over state kobe already persists:
+ * `digest` — the RULER. An aggregate read over state Rove already persists:
  * tasks touched in the window and routine run outcomes
  * (`AutomationRun.status`). No new data model, no new writer.
  *
- * Why it exists: kobe runs a lot of unattended agent work (fan-out, routines,
+ * Why it exists: Rove runs a lot of unattended agent work (fan-out, routines,
  * the dispatcher) and had no way to answer "is this week better than last
  * week". Every self-improvement mechanism is astrology without a measurement
  * it can move, so the ruler ships before anything that claims to learn.
  *
  * Task OUTCOMES are deliberately absent: completion flows back to the
- * spawning agent's chat tab (`send`), not into kobe state — the stored
+ * spawning agent's chat tab (`send`), not into Rove state — the stored
  * `workerReport` channel was removed because nothing read it.
  */
 
@@ -100,7 +100,7 @@ export async function digest(ctx: VerbContext): Promise<unknown> {
 export const DIGEST_VERB: VerbSpec = {
   name: "digest",
   summary:
-    "Aggregate a repo's recent agent work: tasks touched in the window plus routine run outcomes. Reads state kobe already persists — the measurement any workflow change has to move.",
+    "Aggregate a repo's recent agent work: tasks touched in the window plus routine run outcomes. Reads state Rove already persists — the measurement any workflow change has to move.",
   flags: [
     {
       name: "repo",

@@ -270,7 +270,7 @@ export async function runHookSubcommand(argv: readonly string[]): Promise<void> 
     // zero evidence anywhere; debugging that cost a session precisely
     // because this catch left no trace. Opt-in so normal runs stay quiet.
     if (process.env.KOBE_HOOK_DEBUG) {
-      console.error(`[kobe hook] ${verb} failed:`, err instanceof Error ? err.message : String(err))
+      console.error(`[rove hook] ${verb} failed:`, err instanceof Error ? err.message : String(err))
     }
   }
 }
@@ -409,15 +409,15 @@ async function runHookSetup(_argv: readonly string[]): Promise<void> {
   await cleanupWorktreeSyncHook()
   process.stdout.write(
     [
-      "kobe hook setup is deprecated and now a no-op (cleanup only).",
+      "rove hook setup is deprecated and now a no-op (cleanup only).",
       "",
       "The old external-worktree sync used a global WorktreeCreate hook, which is",
       "a VCS provider hook — its presence broke `claude --worktree` / EnterWorktree",
-      "in every repo. Any hook kobe previously installed has been removed.",
+      "in every repo. Any hook Rove previously installed has been removed.",
       "",
       "Sync is now automatic: a `claude --worktree` (or any session) started in a",
-      "worktree under a repo kobe already tracks is adopted as a task on launch.",
-      "To adopt existing worktrees on demand, use the New Task dialog or `kobe adopt`.",
+      "worktree under a repo Rove already tracks is adopted as a task on launch.",
+      "To adopt existing worktrees on demand, use the New Task dialog or `rove adopt`.",
       "",
     ].join("\n"),
   )

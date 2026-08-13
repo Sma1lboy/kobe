@@ -4,7 +4,7 @@
  */
 
 export const en = {
-  pageTitle: "KOBE UPDATE",
+  pageTitle: "ROVE UPDATE",
   current: "current",
   latest: "latest",
   releaseUrlUnavailable: "release URL unavailable",
@@ -14,8 +14,8 @@ export const en = {
   loadingNotes: "Loading release notes...",
   notesUnavailable: "Release notes are unavailable. Use Open release to view the GitHub release page.",
   changesSectionHeader: "── changes from v{from} to v{to} ──",
-  updateComplete: "kobe update complete. Relaunch kobe to use the new version.",
-  updateFailed: "kobe update failed with exit code {code}.",
+  updateComplete: "Rove update complete. Relaunch Rove to use the new version.",
+  updateFailed: "Rove update failed with exit code {code}.",
   pressAnyKey: "Press any key to close this update window.",
   actions: {
     updateNow: "Update now",
@@ -26,22 +26,22 @@ export const en = {
   skew: {
     title: "⚠ DAEMON OUT OF DATE",
     olderBuild: "an older build",
-    hint: "daemon is {daemon} — you launched v{clientVersion}. Run `kobe daemon restart`, then relaunch kobe",
+    hint: "daemon is {daemon} — you launched v{clientVersion}. Run `rove daemon restart`, then relaunch Rove",
   },
   versions: {
-    pageTitle: "KOBE VERSIONS",
+    pageTitle: "ROVE VERSIONS",
     loading: "Loading releases...",
     unavailable: "Could not fetch releases (offline or rate-limited).",
     tagCurrent: "current",
     tagLatest: "latest",
     tagBreaking: "breaking",
-    breakingWarning: "⚠ installing this crosses breaking version(s) {versions} — run `kobe reset` after the update.",
+    breakingWarning: "⚠ installing this crosses breaking version(s) {versions} — run `rove reset` after the update.",
     footerHint: "j/k select · enter install · q close",
   },
 }
 
 export const zh: typeof en = {
-  pageTitle: "KOBE 更新",
+  pageTitle: "ROVE 更新",
   current: "当前",
   latest: "最新",
   releaseUrlUnavailable: "发布链接不可用",
@@ -51,8 +51,8 @@ export const zh: typeof en = {
   loadingNotes: "正在加载发布说明……",
   notesUnavailable: "发布说明不可用。请使用「打开发布页」查看 GitHub 发布页面。",
   changesSectionHeader: "── v{from} 至 v{to} 的变更 ──",
-  updateComplete: "kobe 更新完成。请重新启动 kobe 以使用新版本。",
-  updateFailed: "kobe 更新失败，退出码为 {code}。",
+  updateComplete: "Rove 更新完成。请重新启动 Rove 以使用新版本。",
+  updateFailed: "Rove 更新失败，退出码为 {code}。",
   pressAnyKey: "按任意键关闭此更新窗口。",
   actions: {
     updateNow: "立即更新",
@@ -63,16 +63,16 @@ export const zh: typeof en = {
   skew: {
     title: "⚠ DAEMON 版本不一致",
     olderBuild: "旧版本构建",
-    hint: "daemon 运行的是 {daemon}，而你启动的是 v{clientVersion}。请运行 `kobe daemon restart`，然后重新启动 kobe",
+    hint: "daemon 运行的是 {daemon}，而你启动的是 v{clientVersion}。请运行 `rove daemon restart`，然后重新启动 Rove",
   },
   versions: {
-    pageTitle: "KOBE 版本列表",
+    pageTitle: "ROVE 版本列表",
     loading: "正在加载发布列表……",
     unavailable: "无法获取发布列表（离线或触发限流）。",
     tagCurrent: "当前",
     tagLatest: "最新",
     tagBreaking: "breaking",
-    breakingWarning: "⚠ 安装该版本会跨过 breaking 版本 {versions}——更新后需运行 `kobe reset`。",
+    breakingWarning: "⚠ 安装该版本会跨过 breaking 版本 {versions}——更新后需运行 `rove reset`。",
     footerHint: "j/k 选择 · enter 安装 · q 关闭",
   },
 }

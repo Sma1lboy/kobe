@@ -118,7 +118,7 @@ export function SidebarBrandHeader(props: {
     <box flexDirection="row" justifyContent="space-between" gap={1} flexShrink={0} paddingLeft={1} paddingRight={1}>
       <box flexDirection="row" gap={1}>
         <text fg={props.focused ? theme.focusAccent : theme.textMuted} attributes={TextAttributes.BOLD} wrapMode="none">
-          KOBE
+          ROVE
         </text>
         {props.status ? (
           <text

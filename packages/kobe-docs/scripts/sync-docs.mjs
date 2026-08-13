@@ -43,7 +43,7 @@ const SECTIONS = [
     ],
   },
   {
-    title: 'Using kobe',
+    title: 'Using Rove',
     pages: [
       ['CLI.md', 'cli'],
       ['CONFIGURATION.md', 'configuration'],
@@ -202,7 +202,7 @@ console.log('synced docs/QUICKSTART.md → content/docs/index.mdx (docs home)');
 
 // Fumadocs renders `---Title---` entries as sidebar section separators.
 const meta = {
-  title: 'kobe',
+  title: 'Rove',
   pages: SECTIONS.flatMap((section) => [
     `---${section.title}---`,
     ...section.pages.map(([, slug]) => slug),
