@@ -5,7 +5,6 @@ vi.mock("../src/lib/tabs.ts", () => ({ addTab: vi.fn(), ensureEngineTab: vi.fn()
 vi.mock("../src/lib/terminal.ts", () => ({ sendPtyText: vi.fn() }))
 
 import {
-  type Issue,
   issueMergePrompt,
   linkIssue,
   projectChatPrompt,
@@ -19,15 +18,7 @@ import {
 import { rpc } from "../src/lib/store.ts"
 import { addTab, ensureEngineTab } from "../src/lib/tabs.ts"
 import { sendPtyText } from "../src/lib/terminal.ts"
-
-const issue = (over: Partial<Issue>): Issue => ({
-  id: over.id ?? 1,
-  title: "",
-  status: "open",
-  created: "2026-06-01",
-  body: "",
-  ...over,
-})
+import { issue } from "./issues-fixture.ts"
 
 describe("quickStartIssue", () => {
   const target = issue({ id: 3, title: "Fix it", body: "details" })

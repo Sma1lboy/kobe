@@ -18,7 +18,7 @@ vi.mock("@sma1lboy/kobe-daemon/client", () => ({
 }))
 
 vi.mock("../../src/lib/skill-install.ts", () => ({
-  SKILL_INSTALL_COMMAND: "kobe skill install",
+  skillInstallCommand: () => "kobe skill install",
   kobeSkillState: mocks.kobeSkillState,
 }))
 

@@ -11,6 +11,7 @@
 import { spawn } from "node:child_process"
 import { existsSync } from "node:fs"
 import { basename, delimiter, isAbsolute, join } from "node:path"
+import { readRoveEnv } from "@sma1lboy/kobe-daemon/compat-env"
 
 export type WorktreeOpener = {
   readonly id: string
@@ -87,7 +88,7 @@ export function detectWorktreeOpener(deps: DetectDeps = {}): WorktreeOpener | nu
   const platform = deps.platform ?? process.platform
   const exists = deps.exists ?? existsSync
 
-  const override = env.KOBE_OPEN_EDITOR?.trim()
+  const override = readRoveEnv("OPEN_EDITOR", env)?.trim()
   if (override) {
     return { id: "env", label: labelForOverride(override), command: override, args: [] }
   }

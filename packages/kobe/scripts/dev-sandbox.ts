@@ -32,7 +32,7 @@ async function sandboxHome(): Promise<string> {
   if (explicit) return explicit
 
   // Share one dev sandbox across git worktrees. `git-common-dir` points at
-  // the primary checkout's `.git`, even when this script runs from a Kobe
+  // the primary checkout's `.git`, even when this script runs from a Rove
   // task worktree, so every sandbox run sees the same task store.
   const repoRoot = dirname(await gitCommonDir())
   return join(repoRoot, "packages", "kobe", ".dev-sandbox", "home")
@@ -53,7 +53,7 @@ if (mode === "home") {
 }
 
 await mkdir(home, { recursive: true })
-console.error(`[kobe dev:sandbox] home: ${home}`)
+console.error(`[rove dev:sandbox] home: ${home}`)
 
 // Isolate the sandbox daemon's home and web port from production. Both env
 // namespaces are stamped so a child wrapper cannot revive an ambient value.
@@ -62,11 +62,11 @@ const env = sandboxChildEnv(home)
 if (mode === "reset") {
   await stopDaemonProcess(defaultDaemonSocketPath(home), defaultDaemonPidPath(home))
   await stopDaemonProcess(defaultPtyHostSocketPath(home), defaultPtyHostPidPath(home))
-  console.error("[kobe dev:sandbox] stopped daemon and PTY host")
+  console.error("[rove dev:sandbox] stopped daemon and PTY host")
   process.exit(0)
 }
 
-const args = [process.execPath, "--conditions=browser", "./src/cli/kobe.ts"]
+const args = [process.execPath, "--conditions=browser", "./src/cli/rove.ts"]
 
 const child = Bun.spawn(args, {
   cwd: process.cwd(),

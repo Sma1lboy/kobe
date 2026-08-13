@@ -28,6 +28,7 @@ import { existsSync, readFileSync } from "node:fs"
 import { homedir } from "node:os"
 import { join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
+import { activeCliName } from "../cli/rename-compat.ts"
 import { LEGACY_KOBE_PRODUCT_NAME } from "../product.ts"
 import { getPersistedString, setPersistedString } from "../state/repos.ts"
 
@@ -37,7 +38,8 @@ import { getPersistedString, setPersistedString } from "../state/repos.ts"
  * `.agents/skills/kobe/SKILL.md`) whenever the skill's instructions change
  * meaningfully — e.g. the `kobe api` surface grows. An installed skill whose
  * marker is below this number is STALE: the binary moved on, the skill
- * didn't, so we prompt the developer to re-run `kobe skill install`.
+ * didn't, so we prompt the developer to re-run the active CLI's
+ * `skill install` command.
  */
 export const KOBE_SKILL_VERSION = 21
 
@@ -54,8 +56,10 @@ export const KOBE_SKILL_VERSION = 21
  */
 const SKILL_REL_PATHS = [".agents/skills/kobe/SKILL.md", ".claude/skills/kobe/SKILL.md"] as const
 
-/** The kobe-side wrapper command a user runs. Shown in hints / doctor. */
-export const SKILL_INSTALL_COMMAND = "rove skill install"
+/** The invoked wrapper command a user runs. Shown in hints / doctor. */
+export function skillInstallCommand(env: NodeJS.ProcessEnv = process.env): string {
+  return `${activeCliName(env)} skill install`
+}
 
 /**
  * The public repo slug. Only a FALLBACK now (and the documented route for
@@ -218,12 +222,14 @@ function promptLine(): Promise<string> {
  * Safe to call on every startup.
  */
 export async function maybeHintSkillInstall(io: SkillHintIO = {}): Promise<void> {
+  const cliName = activeCliName()
+  const installCommand = skillInstallCommand()
   const state = kobeSkillState()
   if (!state.installed) {
     if (getPersistedString(HINT_SEEN_KEY) === "1") return
     setPersistedString(HINT_SEEN_KEY, "1")
     process.stderr.write(
-      `\nrove: the Rove agent skill isn't installed — install it so your coding agent can drive Rove via \`rove api\`:\n  ${SKILL_INSTALL_COMMAND}\n  (wraps \`${npxSkillsCommand()}\`; check anytime with \`rove doctor\`)\n\n`,
+      `\n${cliName}: the Rove agent skill isn't installed — install it so your coding agent can drive Rove via \`${cliName} api\`:\n  ${installCommand}\n  (wraps \`${npxSkillsCommand()}\`; check anytime with \`${cliName} doctor\`)\n\n`,
     )
     return
   }
@@ -237,19 +243,19 @@ export async function maybeHintSkillInstall(io: SkillHintIO = {}): Promise<void>
   if (!interactive) {
     setPersistedString(key, "1")
     process.stderr.write(
-      `\nrove: your Rove agent skill is out of date (${was}; this Rove wants v${state.currentVersion}) — refresh it so \`rove api\` guidance matches:\n  ${SKILL_INSTALL_COMMAND}\n\n`,
+      `\n${cliName}: your Rove agent skill is out of date (${was}; this Rove wants v${state.currentVersion}) — refresh it so \`${cliName} api\` guidance matches:\n  ${installCommand}\n\n`,
     )
     return
   }
 
   process.stderr.write(
-    `\nrove: a new version of the Rove agent skill is available (${was} → v${state.currentVersion}).\nUpdate now? [y]es / [n]o / [d]on't notify for this version: `,
+    `\n${cliName}: a new version of the Rove agent skill is available (${was} → v${state.currentVersion}).\nUpdate now? [y]es / [n]o / [d]on't notify for this version: `,
   )
   const answer = (await (io.ask ?? promptLine)()).trim().toLowerCase()
   if (answer === "y" || answer === "yes") {
     const code = await (io.install ?? runNpxSkillsInstall)()
-    if (code === 0) process.stderr.write("rove: skill updated.\n")
-    else process.stderr.write(`rove: skill update failed (exit ${code}) — run \`${SKILL_INSTALL_COMMAND}\` manually.\n`)
+    if (code === 0) process.stderr.write(`${cliName}: skill updated.\n`)
+    else process.stderr.write(`${cliName}: skill update failed (exit ${code}) — run \`${installCommand}\` manually.\n`)
   } else if (answer.startsWith("d")) {
     setPersistedString(key, "1")
   }

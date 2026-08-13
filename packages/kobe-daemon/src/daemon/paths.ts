@@ -119,7 +119,7 @@ export function defaultDaemonLogPath(homeDir = readRoveEnv("HOME_DIR") ?? homedi
 }
 
 /**
- * Log file for kobe's CLIENT-side processes (the in-tmux Tasks/Ops panes
+ * Log file for Rove's CLIENT-side processes (the in-tmux Tasks/Ops panes
  * and the front-end attach). Unlike the daemon, these run inside an
  * opentui alternate-screen pane, so their `console.*` output is swallowed
  * by the TUI and a stray "[rove tasks] daemon subscribe unavailable" never

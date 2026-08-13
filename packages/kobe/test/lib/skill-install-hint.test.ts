@@ -24,6 +24,7 @@ import { getPersistedString } from "../../src/state/repos.ts"
 
 let cwd: string
 let originalKobeHome: string | undefined
+let originalInvokedAs: string | undefined
 let stderrSpy: MockInstance
 let originalStdinIsTTY: boolean | undefined
 
@@ -36,7 +37,9 @@ beforeEach(() => {
   vi.spyOn(process, "cwd").mockReturnValue(cwd)
   // Persisted hint flags land in a fresh state.json per test.
   originalKobeHome = process.env.KOBE_HOME_DIR
+  originalInvokedAs = process.env.ROVE_INVOKED_AS
   process.env.KOBE_HOME_DIR = mkdtempSync(join(tmpdir(), "kobe-skillhint-state-"))
+  process.env.ROVE_INVOKED_AS = "rove"
   stderrSpy = vi.spyOn(process.stderr, "write").mockReturnValue(true)
   // Force the non-interactive path unless a test injects `ask` (a TTY test
   // runner would otherwise flip maybeHintSkillInstall into prompt mode).
@@ -48,6 +51,8 @@ afterEach(() => {
   const stateHome = process.env.KOBE_HOME_DIR
   if (originalKobeHome === undefined) Reflect.deleteProperty(process.env, "KOBE_HOME_DIR")
   else process.env.KOBE_HOME_DIR = originalKobeHome
+  if (originalInvokedAs === undefined) Reflect.deleteProperty(process.env, "ROVE_INVOKED_AS")
+  else process.env.ROVE_INVOKED_AS = originalInvokedAs
   vi.restoreAllMocks()
   process.stdin.isTTY = originalStdinIsTTY as boolean
   rmSync(cwd, { recursive: true, force: true })
@@ -83,6 +88,15 @@ describe("maybeHintSkillInstall", () => {
 
     await maybeHintSkillInstall()
     expect(stderrSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it("uses the compatibility command when invoked through kobe", async () => {
+    process.env.ROVE_INVOKED_AS = "kobe"
+    await maybeHintSkillInstall()
+    const msg = String(stderrSpy.mock.calls[0]?.[0])
+    expect(msg).toContain("kobe skill install")
+    expect(msg).toContain("`kobe api`")
+    expect(msg).toContain("`kobe doctor`")
   })
 
   it("fresh skill: no hint at all", async () => {

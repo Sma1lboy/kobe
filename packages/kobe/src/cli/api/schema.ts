@@ -111,7 +111,7 @@ function flagSignature(verb: VerbSpec): string {
     .join(" ")
 }
 
-/** Full `kobe api <verb> --help` text. */
+/** Full `<active CLI> api <verb> --help` text. */
 export function verbHelp(verb: VerbSpec): string {
   const lines = [`${activeCliName()} api ${verb.name} ${flagSignature(verb)}`.trimEnd(), "", verb.summary, ""]
   const alias = Object.entries(VERB_ALIASES).find(([, canon]) => canon === verb.name)?.[0]
@@ -130,7 +130,7 @@ export function verbHelp(verb: VerbSpec): string {
   return lines.join("\n")
 }
 
-/** One-line-per-verb usage banner for `kobe api` with no/bad verb. */
+/** One-line-per-verb usage banner for `<active CLI> api` with no/bad verb. */
 export function apiUsage(): string {
   const cliName = activeCliName()
   const rows = VERBS.map((v) => `  ${v.name.padEnd(18)} ${v.summary}`)

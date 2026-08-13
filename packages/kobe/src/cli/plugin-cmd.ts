@@ -149,7 +149,7 @@ function invokeAction(qualified: string, extraArgs: string[]): void {
   if (!hit) throw new PluginCliError(`no action \`${qualified}\`; see \`${CLI_NAME} plugin action list\``)
 
   // Extra CLI args are appended to the action's argv so an action can take
-  // an argument (`kobe plugin action invoke p.start <url>`).
+  // an argument (`<active CLI> plugin action invoke p.start <url>`).
   const [cmd, ...args] = [...hit.action.command, ...extraArgs]
   const res = spawnSync(cmd as string, args, {
     cwd: hit.entry.root,

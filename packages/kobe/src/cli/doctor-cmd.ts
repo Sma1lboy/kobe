@@ -23,7 +23,7 @@ import {
   detectCopilotAccount,
 } from "../engine/account-detect.ts"
 import { homeDir, kobeStateDir, kvStatePath } from "../env.ts"
-import { SKILL_INSTALL_COMMAND, kobeSkillState } from "../lib/skill-install.ts"
+import { kobeSkillState, skillInstallCommand } from "../lib/skill-install.ts"
 import { CURRENT_VERSION } from "../version.ts"
 import { inspectLegacyTmux, legacyTmuxDoctorLines } from "./legacy-tmux.ts"
 import { activeCliName } from "./rename-compat.ts"
@@ -264,12 +264,13 @@ async function collectDoctorLines(): Promise<string[]> {
   out.push(...legacyTmuxDoctorLines(await inspectLegacyTmux()), "")
 
   const skill = kobeSkillState()
+  const installCommand = skillInstallCommand()
   if (!skill.installed) {
-    out.push("skill:   ✗ Rove agent skill not installed", `         → ${SKILL_INSTALL_COMMAND}`)
+    out.push("skill:   ✗ Rove agent skill not installed", `         → ${installCommand}`)
   } else if (skill.stale) {
     const installed = skill.installedVersion === null ? "unstamped" : `v${skill.installedVersion}`
     out.push(`skill:   ⚠ Rove agent skill out of date (${installed}; this Rove wants v${skill.currentVersion})`)
-    out.push(`         → ${SKILL_INSTALL_COMMAND}`)
+    out.push(`         → ${installCommand}`)
   } else out.push(`skill:   ✓ Rove agent skill installed (v${skill.installedVersion})`)
   out.push("")
 

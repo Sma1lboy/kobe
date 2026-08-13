@@ -19,21 +19,13 @@ import {
 } from "../src/lib/issues.ts"
 import { rpc } from "../src/lib/store.ts"
 import type { Task } from "../src/lib/types.ts"
+import { issue } from "./issues-fixture.ts"
 
 /**
  * Pure helpers for the Issues panel: search/filter semantics, column
  * grouping + ordering, the cross-project overview math, and the
  * quick-start prompt contract (id + title + body + done instruction).
  */
-
-const issue = (over: Partial<Issue>): Issue => ({
-  id: over.id ?? 1,
-  title: "",
-  status: "open",
-  created: "2026-06-01",
-  body: "",
-  ...over,
-})
 
 describe("ISSUE_STATUSES", () => {
   it("is the column order: open, doing, hold, done", () => {

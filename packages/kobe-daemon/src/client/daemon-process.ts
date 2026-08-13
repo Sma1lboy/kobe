@@ -167,7 +167,7 @@ export async function ensureDaemonReachable(): Promise<string> {
     // The socket CONNECTS but hello is slow — a busy daemon is
     // indistinguishable from a wedged one from in here, and killing the
     // shared daemon from a session helper is how split-brain starts.
-    // Leave recovery to the human-driven path (a real TUI boot / `kobe
+    // Leave recovery to the human-driven path (a real TUI boot / `rove
     // doctor`); fail with the cause instead.
     throw new Error(
       `rove: daemon at ${socketPath} is not answering hello (busy or wedged); not restarting it from inside an engine session — retry, or run \`rove daemon restart\` from a regular shell`,
