@@ -25,6 +25,8 @@
 import { createHash } from "node:crypto"
 import { homedir } from "node:os"
 import { join } from "node:path"
+import { readRoveEnv } from "@sma1lboy/kobe-daemon/compat-env"
+import { COMPAT_CONFIG_DIR_BASENAME, COMPAT_STATE_DIR_BASENAME } from "./product.ts"
 
 /**
  * `KOBE_DEV=1` — declares the binary is running from a developer
@@ -36,7 +38,7 @@ import { join } from "node:path"
  * notification.
  */
 export function isDev(): boolean {
-  return process.env.KOBE_DEV === "1"
+  return readRoveEnv("DEV") === "1"
 }
 
 /**
@@ -45,7 +47,7 @@ export function isDev(): boolean {
  * so they don't trample the real `~/.kobe/`.
  */
 export function homeDir(): string {
-  return process.env.KOBE_HOME_DIR ?? homedir()
+  return readRoveEnv("HOME_DIR") ?? homedir()
 }
 
 /**
@@ -54,9 +56,12 @@ export function homeDir(): string {
  * own filename onto this; we don't `mkdir` here, that's the writer's
  * job at the actual write site.
  */
-export function kobeStateDir(): string {
-  return join(homeDir(), ".kobe")
+export function roveStateDir(): string {
+  return join(homeDir(), COMPAT_STATE_DIR_BASENAME)
 }
+
+/** @deprecated Internal compatibility alias; use {@link roveStateDir}. */
+export const kobeStateDir = roveStateDir
 
 /**
  * Path to the small flat-JSON KV blob shared between the TUI's
@@ -69,7 +74,7 @@ export function kobeStateDir(): string {
  * this accessor is the one place the path is spelled.
  */
 export function kvStatePath(): string {
-  return join(homeDir(), ".config", "kobe", "state.json")
+  return join(homeDir(), ".config", COMPAT_CONFIG_DIR_BASENAME, "state.json")
 }
 
 /**

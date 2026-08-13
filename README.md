@@ -56,6 +56,10 @@ bun install -g @sma1lboy/kobe
 bunx @sma1lboy/kobe
 ```
 
+The global package installs both `rove` and `kobe`. `rove` is the new-name
+entry point, while `kobe` remains a compatibility alias; both reuse the
+existing `~/.kobe` state without migration.
+
 ## First run
 
 ```bash

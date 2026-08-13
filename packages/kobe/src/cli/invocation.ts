@@ -10,6 +10,8 @@
  */
 
 import { fileURLToPath } from "node:url"
+import { LEGACY_KOBE_PRODUCT_NAME, ROVE_PRODUCT_NAME } from "../product.ts"
+import { activeCliName } from "./rename-compat.ts"
 
 /**
  * argv prefix that runs the kobe CLI. Append the subcommand + flags:
@@ -24,12 +26,17 @@ import { fileURLToPath } from "node:url"
  * same. The React JSX pragmas (`@jsxImportSource @opentui/react`) are honoured
  * by Bun's default transpiler, so no preload is needed.
  */
-export function kobeCliInvocation(): string[] {
+export function roveCliInvocation(): string[] {
+  const cliName = activeCliName()
   const isBuilt = import.meta.url.endsWith(".js")
-  if (isBuilt) return ["kobe"]
-  const entry = fileURLToPath(new URL("./index.ts", import.meta.url))
+  if (isBuilt) return [cliName]
+  const entryName = cliName === ROVE_PRODUCT_NAME ? "rove.ts" : "kobe.ts"
+  const entry = fileURLToPath(new URL(`./${entryName}`, import.meta.url))
   return [process.execPath, "--conditions=browser", entry]
 }
+
+/** @deprecated Internal compatibility alias; use {@link roveCliInvocation}. */
+export const kobeCliInvocation = roveCliInvocation
 
 /**
  * argv prefix for commands PERSISTED into global config (engine hook files in
@@ -41,7 +48,7 @@ export function kobeCliInvocation(): string[] {
  * bin exists.
  */
 export function kobeHookInvocation(): string[] {
-  if (import.meta.url.endsWith(".js")) return ["kobe"]
-  if (Bun.which("kobe")) return ["kobe"]
-  return kobeCliInvocation()
+  if (import.meta.url.endsWith(".js")) return [LEGACY_KOBE_PRODUCT_NAME]
+  if (Bun.which(LEGACY_KOBE_PRODUCT_NAME)) return [LEGACY_KOBE_PRODUCT_NAME]
+  return roveCliInvocation()
 }

@@ -21,6 +21,9 @@ import {
 import { afterEach, beforeEach, describe, expect, test } from "vitest"
 
 const PREV = {
+  ROVE_HOME_DIR: process.env.ROVE_HOME_DIR,
+  ROVE_DAEMON_SOCKET_PATH: process.env.ROVE_DAEMON_SOCKET_PATH,
+  ROVE_DAEMON_PID_PATH: process.env.ROVE_DAEMON_PID_PATH,
   KOBE_HOME_DIR: process.env.KOBE_HOME_DIR,
   KOBE_DAEMON_SOCKET_PATH: process.env.KOBE_DAEMON_SOCKET_PATH,
   KOBE_DAEMON_PID_PATH: process.env.KOBE_DAEMON_PID_PATH,
@@ -28,6 +31,9 @@ const PREV = {
 }
 
 beforeEach(() => {
+  Reflect.deleteProperty(process.env, "ROVE_HOME_DIR")
+  Reflect.deleteProperty(process.env, "ROVE_DAEMON_SOCKET_PATH")
+  Reflect.deleteProperty(process.env, "ROVE_DAEMON_PID_PATH")
   Reflect.deleteProperty(process.env, "KOBE_HOME_DIR")
   Reflect.deleteProperty(process.env, "KOBE_DAEMON_SOCKET_PATH")
   Reflect.deleteProperty(process.env, "KOBE_DAEMON_PID_PATH")
@@ -35,6 +41,12 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  if (PREV.ROVE_HOME_DIR === undefined) Reflect.deleteProperty(process.env, "ROVE_HOME_DIR")
+  else process.env.ROVE_HOME_DIR = PREV.ROVE_HOME_DIR
+  if (PREV.ROVE_DAEMON_SOCKET_PATH === undefined) Reflect.deleteProperty(process.env, "ROVE_DAEMON_SOCKET_PATH")
+  else process.env.ROVE_DAEMON_SOCKET_PATH = PREV.ROVE_DAEMON_SOCKET_PATH
+  if (PREV.ROVE_DAEMON_PID_PATH === undefined) Reflect.deleteProperty(process.env, "ROVE_DAEMON_PID_PATH")
+  else process.env.ROVE_DAEMON_PID_PATH = PREV.ROVE_DAEMON_PID_PATH
   if (PREV.KOBE_HOME_DIR === undefined) Reflect.deleteProperty(process.env, "KOBE_HOME_DIR")
   else process.env.KOBE_HOME_DIR = PREV.KOBE_HOME_DIR
   if (PREV.KOBE_DAEMON_SOCKET_PATH === undefined) Reflect.deleteProperty(process.env, "KOBE_DAEMON_SOCKET_PATH")
@@ -51,6 +63,14 @@ describe("defaultDaemonSocketPath", () => {
     process.env.XDG_RUNTIME_DIR = "/run/user/1000"
     process.env.KOBE_DAEMON_SOCKET_PATH = "/tmp/kobe-owned.sock"
     expect(defaultDaemonSocketPath()).toBe("/tmp/kobe-owned.sock")
+  })
+
+  test("ROVE socket and home overrides outrank their KOBE aliases", () => {
+    process.env.KOBE_HOME_DIR = "/tmp/legacy-home"
+    process.env.ROVE_HOME_DIR = "/tmp/rove-home"
+    process.env.KOBE_DAEMON_SOCKET_PATH = "/tmp/legacy.sock"
+    process.env.ROVE_DAEMON_SOCKET_PATH = "/tmp/rove.sock"
+    expect(defaultDaemonSocketPath()).toBe("/tmp/rove.sock")
   })
 
   test("caller-supplied homeDir argument wins over XDG_RUNTIME_DIR", () => {
@@ -89,6 +109,12 @@ describe("defaultDaemonSocketPath", () => {
 })
 
 describe("defaultDaemonPidPath", () => {
+  test("ROVE_DAEMON_PID_PATH overrides KOBE_DAEMON_PID_PATH", () => {
+    process.env.KOBE_DAEMON_PID_PATH = "/tmp/legacy.pid"
+    process.env.ROVE_DAEMON_PID_PATH = "/tmp/rove.pid"
+    expect(defaultDaemonPidPath()).toBe("/tmp/rove.pid")
+  })
+
   test("KOBE_DAEMON_PID_PATH override wins over KOBE_HOME_DIR", () => {
     process.env.KOBE_HOME_DIR = "/tmp/from-env"
     process.env.KOBE_DAEMON_PID_PATH = "/tmp/kobe-owned.pid"

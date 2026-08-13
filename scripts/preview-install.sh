@@ -31,7 +31,7 @@ if [ -z "$BIN" ]; then
   echo "preview-install: no global kobe on PATH — install prod first: npm i -g @sma1lboy/kobe" >&2
   exit 1
 fi
-ENTRY="$(realpath "$BIN")" # …/node_modules/@sma1lboy/kobe/dist/cli/index.js
+ENTRY="$(realpath "$BIN")" # …/node_modules/@sma1lboy/kobe/dist/cli/kobe.js
 PKG_DIR="$(cd "$(dirname "$ENTRY")/../.." && pwd)"
 case "$PKG_DIR" in
   */node_modules/@sma1lboy/kobe) ;;

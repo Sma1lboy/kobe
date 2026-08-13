@@ -262,8 +262,8 @@ export function createSidecarController(dependencies) {
     // absolute bun + repo paths into the recording, showing viewers a command
     // no installed user ever sees. Run `bun --filter @sma1lboy/kobe build`
     // before capturing; source is the fallback so tests still drive it.
-    const builtCli = join(kobeDir, "dist", "cli", "index.js")
-    const cliArgs = existsSync(builtCli) ? [builtCli] : ["--conditions=browser", join(kobeDir, "src", "cli", "index.ts")]
+    const builtCli = join(kobeDir, "dist", "cli", "kobe.js")
+    const cliArgs = existsSync(builtCli) ? [builtCli] : ["--conditions=browser", join(kobeDir, "src", "cli", "kobe.ts")]
     childEnv = isolatedEnvironment(baseEnv, demoRoot)
     const seedTasks = request.seedTasks ?? []
     if (!Array.isArray(seedTasks)) throw new Error("start seedTasks must be an array")

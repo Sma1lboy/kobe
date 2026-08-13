@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto"
 import { homedir, tmpdir } from "node:os"
 import { join } from "node:path"
+import { COMPAT_STATE_DIR_BASENAME, readRoveEnv } from "../compat-env.ts"
 
 /**
  * Unix domain socket paths are stored in a fixed-size `sun_path` field
@@ -86,24 +87,24 @@ export function fitSocketPath(naturalPath: string, homeDir: string, role: string
  * path form with it.
  */
 export function defaultDaemonSocketPath(homeDir?: string): string {
-  const override = process.env.KOBE_DAEMON_SOCKET_PATH
+  const override = readRoveEnv("DAEMON_SOCKET_PATH")
   if (override && override.length > 0) return override
-  const explicit = homeDir ?? process.env.KOBE_HOME_DIR
+  const explicit = homeDir ?? readRoveEnv("HOME_DIR")
   if (explicit && explicit.length > 0) {
-    return fitSocketPath(join(explicit, ".kobe", "daemon.sock"), explicit, "daemon")
+    return fitSocketPath(join(explicit, COMPAT_STATE_DIR_BASENAME, "daemon.sock"), explicit, "daemon")
   }
   const runtimeDir = process.env.XDG_RUNTIME_DIR
   if (runtimeDir && runtimeDir.length > 0) {
     return fitSocketPath(join(runtimeDir, "kobe.sock"), runtimeDir, "daemon")
   }
   const home = homedir()
-  return fitSocketPath(join(home, ".kobe", "daemon.sock"), home, "daemon")
+  return fitSocketPath(join(home, COMPAT_STATE_DIR_BASENAME, "daemon.sock"), home, "daemon")
 }
 
-export function defaultDaemonPidPath(homeDir = process.env.KOBE_HOME_DIR ?? homedir()): string {
-  const override = process.env.KOBE_DAEMON_PID_PATH
+export function defaultDaemonPidPath(homeDir = readRoveEnv("HOME_DIR") ?? homedir()): string {
+  const override = readRoveEnv("DAEMON_PID_PATH")
   if (override && override.length > 0) return override
-  return join(homeDir, ".kobe", "daemon.pid")
+  return join(homeDir, COMPAT_STATE_DIR_BASENAME, "daemon.pid")
 }
 
 /**
@@ -113,8 +114,8 @@ export function defaultDaemonPidPath(homeDir = process.env.KOBE_HOME_DIR ?? home
  * rejection) left no trace at all — the daemon just vanished. Keep the
  * file next to the socket + pidfile under `<home>/.kobe/`.
  */
-export function defaultDaemonLogPath(homeDir = process.env.KOBE_HOME_DIR ?? homedir()): string {
-  return join(homeDir, ".kobe", "daemon.log")
+export function defaultDaemonLogPath(homeDir = readRoveEnv("HOME_DIR") ?? homedir()): string {
+  return join(homeDir, COMPAT_STATE_DIR_BASENAME, "daemon.log")
 }
 
 /**
@@ -128,8 +129,8 @@ export function defaultDaemonLogPath(homeDir = process.env.KOBE_HOME_DIR ?? home
  * Tasks-pane sync drift was invisible for so long). Honours KOBE_HOME_DIR
  * like every other state path so sandbox runs stay isolated.
  */
-export function defaultClientLogPath(homeDir = process.env.KOBE_HOME_DIR ?? homedir()): string {
-  return join(homeDir, ".kobe", "client.log")
+export function defaultClientLogPath(homeDir = readRoveEnv("HOME_DIR") ?? homedir()): string {
+  return join(homeDir, COMPAT_STATE_DIR_BASENAME, "client.log")
 }
 
 /**
@@ -170,33 +171,33 @@ export function windowsPipePath(homeDir: string, role: string): string {
 }
 
 export function defaultPtyHostSocketPath(homeDir?: string, platform: NodeJS.Platform = process.platform): string {
-  const override = process.env.KOBE_PTY_SOCKET_PATH
+  const override = readRoveEnv("PTY_SOCKET_PATH")
   if (override && override.length > 0) return override
-  const explicit = homeDir ?? process.env.KOBE_HOME_DIR
+  const explicit = homeDir ?? readRoveEnv("HOME_DIR")
   if (platform === "win32") return windowsPipePath(explicit || homedir(), "pty")
   if (explicit && explicit.length > 0) {
-    return fitSocketPath(join(explicit, ".kobe", "pty.sock"), explicit, "pty")
+    return fitSocketPath(join(explicit, COMPAT_STATE_DIR_BASENAME, "pty.sock"), explicit, "pty")
   }
   const runtimeDir = process.env.XDG_RUNTIME_DIR
   if (runtimeDir && runtimeDir.length > 0) {
     return fitSocketPath(join(runtimeDir, "kobe-pty.sock"), runtimeDir, "pty")
   }
   const home = homedir()
-  return fitSocketPath(join(home, ".kobe", "pty.sock"), home, "pty")
+  return fitSocketPath(join(home, COMPAT_STATE_DIR_BASENAME, "pty.sock"), home, "pty")
 }
 
-export function defaultPtyHostPidPath(homeDir = process.env.KOBE_HOME_DIR ?? homedir()): string {
-  const override = process.env.KOBE_PTY_PID_PATH
+export function defaultPtyHostPidPath(homeDir = readRoveEnv("HOME_DIR") ?? homedir()): string {
+  const override = readRoveEnv("PTY_PID_PATH")
   if (override && override.length > 0) return override
-  return join(homeDir, ".kobe", "pty.pid")
+  return join(homeDir, COMPAT_STATE_DIR_BASENAME, "pty.pid")
 }
 
-export function defaultPtyHostLogPath(homeDir = process.env.KOBE_HOME_DIR ?? homedir()): string {
-  return join(homeDir, ".kobe", "pty.log")
+export function defaultPtyHostLogPath(homeDir = readRoveEnv("HOME_DIR") ?? homedir()): string {
+  return join(homeDir, COMPAT_STATE_DIR_BASENAME, "pty.log")
 }
 
 /** Durable per-session death records (`pty-exit-store.ts`) — must outlive
  *  the host's idle-exit, so a crashed engine's cause stays queryable. */
-export function defaultPtyExitsPath(homeDir = process.env.KOBE_HOME_DIR ?? homedir()): string {
-  return join(homeDir, ".kobe", "pty-exits.json")
+export function defaultPtyExitsPath(homeDir = readRoveEnv("HOME_DIR") ?? homedir()): string {
+  return join(homeDir, COMPAT_STATE_DIR_BASENAME, "pty-exits.json")
 }

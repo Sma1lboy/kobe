@@ -234,7 +234,7 @@ describe("PureTUI PTY sidecar", () => {
         file: "bun",
         args: [
           "--conditions=browser",
-          "/repo/packages/kobe/src/cli/index.ts",
+          "/repo/packages/kobe/src/cli/kobe.ts",
           "api",
           "add",
           "--repo",
@@ -248,7 +248,7 @@ describe("PureTUI PTY sidecar", () => {
       },
       {
         file: "bun",
-        args: ["--conditions=browser", "/repo/packages/kobe/src/cli/index.ts"],
+        args: ["--conditions=browser", "/repo/packages/kobe/src/cli/kobe.ts"],
         cwd: "/demo/fixture-repo",
       },
     ])

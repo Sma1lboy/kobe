@@ -6,17 +6,19 @@
  * so adding a subcommand updates help in one place.
  */
 
+import type { ProductCliName } from "../product.ts"
 import { CURRENT_VERSION } from "../version.ts"
+import { activeCliName } from "./rename-compat.ts"
 
 /** The full `kobe help` text (no trailing newline). */
-export function topLevelUsage(): string {
+export function topLevelUsage(cliName: ProductCliName = activeCliName()): string {
   return [
-    `kobe ${CURRENT_VERSION}`,
+    `${cliName} ${CURRENT_VERSION}`,
     "",
-    "Usage: kobe [command] [options]",
+    `Usage: ${cliName} [command] [options]`,
     "",
     "Run with no command to launch PureTUI.",
-    "Run `kobe .` (or `kobe <path>`) to open a directory as a standalone task.",
+    `Run \`${cliName} .\` (or \`${cliName} <path>\`) to open a directory as a standalone task.`,
     "",
     "Commands:",
     "  web [options]           Launch the browser dashboard",
@@ -26,16 +28,16 @@ export function topLevelUsage(): string {
     "  adopt [glob]            Import existing git worktrees as tasks",
     "  export [--csv|--json]   Print the task list (json/csv/table; daemon-free)",
     "  repo <verb>             Per-repo init script + first prompt (show|set|unset)",
-    "  api <verb>              Scriptable RPC surface for agents (see `kobe api --help`)",
+    `  api <verb>              Scriptable RPC surface for agents (see \`${cliName} api --help\`)`,
     "  daemon <verb>           Manage the daemon (start|stop|status|restart)",
     "  doctor [--report]        Diagnose daemon/PTY/engines/git; --report writes a bundle",
-    "  config [--path]          Open kobe's config file (state.json) in your editor",
+    `  config [--path]          Open ${cliName}'s config file (state.json) in your editor`,
     "  reset [--hard]           Stop runtimes; optionally wipe task/UI state",
     "  theme <verb>            Manage user themes (list|add|remove)",
-    "  skill <verb>            Install the kobe agent skill (install|status|command|print)",
+    `  skill <verb>            Install the ${cliName} agent skill (install|status|command|print)`,
     "  plugin <verb>           Install and run plugins (install|link|list|action|…)",
     "  feedback                Send feedback to GitHub Discussions",
-    "  update [version|list]   Self-update kobe, or browse versions with `list`",
+    `  update [version|list]   Self-update ${cliName}, or browse versions with \`list\``,
     "",
     "Options:",
     "  -v, --version           Print version",

@@ -6,6 +6,7 @@
   "private": true,
   "packageManager": "bun@1.3.13",
   "exports": {
+    "./compat-env": "./src/compat-env.ts",
     "./client": "./src/client/index.ts",
     "./client/client-log": "./src/client/client-log.ts",
     "./client/daemon-process": "./src/client/daemon-process.ts",

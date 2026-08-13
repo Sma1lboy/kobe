@@ -21,6 +21,14 @@ describe("topLevelUsage", () => {
     expect(usage).toContain(`kobe ${CURRENT_VERSION}`)
   })
 
+  it("renders the same command surface for the rove compatibility entry", () => {
+    const roveUsage = topLevelUsage("rove")
+    expect(roveUsage).toContain(`rove ${CURRENT_VERSION}`)
+    expect(roveUsage).toContain("Usage: rove [command] [options]")
+    expect(roveUsage).toContain("`rove api --help`")
+    expect(usageCommandNames(roveUsage)).toEqual(usageCommandNames(usage))
+  })
+
   it("lists every public subcommand, including api", () => {
     for (const cmd of [
       "web",

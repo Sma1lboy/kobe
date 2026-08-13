@@ -9,6 +9,7 @@ import { join } from "node:path"
 import { RemoteOrchestrator } from "../../../client/remote-orchestrator"
 import type { KobeOrchestrator } from "../../../client/remote-orchestrator"
 import { homeDir } from "../../../env"
+import { COMPAT_STATE_DIR_BASENAME } from "../../../product.ts"
 
 /** "Restart backend" is only offered when attached to a real daemon. */
 export function hasRestartableDaemon(orchestrator: KobeOrchestrator | undefined): boolean {
@@ -29,7 +30,7 @@ export function destroyRendererSafely(renderer: DestroyableRenderer | null | und
 /** Delete `~/.kobe/tasks.json` for the Dev "reset UI state" flow. */
 export function removeTasksFileForReset(): void {
   try {
-    unlinkSync(join(homeDir(), ".kobe", "tasks.json"))
+    unlinkSync(join(homeDir(), COMPAT_STATE_DIR_BASENAME, "tasks.json"))
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
       console.error("kobe: failed to delete tasks.json during reset:", err)

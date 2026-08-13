@@ -3,6 +3,7 @@ import { mkdir, readFile, realpath, rename, stat, writeFile } from "node:fs/prom
 import { homedir } from "node:os"
 import { dirname, isAbsolute, join, resolve } from "node:path"
 import { promisify } from "node:util"
+import { COMPAT_STATE_DIR_BASENAME, readRoveEnv } from "../compat-env.ts"
 
 const execFileAsync = promisify(execFile)
 
@@ -51,8 +52,8 @@ function isGitNotRepositoryError(err: unknown): boolean {
   return message.includes("not a git repository")
 }
 
-export function defaultIssuesStorePath(homeDir = process.env.KOBE_HOME_DIR ?? homedir()): string {
-  return join(homeDir, ".kobe", "issues.json")
+export function defaultIssuesStorePath(homeDir = readRoveEnv("HOME_DIR") ?? homedir()): string {
+  return join(homeDir, COMPAT_STATE_DIR_BASENAME, "issues.json")
 }
 
 function isValidStatus(value: unknown): value is IssueStatus {

@@ -12,7 +12,10 @@ then `,`. This page is for when you want to edit them by hand.
 | `~/.kobe/settings/keybindings.yaml` | Keybinding overrides | You only |
 | `<repo>/.kobe/init.sh` + `init-prompt.md` | Per-repo worktree setup | You (committed to the repo) |
 
-Setting `KOBE_HOME_DIR` moves all of it somewhere else.
+Setting `ROVE_HOME_DIR` moves all of it somewhere else. `KOBE_HOME_DIR` remains
+a supported fallback; when both are set, `ROVE_HOME_DIR` wins. The directory
+names themselves deliberately stay `.kobe` and `.config/kobe` during the first
+rename phase, so existing state is reused without migration.
 
 ## Editing settings
 

@@ -59,7 +59,7 @@ cp out/demo.gif ../../docs/assets/demo.gif
   trust?" dialog; one under `/tmp` shows it in every worktree and the capture
   hangs. The default demo root sits inside this repo, so this is normally
   invisible — trust the repo root once if a capture stalls at boot.
-- **Build first.** The sidecar prefers `packages/kobe/dist/cli/index.js` and
+- **Build first.** The sidecar prefers `packages/kobe/dist/cli/kobe.js` and
   only falls back to source. Prompt codas kobe writes into a session embed
   `kobeCliInvocation()`, which renders the bare `kobe` a user actually sees
   only from a `.js` entry — captured from source it bakes the capture host's
@@ -72,7 +72,7 @@ cp out/demo.gif ../../docs/assets/demo.gif
 - The typed `kobe` in shell tabs resolves through `bun run`'s
   `node_modules/.bin` PATH prepend — put a `kobe` shim there
   (`packages/branding/node_modules/.bin/kobe` →
-  `exec bun <repo>/packages/kobe/dist/cli/index.js "$@"`) so the shell beats
+  `exec bun <repo>/packages/kobe/dist/cli/kobe.js "$@"`) so the shell beats
   drive THIS checkout's built CLI, not a stale global install. The shim lives
   in gitignored `node_modules` and must be re-created after a fresh install.
 - `scripts/fixtures/claude-demo` is `#!/bin/sh` and must stay POSIX: use

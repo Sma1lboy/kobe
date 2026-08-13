@@ -21,6 +21,7 @@ import {
 import { readPidFile, startDaemonServer } from "@sma1lboy/kobe-daemon/daemon/server"
 import { daemonRuntime } from "../core/daemon-runtime.ts"
 import { createKobeCore } from "../core/index.ts"
+import { LEGACY_KOBE_PRODUCT_NAME } from "../product.ts"
 
 function printDaemonUsage(out: Pick<typeof process.stderr, "write">): void {
   out.write(
@@ -130,7 +131,7 @@ export async function runDaemonSubcommand(argv: readonly string[]): Promise<void
     webStaticDir: process.env.KOBE_DAEMON_WEB_STATIC_DIR,
     // Plugin callbacks exec the packaged `kobe`, resolved on PATH at spawn
     // time; a dev checkout without one still runs, plugins just log ENOENT.
-    plugins: { binPath: "kobe" },
+    plugins: { binPath: LEGACY_KOBE_PRODUCT_NAME },
     onStop: async () => {
       await core.close()
     },

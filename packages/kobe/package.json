@@ -6,7 +6,8 @@
   "type": "module",
   "packageManager": "bun@1.3.13",
   "bin": {
-    "kobe": "dist/cli/index.js"
+    "kobe": "dist/cli/kobe.js",
+    "rove": "dist/cli/rove.js"
   },
   "files": ["dist/cli", "dist/web-ui", "dist/skills", "dist/*.wav", "README.md", "LICENSE"],
   "publishConfig": {
@@ -24,7 +25,8 @@
     "bun": ">=1.3.11"
   },
   "scripts": {
-    "dev": "KOBE_DEV=1 bun --conditions=browser ./src/cli/index.ts",
+    "dev": "KOBE_DEV=1 bun --conditions=browser ./src/cli/kobe.ts",
+    "dev:rove": "ROVE_DEV=1 bun --conditions=browser ./src/cli/rove.ts",
     "dev:mock": "KOBE_DEV=1 bun ./src/tui-react/mock/host.tsx",
     "dev:mock-react": "KOBE_DEV=1 bun ./src/tui-react/mock/host.tsx",
     "dev:mock-react-task-dialogs": "KOBE_DEV=1 bun ./src/tui-react/component/mock-dialogs-host.tsx",

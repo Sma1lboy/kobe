@@ -19,6 +19,7 @@
 import { createHash } from "node:crypto"
 import { homedir } from "node:os"
 import path from "node:path"
+import { COMPAT_STATE_DIR_BASENAME, readRoveEnv } from "../compat-env.ts"
 
 const KOBE_WORKTREE_ROOT_DIR = "worktrees"
 const REPO_LOCAL_KOBE_WORKTREE_ROOT_SUBPATH = ".kobe/worktrees"
@@ -29,7 +30,7 @@ const REPO_LOCAL_KOBE_MANAGED_WORKTREE_ROOT_SUBPATHS = [
 ] as const
 
 function kobeStateDir(): string {
-  return path.join(process.env.KOBE_HOME_DIR ?? homedir(), ".kobe")
+  return path.join(readRoveEnv("HOME_DIR") ?? homedir(), COMPAT_STATE_DIR_BASENAME)
 }
 
 function repoWorktreeDirName(repo: string): string {

@@ -91,7 +91,7 @@ function run(command: string, args: readonly string[], cwd: string = KOBE_DIR): 
 }
 
 function runKobe(args: readonly string[]): unknown {
-  const output = run("bun", ["--conditions=browser", "./src/cli/index.ts", "api", ...args])
+  const output = run("bun", ["--conditions=browser", "./src/cli/kobe.ts", "api", ...args])
   return JSON.parse(output) as unknown
 }
 

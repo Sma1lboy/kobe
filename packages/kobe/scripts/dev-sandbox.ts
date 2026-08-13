@@ -70,7 +70,7 @@ if (mode === "reset") {
   process.exit(0)
 }
 
-const args = [process.execPath, "--conditions=browser", "./src/cli/index.ts"]
+const args = [process.execPath, "--conditions=browser", "./src/cli/kobe.ts"]
 
 const child = Bun.spawn(args, {
   cwd: process.cwd(),

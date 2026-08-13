@@ -279,13 +279,12 @@ export async function testDaemonResponds(
  *
  * Four layouts are possible:
  *  - dev, pre-extraction: running from kobe source. `import.meta.url`
- *    points at `.../src/client/daemon-process.ts`; the cli entry sits at
- *    `../cli/index.ts` relative to it.
+ *    points at `.../src/client/daemon-process.ts`; the compatibility entry
+ *    sits at `../cli/kobe.ts` relative to it.
  *  - dev, daemon workspace: running from `packages/kobe-daemon` source.
  *    The cli entry sits in sibling workspace `packages/kobe/src/cli`.
- *  - npm package: daemon-process is bundled INTO `dist/cli/index.js`, so
- *    `import.meta.url` resolves there. `../cli/index.js` resolves back
- *    to the same bundled entry — bun re-executes itself against it.
+ *  - npm package: daemon-process is bundled into `dist/cli/kobe.js`, so
+ *    `import.meta.url` resolves there and the sibling wrapper is reused.
  *  - standalone: running a `bun build --compile` binary. `process.execPath`
  *    IS the kobe binary, so we re-exec it directly. After the kobed → kobe
  *    bin merge, no sibling lookup is needed.
@@ -297,6 +296,9 @@ export function resolveKobeSpawn(subcommand: readonly string[]): string[] {
   }
   const dir = dirname(here)
   const candidates = [
+    resolve(dir, "../cli/kobe.ts"),
+    resolve(dir, "../../../kobe/src/cli/kobe.ts"),
+    resolve(dir, "../cli/kobe.js"),
     resolve(dir, "../cli/index.ts"),
     resolve(dir, "../../../kobe/src/cli/index.ts"),
     resolve(dir, "../cli/index.js"),

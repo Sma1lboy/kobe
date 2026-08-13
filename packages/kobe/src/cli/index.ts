@@ -1,31 +1,6 @@
 #!/usr/bin/env bun
 import { resolve } from "node:path"
-/**
- * kobe CLI entry point (v0.6).
- *
- * Subcommands surface:
- *   - `kobe`                    Launch the terminal workspace.
- *   - `kobe completions <shell> Generate shell completion script (bash/zsh/fish).
- *   - `kobe add [path]`         Save a repo path for the new-task picker.
- *   - `kobe remove [path]`      Forget a saved project (inverse of `add`; non-destructive).
- *   - `kobe adopt [glob]`       Import existing git worktrees as tasks.
- *   - `kobe export [--csv]`     Print the task list (json/csv/table; daemon-free).
- *   - `kobe api <verb>`         Scriptable RPC surface for agents (fan-out).
- *   - `kobe daemon <verb>`      Manage the long-lived daemon (start / stop / status / restart).
- *   - `kobe theme <verb>`       Manage user themes.
- *   - `kobe feedback`           Send feedback to GitHub Discussions.
- *   - `kobe update [target]`    Self-update (when packaged).
- *   - `kobe --version` / `-v`   Print version.
- *   - `kobe --help` / `-h`      Print usage.
- *
- * An unrecognized subcommand prints usage and exits non-zero (it does
- * NOT fall through to launching the TUI).
- *
- * `hook` is fired by an engine's own hooks inside a worktree to report
- * activity events.
- *
- * `kobe api send` delivers through the hosted PTY session controller.
- */
+/** Shared kobe/rove CLI entry. Unknown commands print usage instead of TUI. */
 import { errorMessage } from "@/lib/error-message"
 import { matchPathGlob } from "../lib/path-glob.ts"
 import { expandTilde } from "../lib/path-home.ts"
@@ -34,13 +9,20 @@ import type { AdoptableWorktree } from "../types/worktree.ts"
 // Static: open-dir-cmd's own imports are cheap (node builtins); the heavy
 // orchestrator/TUI imports stay dynamic inside runOpenDirectory itself.
 import { isPathLikeArg, runOpenDirectory } from "./open-dir-cmd.ts"
+import { activeCliName, prepareCliEnvironment } from "./rename-compat.ts"
 import { topLevelUsage } from "./usage.ts"
 
-const ADD_USAGE =
-  "Usage: kobe add [path]\n" +
-  "       kobe add --remote --host <host> --user <user> --path <basePath> [--port N] [--key <path> | --password]\n\n" +
-  "Save a repo for the new-task picker. With --remote, register an SSH-backed\n" +
-  "project whose worktrees + engine run on <host> under <basePath>.\n"
+prepareCliEnvironment()
+const CLI_NAME = activeCliName()
+
+const ADD_USAGE = [
+  `Usage: ${CLI_NAME} add [path]`,
+  `       ${CLI_NAME} add --remote --host <host> --user <user> --path <basePath> [--port N] [--key <path> | --password]`,
+  "",
+  "Save a repo for the new-task picker. With --remote, register an SSH-backed",
+  "project whose worktrees + engine run on <host> under <basePath>.",
+  "",
+].join("\n")
 
 async function runAddSubcommand(rest: readonly string[]): Promise<void> {
   const arg = rest[0]
@@ -54,7 +36,7 @@ async function runAddSubcommand(rest: readonly string[]): Promise<void> {
     return
   }
   if (arg?.startsWith("-")) {
-    process.stderr.write(`kobe add: unknown flag "${arg}"\n\n${ADD_USAGE}`)
+    process.stderr.write(`${CLI_NAME} add: unknown flag "${arg}"\n\n${ADD_USAGE}`)
     process.exit(2)
   }
   const target = resolve(process.cwd(), expandTilde(arg && arg.length > 0 ? arg : "."))
@@ -64,7 +46,7 @@ async function runAddSubcommand(rest: readonly string[]): Promise<void> {
   // they pollute the picker and become un-deletable synthetic rows.
   if (!isGitRepo(target)) {
     process.stderr.write(
-      `kobe add: "${arg && arg.length > 0 ? arg : "."}" is not a git repository (resolved to ${target}).\n`,
+      `${CLI_NAME} add: "${arg && arg.length > 0 ? arg : "."}" is not a git repository (resolved to ${target}).\n`,
     )
     process.exit(1)
   }
@@ -105,14 +87,18 @@ async function ensureProjectMainTask(repo: string): Promise<void> {
   }
 }
 
-const REMOVE_USAGE =
-  "Usage: kobe remove [path]\n\n" +
-  "Forget a saved project (drop it from the new-task picker). Non-destructive:\n" +
-  "the repo's files, worktrees, branches and tasks all stay on disk. A remote\n" +
-  "(ssh://) project also has its stored connection config dropped.\n\n" +
-  "  path defaults to the current directory. Pass an exact saved entry (e.g. a\n" +
-  "  remote `ssh://user@host` key) to remove it verbatim. Run with no match to\n" +
-  "  print the current saved projects.\n"
+const REMOVE_USAGE = [
+  `Usage: ${CLI_NAME} remove [path]`,
+  "",
+  "Forget a saved project (drop it from the new-task picker). Non-destructive:",
+  "the repo's files, worktrees, branches and tasks all stay on disk. A remote",
+  "(ssh://) project also has its stored connection config dropped.",
+  "",
+  "  path defaults to the current directory. Pass an exact saved entry (e.g. a",
+  "  remote `ssh://user@host` key) to remove it verbatim. Run with no match to",
+  "  print the current saved projects.",
+  "",
+].join("\n")
 
 /**
  * `kobe remove [path]` — the inverse of `kobe add`: forget a saved project.
@@ -132,7 +118,7 @@ async function runRemoveSubcommand(rest: readonly string[]): Promise<void> {
     return
   }
   if (arg?.startsWith("-")) {
-    process.stderr.write(`kobe remove: unknown flag "${arg}"\n\n${REMOVE_USAGE}`)
+    process.stderr.write(`${CLI_NAME} remove: unknown flag "${arg}"\n\n${REMOVE_USAGE}`)
     process.exit(2)
   }
   const { getSavedRepos, resolveRepoRoot } = await import("../state/repos.ts")
@@ -154,7 +140,7 @@ async function runRemoveSubcommand(rest: readonly string[]): Promise<void> {
         return null
       })()
   if (target === null) {
-    process.stderr.write(`kobe remove: "${raw}" is not a saved project.\n\nSaved projects:\n`)
+    process.stderr.write(`${CLI_NAME} remove: "${raw}" is not a saved project.\n\nSaved projects:\n`)
     for (const p of saved) process.stderr.write(`  ${p}\n`)
     process.exit(1)
   }
@@ -256,9 +242,9 @@ async function adoptWorktreesInto(
  * sees the new tasks live.
  */
 const ADOPT_USAGE = [
-  "Usage: kobe adopt [glob] [--repo <path>] [--vendor <v>] [--yes]",
+  `Usage: ${CLI_NAME} adopt [glob] [--repo <path>] [--vendor <v>] [--yes]`,
   "",
-  "Import existing git worktrees in a repo as kobe tasks.",
+  `Import existing git worktrees in a repo as ${CLI_NAME} tasks.`,
   "No glob → dry-run listing. With a glob → list matches; --yes adopts them.",
   "",
   "Options:",
@@ -270,7 +256,7 @@ const ADOPT_USAGE = [
 ].join("\n")
 
 function adoptUsageError(message: string): never {
-  process.stderr.write(`kobe adopt: ${message}\n\n${ADOPT_USAGE}\n`)
+  process.stderr.write(`${CLI_NAME} adopt: ${message}\n\n${ADOPT_USAGE}\n`)
   process.exit(2)
 }
 
@@ -326,7 +312,7 @@ async function runAdoptSubcommand(args: readonly string[]): Promise<void> {
   }
 
   if (!glob) {
-    console.log(`\npass a path glob to adopt, e.g.  kobe adopt '${repo}/*' --yes`)
+    console.log(`\npass a path glob to adopt, e.g.  ${CLI_NAME} adopt '${repo}/*' --yes`)
     return
   }
   const matched = worktrees.filter(isMatch)
@@ -352,7 +338,7 @@ async function main(): Promise<void> {
 
   if (subcommand === "--version" || subcommand === "-v" || subcommand === "version") {
     const { CURRENT_VERSION } = await import("../version.ts")
-    console.log(`kobe ${CURRENT_VERSION}`)
+    console.log(`${CLI_NAME} ${CURRENT_VERSION}`)
     return
   }
   if (subcommand === "--help" || subcommand === "-h" || subcommand === "help") {
@@ -477,7 +463,7 @@ async function main(): Promise<void> {
   // like `kobe statsu` should print usage and exit non-zero, not silently
   // open the project. Only a bare `kobe` (no subcommand) launches the TUI.
   if (subcommand !== undefined) {
-    console.error(`kobe: unknown command '${subcommand}'`)
+    console.error(`${CLI_NAME}: unknown command '${subcommand}'`)
     printTopLevelUsage(process.stderr)
     process.exit(2)
   }
@@ -499,6 +485,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err) => {
-  console.error("kobe failed to start:", process.env.KOBE_DEBUG === "1" ? err : errorMessage(err))
+  console.error(`${CLI_NAME} failed to start:`, process.env.KOBE_DEBUG === "1" ? err : errorMessage(err))
   process.exit(1)
 })

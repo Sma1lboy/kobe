@@ -27,6 +27,7 @@ import {
   removePluginEntry,
   savePluginRegistry,
 } from "@sma1lboy/kobe-daemon/plugins/registry"
+import { LEGACY_KOBE_PRODUCT_NAME } from "../product.ts"
 import { PluginCliError, installPlugin, linkPlugin } from "./plugin-install.ts"
 
 function printUsage(out: NodeJS.WriteStream): void {
@@ -151,7 +152,7 @@ function invokeAction(qualified: string, extraArgs: string[]): void {
     stdio: "inherit",
     env: buildPluginEnv({
       socketPath: defaultDaemonSocketPath(),
-      binPath: "kobe",
+      binPath: LEGACY_KOBE_PRODUCT_NAME,
       pluginId: hit.entry.id,
       pluginRoot: hit.entry.root,
       extra: { KOBE_PLUGIN_ACTION_ID: hit.action.id, KOBE_PLUGIN_INVOKE_CWD: process.cwd() },
@@ -183,7 +184,7 @@ async function openPane(pluginId: string, entrypoint: string, taskFlag: string |
   // one `sh -lc` script, env contract riding an `env` prefix, cwd = worktree.
   const argv = buildPaneArgv(loaded.entry.id, loaded.entry.root, pane, {
     socketPath: defaultDaemonSocketPath(),
-    binPath: "kobe",
+    binPath: LEGACY_KOBE_PRODUCT_NAME,
   })
 
   const { openDaemonSession } = await import("./daemon-session.ts")

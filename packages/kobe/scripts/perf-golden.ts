@@ -69,7 +69,7 @@ function record(metric: keyof typeof GOLDEN, value: number, unit: string): void 
   const runs: number[] = []
   for (let i = 0; i < 3; i++) {
     const t0 = performance.now()
-    Bun.spawnSync(["bun", join(PKG_ROOT, "src/cli/index.ts"), "--version"], { stdout: "ignore", stderr: "ignore" })
+    Bun.spawnSync(["bun", join(PKG_ROOT, "src/cli/kobe.ts"), "--version"], { stdout: "ignore", stderr: "ignore" })
     runs.push(performance.now() - t0)
   }
   record("cli-startup-ms", median(runs), "ms")

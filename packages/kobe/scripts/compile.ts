@@ -35,7 +35,7 @@ mkdirSync(OUT_DIR, { recursive: true })
 
 const outfile = `${OUT_DIR}/kobe`
 const result = await Bun.build({
-  entrypoints: ["./src/cli/index.ts"],
+  entrypoints: ["./src/cli/kobe.ts"],
   conditions: ["browser"],
   external: ["node-pty"],
   minify: true,
