@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.87
+
+### Patch Changes
+
+- 489884a: Make Rove the product name across the CLI, TUI, web dashboard, docs, website, agent skill, and generated brand assets while preserving the `kobe` command, packages, state paths, protocol fields, and plugin contracts for compatibility.
+
 ## 0.8.86
 
 ### Patch Changes
