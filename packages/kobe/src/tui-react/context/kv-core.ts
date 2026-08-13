@@ -64,7 +64,7 @@ export function createKvCore(): KvCore {
       dirtyKeys.clear()
       return true
     } catch (err) {
-      console.error(`[kobe] kv ${label} failed:`, err)
+      console.error(`[rove] kv ${label} failed:`, err)
       return false
     }
   }
@@ -110,7 +110,7 @@ export function createKvCore(): KvCore {
       try {
         replaceStateFile({})
       } catch (err) {
-        console.error("[kobe] kv clear write failed:", err)
+        console.error("[rove] kv clear write failed:", err)
       }
     },
   }

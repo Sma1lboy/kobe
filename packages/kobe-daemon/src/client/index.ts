@@ -322,7 +322,7 @@ export class KobeDaemonClient implements DaemonRpcClient {
       } catch (err) {
         // One bad listener mustn't take the rest down.
         // eslint-disable-next-line no-console
-        console.error(`[kobe] lifecycle handler for "${name}" threw:`, err)
+        console.error(`[rove] lifecycle handler for "${name}" threw:`, err)
       }
     }
   }

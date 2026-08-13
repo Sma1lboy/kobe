@@ -1,17 +1,17 @@
-# kobe design
+# Rove design
 
 ## Mission
 
 Give one developer a terminal-native control plane for many parallel AI coding
 tasks. Conductor is the layout reference—task rail, workspace, files/diffs,
-status—but kobe is local-first and runs the real interactive engine CLIs.
+status—but Rove is local-first and runs the real interactive engine CLIs.
 
 ## Principles
 
 ### 1. Engine CLIs are products
 
 Claude Code, Codex, Copilot CLI, and custom engines own authentication,
-prompts, approvals, rendering, and model execution. Kobe embeds their real
+prompts, approvals, rendering, and model execution. Rove embeds their real
 interactive interfaces in Hosted PTYs; it does not re-render model streams or
 call raw model APIs.
 
@@ -42,12 +42,12 @@ There is one session backend and one launch behavior.
 ### 4. State stays with its natural owner
 
 Engine conversation history stays in engine-owned files. Git state stays in
-git. Kobe persists only its Task index and UI/settings manifest. Do not copy
+git. Rove persists only its Task index and UI/settings manifest. Do not copy
 derivable engine or repository state into a second database.
 
 ### 5. Terminal-native is a feature
 
-Kobe composes with shell tools, SSH, `git`, `gh`, and `jq`. It accepts the
+Rove composes with shell tools, SSH, `git`, `gh`, and `jq`. It accepts the
 terminal's visual constraints. Fundamentally graphical work should open an
 external application rather than grow a poor terminal imitation.
 

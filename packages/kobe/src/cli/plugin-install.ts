@@ -53,7 +53,7 @@ function readManifestAt(root: string): ParsedPluginManifest {
 function checkVersionGate(parsed: ParsedPluginManifest): void {
   const min = parsed.manifest.minKobeVersion
   if (compareSemver(CURRENT_VERSION, min) < 0) {
-    fail(`plugin requires kobe >= ${min} (this is ${CURRENT_VERSION}); update kobe first`)
+    fail(`plugin requires Rove >= ${min} (this is ${CURRENT_VERSION}); update Rove first`)
   }
 }
 

@@ -20,7 +20,7 @@ export async function runPtyHostSubcommand(_argv: readonly string[]): Promise<vo
     // Idle-exit path: the server already closed itself; just end the process.
     onStop: () => process.exit(0),
   })
-  console.log(`kobe pty-host: listening on ${server.socketPath}`)
+  console.log(`rove pty-host: listening on ${server.socketPath}`)
 
   const shutdown = async () => {
     await server.close()

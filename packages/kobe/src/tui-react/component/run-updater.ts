@@ -36,11 +36,11 @@ export async function runShellUpdater(opts: {
   command: string
 }): Promise<never> {
   opts.renderer?.destroy()
-  process.stdout.write(`\nkobe ${CURRENT_VERSION} -> ${opts.targetLabel}\n`)
+  process.stdout.write(`\nrove ${CURRENT_VERSION} -> ${opts.targetLabel}\n`)
   process.stdout.write(`running: ${opts.command}\n\n`)
   const result = spawnSync("sh", ["-c", opts.command], { stdio: "inherit" })
   const code = result.status ?? (result.error ? 1 : 0)
-  if (result.error) process.stderr.write(`\nkobe update: failed to start updater: ${result.error.message}\n`)
+  if (result.error) process.stderr.write(`\nrove update: failed to start updater: ${result.error.message}\n`)
   process.stdout.write(
     code === 0
       ? `\n${opts.t("update.updateComplete")}\n`

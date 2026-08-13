@@ -1,20 +1,20 @@
-# kobe — branding
+# Rove — branding
 
-Animated logo concepts for kobe, built in [Remotion](https://www.remotion.dev/). Four directions, all
+Animated logo concepts for Rove, built in [Remotion](https://www.remotion.dev/). Four directions, all
 drawn from the project's actual aesthetic: terminal-first, agent-deck-style brackets / BOLD CAPS,
 tokyonight palette, multi-pane orchestration as the product story.
 
-> kobe is a codename — when the product gets a real name, the wordmark swaps; the *grammar* of each
-> concept (bracket chip, pane grid, parallel streams, K-glyph) survives the rename.
+> The repository keeps its `kobe` package and path identifiers for compatibility;
+> rendered wordmarks and product copy use Rove.
 
 ## Concepts
 
 | id | concept | what it sells |
 |---|---|---|
-| `bracket-chip` | `[ kobe| ]` typing in with a blinking cursor | The agent-deck `[Tab] label` hotkey grammar that runs through the whole TUI. Reads as "press me." |
+| `bracket-chip` | `[ rove| ]` typing in with a blinking cursor | The agent-deck `[Tab] label` hotkey grammar that runs through the whole TUI. Reads as "press me." |
 | `pane-grid` | The 5-pane TUI draws itself, wordmark settles into the workspace | The literal product. If the pitch is "Conductor-shaped 5-pane TUI for Claude Code," show it. |
 | `task-streams` | Three parallel `● task-N ────►` lanes converging into the wordmark | The multi-task / orchestration value prop — many sessions in flight, one place to drive them. |
-| `glyph-k` | A bold "K" assembled from terminal box-drawing chars, pulsing | Square app-icon shape. Works as favicon / dock tile / GitHub social card. |
+| `glyph-k` | A bold "R" assembled from terminal pixels, pulsing | Square app-icon shape. Works as favicon / dock tile / GitHub social card. The composition id stays stable for scripts. |
 
 All four use the tokyonight palette (`src/colors.ts`) so the assets stay consistent with the running TUI's default theme.
 
@@ -83,5 +83,5 @@ branding/
 ```
 
 The branding subproject has its own `package.json`, `tsconfig.json`, and `node_modules` so it stays
-isolated from the main kobe build (vitest only scans `test/**`, root tsconfig only includes
+isolated from the main Rove build (vitest only scans `test/**`, root tsconfig only includes
 `src/**` + `test/**`).

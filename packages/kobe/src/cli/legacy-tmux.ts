@@ -161,7 +161,7 @@ export function legacyTmuxDoctorLines(report: LegacyTmuxReport, socket: string =
   for (const [command, item] of [...grouped].sort((a, b) => b[1].rssKb - a[1].rssKb)) {
     lines.push(`             ${command}: ${item.count} proc, ${(item.rssKb / 1024).toFixed(1)} MB`)
   }
-  lines.push("             → run `kobe reset` to stop this retired runtime safely")
+  lines.push("             → run `rove reset` to stop this retired runtime safely")
   return lines
 }
 

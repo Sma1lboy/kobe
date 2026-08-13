@@ -164,7 +164,7 @@ export function useTabDialogs(deps: {
       // offered in the default combo (the dialog filters otherwise).
       let panes: PaneLaunch[] = []
       try {
-        panes = listPaneLaunches({ socketPath: defaultDaemonSocketPath(), binPath: "kobe" })
+        panes = listPaneLaunches({ socketPath: defaultDaemonSocketPath(), binPath: "rove" })
       } catch {
         /* registry unreadable → engines only */
       }

@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>kobe — the agent multiplexer in your shell</title>
+<title>Rove — the agent multiplexer in your shell</title>
 <link rel="icon" href="/assets/favicon.png" type="image/png">
 <link rel="apple-touch-icon" href="/assets/favicon.png">
-<meta name="description" content="kobe is a local-first TUI for graph engineering: run many AI coding agents as a graph of isolated attempts — git worktrees, hosted engine sessions, explicit reports — and merge the winner.">
+<meta name="description" content="Rove is a local-first TUI for graph engineering: run many AI coding agents as a graph of isolated attempts — git worktrees, hosted engine sessions, explicit reports — and merge the winner.">
 <link rel="canonical" href="https://kobe.sma1lboy.me/">
-<meta property="og:title" content="kobe — the agent multiplexer in your shell">
+<meta property="og:title" content="Rove — the agent multiplexer in your shell">
 <meta property="og:description" content="Run many AI coding agents as a graph of isolated attempts — git worktrees, hosted engine sessions, explicit reports — and merge the winner.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://kobe.sma1lboy.me/">
@@ -93,7 +93,7 @@ h1{font-family:var(--font-display);font-optical-sizing:auto;font-size:clamp(44px
 .rise{opacity:0;transform:translateY(20px);animation:rise .85s var(--ease-out) forwards}
 @keyframes rise{to{opacity:1;transform:none}}
 
-/* quicklook video — floats over the hero fade */
+/* quicklook animation — floats over the hero fade */
 .quicklook{position:relative;z-index:2;max-width:980px;margin:54px auto 0;padding:0 20px}
 .ql-frame{border-radius:var(--radius-lg);overflow:hidden;background:var(--well);box-shadow:0 40px 90px oklch(35% 0.04 60/.3);border:1px solid oklch(32% 0.024 50)}
 .tbar{display:flex;align-items:center;gap:8px;padding:11px 18px;background:linear-gradient(180deg,oklch(30% 0.022 50),var(--well-2));font-family:var(--font-mono);font-size:11px;color:oklch(68% 0.035 60);border-bottom:1px solid oklch(19% 0.018 50);box-shadow:inset 0 1px 0 oklch(90% 0.04 70/.08)}
@@ -102,7 +102,7 @@ h1{font-family:var(--font-display);font-optical-sizing:auto;font-size:clamp(44px
 .tbar i.y{background:oklch(78% 0.13 85)}
 .tbar i.g{background:oklch(72% 0.14 145)}
 .tbar span{margin-left:8px;letter-spacing:.04em}
-.ql-frame video{display:block;width:100%}
+.ql-frame img{display:block;width:100%}
 .equation{display:flex;justify-content:center;margin-top:26px}
 .equation-inner{display:inline-flex;align-items:center;gap:9px;flex-wrap:wrap;justify-content:center;font-family:var(--font-mono);font-size:12.5px;color:var(--muted);background:oklch(100% 0 0/.55);border:1px solid oklch(100% 0 0/.85);backdrop-filter:blur(12px);border-radius:999px;padding:8px 10px 8px 18px;box-shadow:0 10px 30px oklch(40% 0.04 60/.12)}
 .equation .chip{background:var(--accent-wash);border:1px solid oklch(62% 0.13 45/.22);border-radius:999px;padding:5px 13px;color:oklch(46% 0.11 45)}
@@ -167,7 +167,7 @@ h1{font-family:var(--font-display);font-optical-sizing:auto;font-size:clamp(44px
 <!-- NAV · terminal command in a glass pill -->
 <header class="navbar">
   <span class="ps">$</span>
-  <a class="bin" href="/">kobe</a>
+  <a class="bin" href="/">Rove</a>
   <a class="nl" href="#workflow" data-i18n="nav.workflow">--primitives</a>
   <a class="nl" href="#install" data-i18n="nav.install">--install</a>
   <a class="nl" href="/plugins" data-i18n="nav.plugins">--plugins</a>
@@ -192,7 +192,7 @@ h1{font-family:var(--font-display);font-optical-sizing:auto;font-size:clamp(44px
   <div class="hero-inner">
     <p class="hero-kicker rise" style="animation-delay:.08s" data-i18n-html="hero.kicker">prompt engineering → context engineering → <span class="acc">graph engineering</span></p>
     <h1 class="rise" style="animation-delay:.2s" data-i18n-html="hero.title">The agent <span class="acc">multiplexer</span> in your shell.</h1>
-    <p class="hero-sub rise" style="animation-delay:.34s" data-i18n="hero.sub">One agent is a conversation. Five at once are a graph: nodes are isolated attempts — git worktree + engine session + branch — edges are dependencies, and the gates are your judgment. kobe is the terminal-native runtime for that graph.</p>
+    <p class="hero-sub rise" style="animation-delay:.34s" data-i18n="hero.sub">One agent is a conversation. Five at once are a graph: nodes are isolated attempts — git worktree + engine session + branch — edges are dependencies, and the gates are your judgment. Rove is the terminal-native runtime for that graph.</p>
     <div class="hero-row rise" style="animation-delay:.48s">
       <button id="copyBtn" class="copy-cmd">
         <span class="ps">$</span>
@@ -206,8 +206,8 @@ h1{font-family:var(--font-display);font-optical-sizing:auto;font-size:clamp(44px
 
   <div class="quicklook rise" style="animation-delay:.7s">
     <figure class="ql-frame">
-      <div class="tbar" aria-hidden="true"><i class="r"></i><i class="y"></i><i class="g"></i><span>kobe — quick look</span></div>
-      <video src="assets/quicklook.mp4" poster="assets/quicklook-poster.jpg" autoplay muted loop playsinline preload="metadata" fetchpriority="high" aria-label="kobe quick look — driving parallel coding tasks from the terminal"></video>
+      <div class="tbar" aria-hidden="true"><i class="r"></i><i class="y"></i><i class="g"></i><span>Rove — quick look</span></div>
+      <img src="assets/task-streams.gif" fetchpriority="high" alt="Rove quick look — three isolated coding tasks progressing in parallel">
     </figure>
     <div class="equation">
       <div class="equation-inner">
@@ -229,7 +229,7 @@ h1{font-family:var(--font-display);font-optical-sizing:auto;font-size:clamp(44px
     <div class="stage-txt">
       <span class="stage-no" data-i18n="s1.no">1.0 · FAN OUT</span>
       <h2 data-i18n="s1.title">One prompt becomes N isolated attempts.</h2>
-      <p data-i18n="s1.body">Fan-out is the first primitive, and isolation is the point. kobe spawns every attempt in its own git worktree on its own branch, running whichever engine you point it at — claude, codex, copilot, kimi, or your own command. Independent nodes, no shared state, no agents stepping on each other's files.</p>
+      <p data-i18n="s1.body">Fan-out is the first primitive, and isolation is the point. Rove spawns every attempt in its own git worktree on its own branch, running whichever engine you point it at — claude, codex, copilot, kimi, or your own command. Independent nodes, no shared state, no agents stepping on each other's files.</p>
       <div class="engine-pills" id="enginePills">
         <button class="engine-pill" data-engine="claude" data-active="true">claude</button>
         <button class="engine-pill" data-engine="codex" data-active="false">codex</button>
@@ -240,7 +240,7 @@ h1{font-family:var(--font-display);font-optical-sizing:auto;font-size:clamp(44px
     </div>
     <div class="stage-vis">
       <figure class="term-frame"><div class="tbar" aria-hidden="true"><i class="r"></i><i class="y"></i><i class="g"></i><span>fan-out</span></div>
-      <pre class="term-out"><span class="ps">$</span> kobe api fan-out --prompt <span class="a">"simplify auth"</span> \
+      <pre class="term-out"><span class="ps">$</span> rove api fan-out --prompt <span class="a">"simplify auth"</span> \
     --vendor <span id="fanEngineName">claude</span> --count 3
 <span class="ok">✓</span> 3 worktrees · 3 branches · 3 sessions
 <span id="fanLines"></span></pre></figure>
@@ -251,14 +251,14 @@ h1{font-family:var(--font-display);font-optical-sizing:auto;font-size:clamp(44px
     <div class="stage-txt">
       <span class="stage-no" data-i18n="s2.no">2.0 · SUPERVISE</span>
       <h2 data-i18n="s2.title">Silence is not a status. Attempts report.</h2>
-      <p data-i18n="s2.body">In a fleet of terminals, a quiet agent could be thinking or could be dead. So in kobe every attempt ends by reporting an explicit outcome — succeeded or failed — and an orchestrating agent can block until the whole fleet resolves. Agents orchestrating agents, with real completion semantics.</p>
+      <p data-i18n="s2.body">In a fleet of terminals, a quiet agent could be thinking or could be dead. So in Rove every attempt ends by reporting an explicit outcome — succeeded or failed — and an orchestrating agent can block until the whole fleet resolves. Agents orchestrating agents, with real completion semantics.</p>
     </div>
     <div class="stage-vis">
       <figure class="term-frame"><div class="tbar" aria-hidden="true"><i class="r"></i><i class="y"></i><i class="g"></i><span>report · await</span></div>
       <pre class="term-out"><span class="d"># inside an attempt, as its last act</span>
-<span class="ps">$</span> kobe api report --outcome succeeded
+<span class="ps">$</span> rove api report --outcome succeeded
 <span class="d"># in your orchestrator</span>
-<span class="ps">$</span> kobe api await --task-ids a,b,c
+<span class="ps">$</span> rove api await --task-ids a,b,c
 <span class="ok">✓</span> a succeeded  <span class="ok">✓</span> b succeeded  <span class="del">✗</span> c failed</pre></figure>
     </div>
   </article>
@@ -267,7 +267,7 @@ h1{font-family:var(--font-display);font-optical-sizing:auto;font-size:clamp(44px
     <div class="stage-txt">
       <span class="stage-no" data-i18n="s3.no">3.0 · OBSERVE</span>
       <h2 data-i18n="s3.title">Read the session, never scrape the screen.</h2>
-      <p data-i18n="s3.body">kobe reads each engine's own session data — history, tokens, context — instead of scraping terminal text. And every session lives in a hosted PTY behind the daemon, on the machine where your code lives: quit the TUI, drop SSH, the graph keeps running. Reattach from anywhere.</p>
+      <p data-i18n="s3.body">Rove reads each engine's own session data — history, tokens, context — instead of scraping terminal text. And every session lives in a hosted PTY behind the daemon, on the machine where your code lives: quit the TUI, drop SSH, the graph keeps running. Reattach from anywhere.</p>
       <p data-i18n="s3.body2">And it's your real machine: real dependencies, services, credentials, build cache. What passes for the agent passes for you.</p>
     </div>
     <div class="stage-vis">
@@ -275,7 +275,7 @@ h1{font-family:var(--font-display);font-optical-sizing:auto;font-size:clamp(44px
       <pre class="term-out"><span class="ps">$</span> exit
 <span class="d">Connection to devbox closed.</span>
 <span class="d">▸ 41 minutes later, from anywhere</span>
-<span class="ps">$</span> ssh devbox && kobe
+<span class="ps">$</span> ssh devbox && rove
 <span class="ok">●</span> 3 sessions live · running 41m
 <span class="d">  attached — right where you left off</span></pre></figure>
     </div>
@@ -289,11 +289,11 @@ h1{font-family:var(--font-display);font-optical-sizing:auto;font-size:clamp(44px
     </div>
     <div class="stage-vis">
       <figure class="term-frame"><div class="tbar" aria-hidden="true"><i class="r"></i><i class="y"></i><i class="g"></i><span>collect · land</span></div>
-      <pre class="term-out"><span class="ps">$</span> kobe api collect --task-ids a,b,c
+      <pre class="term-out"><span class="ps">$</span> rove api collect --task-ids a,b,c
 a  <span class="ok">+118</span> <span class="del">−204</span> · 6 files
 b  <span class="ok">+301</span> <span class="del">−12</span>  · 14 files
 c  <span class="ok">+96</span>  <span class="del">−88</span>  · 5 files
-<span class="ps">$</span> kobe api land --task-id a
+<span class="ps">$</span> rove api land --task-id a
 <span class="ok">✓</span> kobe/simplify-auth-a <span class="ok">merged to main</span>
 <span class="d">○ b archived   ○ c archived</span></pre></figure>
     </div>
@@ -309,7 +309,7 @@ c  <span class="ok">+96</span>  <span class="del">−88</span>  · 5 files
     <figure class="term-frame install-term"><div class="tbar" aria-hidden="true"><i class="r"></i><i class="y"></i><i class="g"></i><span>install</span></div>
     <pre class="term-out"><span class="ps">$</span> bun install -g @sma1lboy/kobe
 <span class="ps">$</span> ssh devbox && cd repo
-<span class="ps">$</span> kobe
+<span class="ps">$</span> rove
 <span class="d">3 attempts running. Go do something else.</span></pre></figure>
     <div class="install-actions">
       <a class="btn-primary" href="https://www.npmjs.com/package/@sma1lboy/kobe" data-i18n="install.npm">Install from npm ↗</a>
@@ -329,7 +329,7 @@ c  <span class="ok">+96</span>  <span class="del">−88</span>  · 5 files
 
 <!-- FOOTER · dense colophon -->
 <footer class="foot-dense">
-  <p><span class="mark">[kobe]</span> — <span data-i18n="footer.tagline">graph engineering for coding agents, terminal-native.</span> <span data-i18n="footer.colophon">Built with Bun, OpenTUI and React. Set in Fraunces, DM Sans and JetBrains Mono. MIT licensed.</span> <a href="https://github.com/Sma1lboy/kobe">GitHub</a> · <a href="https://www.npmjs.com/package/@sma1lboy/kobe">npm</a> · <a href="/plugins" data-i18n="footer.plugins">plugins</a> · <a href="/changelog" data-i18n="footer.changelog">changelog</a> · <a href="https://github.com/Sma1lboy/kobe/blob/main/docs/KEYBINDINGS.md" data-i18n="footer.keybindings">keybindings</a></p>
+  <p><span class="mark">[Rove]</span> — <span data-i18n="footer.tagline">graph engineering for coding agents, terminal-native.</span> <span data-i18n="footer.colophon">Built with Bun, OpenTUI and React. Set in Fraunces, DM Sans and JetBrains Mono. MIT licensed.</span> <a href="https://github.com/Sma1lboy/kobe">GitHub</a> · <a href="https://www.npmjs.com/package/@sma1lboy/kobe">npm</a> · <a href="/plugins" data-i18n="footer.plugins">plugins</a> · <a href="/changelog" data-i18n="footer.changelog">changelog</a> · <a href="https://github.com/Sma1lboy/kobe/blob/main/docs/KEYBINDINGS.md" data-i18n="footer.keybindings">keybindings</a></p>
 </footer>
 
 <script>
@@ -337,23 +337,23 @@ c  <span class="ok">+96</span>  <span class="del">−88</span>  · 5 files
   // (commands, branch names, TUI chrome) deliberately stays English.
   var KOBE_I18N = (function () {
     var zh = {
-      'meta.title': 'kobe — 把编码代理跑成一张图，终端原生',
-      'meta.desc': 'kobe 是本地优先的图工程 TUI：把多个 AI 编码代理跑成一张由隔离尝试组成的图——git worktree、托管引擎会话、显式结果上报——最后合入赢家。',
+      'meta.title': 'Rove — 把编码代理跑成一张图，终端原生',
+      'meta.desc': 'Rove 是本地优先的图工程 TUI：把多个 AI 编码代理跑成一张由隔离尝试组成的图——git worktree、托管引擎会话、显式结果上报——最后合入赢家。',
       'nav.workflow': '--原语', 'nav.install': '--安装', 'nav.plugins': '--插件', 'nav.themes': '--主题', 'nav.changelog': '--更新日志',
       'hero.kicker': '提示词工程 → 上下文工程 → <span class="acc">图工程</span>',
       'hero.title': '装在你 shell 里的 agent <span class="acc">多路复用器</span>。',
-      'hero.sub': '一个代理是一场对话，五个同时跑就是一张图：节点是隔离的尝试——git worktree + 引擎会话 + 分支——边是依赖，门是你的判断。kobe 是这张图的终端原生运行时。',
+      'hero.sub': '一个代理是一场对话，五个同时跑就是一张图：节点是隔离的尝试——git worktree + 引擎会话 + 分支——边是依赖，门是你的判断。Rove 是这张图的终端原生运行时。',
       'hero.getStarted': '快速上手 ↗',
       'hero.requirements': '支持 macOS 和 Linux（Windows 走 WSL）。需要 Bun ≥ 1.3.11，以及 PATH 上任意一个引擎 CLI。',
       'copy.hint': '点击复制', 'copy.done': '✓ 已复制',
       'workspace.equation': '一个节点 =', 'workspace.sessions': '托管引擎会话',
       's1.no': '1.0 · 扇出', 's1.title': '一条 prompt 变成 N 个隔离的尝试。',
-      's1.body': '扇出是第一个原语，而隔离正是重点。kobe 为每个尝试建独立的 git worktree 和分支，运行你指定的引擎——claude、codex、copilot、kimi，或你自己的命令。独立节点，没有共享状态，代理之间互不碰文件。',
+      's1.body': '扇出是第一个原语，而隔离正是重点。Rove 为每个尝试建独立的 git worktree 和分支，运行你指定的引擎——claude、codex、copilot、kimi，或你自己的命令。独立节点，没有共享状态，代理之间互不碰文件。',
       's1.ownCmd': '你自己的命令',
       's2.no': '2.0 · 监督', 's2.title': '沉默不是一种状态。尝试要报告。',
-      's2.body': '在一排终端机群里，安静的代理可能在思考，也可能已经挂了。所以在 kobe 里，每个尝试结束时都显式上报结果——succeeded 或 failed——编排代理可以阻塞等待整批尝试出结果。代理编排代理，有真正的完成语义。',
+      's2.body': '在一排终端机群里，安静的代理可能在思考，也可能已经挂了。所以在 Rove 里，每个尝试结束时都显式上报结果——succeeded 或 failed——编排代理可以阻塞等待整批尝试出结果。代理编排代理，有真正的完成语义。',
       's3.no': '3.0 · 观察', 's3.title': '读会话本身，不刮终端屏幕。',
-      's3.body': 'kobe 直接读每个引擎自己的会话数据——历史、token、上下文——而不是抓取终端文本。每个会话都运行在代码所在机器的 Hosted PTY 里、由 daemon 托管：退出 TUI、断开 SSH，这张图继续跑。从任何地方重新接上。',
+      's3.body': 'Rove 直接读每个引擎自己的会话数据——历史、token、上下文——而不是抓取终端文本。每个会话都运行在代码所在机器的 Hosted PTY 里、由 daemon 托管：退出 TUI、断开 SSH，这张图继续跑。从任何地方重新接上。',
       's3.body2': '而且是你的真实机器：真实的依赖、服务、凭证和构建缓存。代理跑通的对你也跑通。',
       's4.no': '4.0 · 扇入', 's4.title': '比较尝试，合入赢家。',
       's4.body': '扇入是一道人工门。拉一份所有尝试的只读快照——分支、diff 统计、运行状态——并排审阅，合入你满意的分支，归档其余。一次尝试是掷硬币——N 次是选择。',
@@ -366,23 +366,23 @@ c  <span class="ok">+96</span>  <span class="del">−88</span>  · 5 files
       'footer.plugins': '插件', 'footer.changelog': '更新日志', 'footer.keybindings': '快捷键',
     };
     var en = {
-      'meta.title': 'kobe — run coding agents as a graph, terminal-native',
-      'meta.desc': 'kobe is a local-first TUI for graph engineering: run many AI coding agents as a graph of isolated attempts — git worktrees, hosted engine sessions, explicit reports — and merge the winner.',
+      'meta.title': 'Rove — run coding agents as a graph, terminal-native',
+      'meta.desc': 'Rove is a local-first TUI for graph engineering: run many AI coding agents as a graph of isolated attempts — git worktrees, hosted engine sessions, explicit reports — and merge the winner.',
       'nav.workflow': '--primitives', 'nav.install': '--install', 'nav.plugins': '--plugins', 'nav.themes': '--themes', 'nav.changelog': '--changelog',
       'hero.kicker': 'prompt engineering → context engineering → <span class="acc">graph engineering</span>',
       'hero.title': 'The agent <span class="acc">multiplexer</span> in your shell.',
-      'hero.sub': 'One agent is a conversation. Five at once are a graph: nodes are isolated attempts — git worktree + engine session + branch — edges are dependencies, and the gates are your judgment. kobe is the terminal-native runtime for that graph.',
+      'hero.sub': 'One agent is a conversation. Five at once are a graph: nodes are isolated attempts — git worktree + engine session + branch — edges are dependencies, and the gates are your judgment. Rove is the terminal-native runtime for that graph.',
       'hero.getStarted': 'Get started ↗',
       'hero.requirements': 'Runs on macOS & Linux (Windows via WSL). Requires Bun ≥ 1.3.11 and one engine CLI on your PATH.',
       'copy.hint': 'click to copy', 'copy.done': '✓ copied',
       'workspace.equation': 'one node =', 'workspace.sessions': 'hosted engine session',
       's1.no': '1.0 · FAN OUT', 's1.title': 'One prompt becomes N isolated attempts.',
-      's1.body': 'Fan-out is the first primitive, and isolation is the point. kobe spawns every attempt in its own git worktree on its own branch, running whichever engine you point it at — claude, codex, copilot, kimi, or your own command. Independent nodes, no shared state, no agents stepping on each other\'s files.',
+      's1.body': 'Fan-out is the first primitive, and isolation is the point. Rove spawns every attempt in its own git worktree on its own branch, running whichever engine you point it at — claude, codex, copilot, kimi, or your own command. Independent nodes, no shared state, no agents stepping on each other\'s files.',
       's1.ownCmd': 'your own command',
       's2.no': '2.0 · SUPERVISE', 's2.title': 'Silence is not a status. Attempts report.',
-      's2.body': 'In a fleet of terminals, a quiet agent could be thinking or could be dead. So in kobe every attempt ends by reporting an explicit outcome — succeeded or failed — and an orchestrating agent can block until the whole fleet resolves. Agents orchestrating agents, with real completion semantics.',
+      's2.body': 'In a fleet of terminals, a quiet agent could be thinking or could be dead. So in Rove every attempt ends by reporting an explicit outcome — succeeded or failed — and an orchestrating agent can block until the whole fleet resolves. Agents orchestrating agents, with real completion semantics.',
       's3.no': '3.0 · OBSERVE', 's3.title': 'Read the session, never scrape the screen.',
-      's3.body': 'kobe reads each engine\'s own session data — history, tokens, context — instead of scraping terminal text. And every session lives in a hosted PTY behind the daemon, on the machine where your code lives: quit the TUI, drop SSH, the graph keeps running. Reattach from anywhere.',
+      's3.body': 'Rove reads each engine\'s own session data — history, tokens, context — instead of scraping terminal text. And every session lives in a hosted PTY behind the daemon, on the machine where your code lives: quit the TUI, drop SSH, the graph keeps running. Reattach from anywhere.',
       's3.body2': 'And it\'s your real machine: real dependencies, services, credentials, build cache. What passes for the agent passes for you.',
       's4.no': '4.0 · FAN IN', 's4.title': 'Compare the attempts. Merge the winner.',
       's4.body': 'Fan-in is a human gate. Pull a read-only snapshot of every attempt — branch, diffstat, running state — review them side by side, merge the branch you like, archive the rest. One attempt is a coin flip — N is a choice.',

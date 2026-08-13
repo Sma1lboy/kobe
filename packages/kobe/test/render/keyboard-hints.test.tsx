@@ -161,7 +161,7 @@ describe("StatusKeyHintBar", () => {
 
     act(() => mockInput.pressKey("a", { ctrl: true }))
     await settle(300)
-    expect(await frame()).toContain("more Kobe commands")
+    expect(await frame()).toContain("more Rove commands")
 
     act(() => mockInput.pressKey("z"))
     await settle()
@@ -237,7 +237,7 @@ describe("footer hint clicks", () => {
     const spot = locate(await frame(), "F1 help")
     await mockMouse.click(spot.x + 1, spot.y)
     await settle()
-    expect(await frame()).toContain("kobe — keybindings")
+    expect(await frame()).toContain("Rove — keybindings")
   })
 
   it("clicking the commands caption arms the real prefix and shows the which-key guide", async () => {
@@ -253,7 +253,7 @@ describe("footer hint clicks", () => {
     await mockMouse.click(spot.x + 1, spot.y)
     // The guide expands after the learner delay (180ms).
     await settle(300)
-    expect(await frame()).toContain("more Kobe commands")
+    expect(await frame()).toContain("more Rove commands")
     act(() => resetPrefixState())
   })
 })
@@ -300,7 +300,7 @@ describe("onboarding wizard — Keyboard basics", () => {
       width: 100,
       height: 24,
     })
-    expect(await frame()).toContain("kobe agent skill")
+    expect(await frame()).toContain("Rove agent skill")
     act(() => mockInput.pressEnter())
     await settle()
     const text = await frame()

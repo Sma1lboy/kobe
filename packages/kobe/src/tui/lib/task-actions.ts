@@ -65,7 +65,7 @@ export interface TaskActionContext {
   /** Text-input adapter — host implements with `RenameTaskDialog.show(dialog, …)`. */
   readonly promptText: (initial: string, opts?: TextPromptOpts) => Promise<string | undefined>
   readonly logger: TaskActionLogger
-  /** Forensic log tag — `[kobe]` (outer monitor) vs `[kobe tasks]` (Tasks pane). */
+  /** Forensic log tag — `[rove]` (outer monitor) vs `[rove tasks]` (Tasks pane). */
   readonly logPrefix: string
   /**
    * DIVERGENCE — on-screen failure toast. The Tasks pane surfaces failures
@@ -236,7 +236,7 @@ export async function deleteTaskFlow(ctx: TaskActionContext, taskId: string): Pr
   if (task.kind === "main") {
     const ok = await ctx.confirm({
       title: `Remove project "${task.title}"?`,
-      body: "Forgets it from the projects list. The repo, its branches, worktrees, and any tasks under it stay on disk — re-add it with `kobe add`.",
+      body: "Forgets it from the projects list. The repo, its branches, worktrees, and any tasks under it stay on disk — re-add it with `rove add`.",
       cancelLabel: "cancel",
       confirmLabel: "remove",
     })

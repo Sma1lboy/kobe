@@ -1,7 +1,7 @@
 /**
- * Call back into kobe through `$KOBE_BIN_PATH` — the portable plugin API.
+ * Call back into Rove through `$KOBE_BIN_PATH` — the portable plugin API.
  * `kobe()` is the raw runner; the named helpers wrap the high-value
- * `kobe api` verbs (full list: `kobe api help` / `kobe api schema`).
+ * Rove API verbs (full list: `rove api help` / `rove api schema`).
  */
 
 import { execFile } from "node:child_process"
@@ -22,7 +22,7 @@ export interface KobeRunResult {
   readonly stderr: string
 }
 
-/** Run `kobe <args…>`; resolves with the exit code (never rejects on non-zero). */
+/** Run the Rove CLI with `<args…>`; resolves with the exit code (never rejects on non-zero). */
 export function kobe(args: readonly string[], opts: KobeRunOptions = {}): Promise<KobeRunResult> {
   const bin = opts.binPath ?? process.env.KOBE_BIN_PATH
   if (!bin) return Promise.reject(new Error("KOBE_BIN_PATH is not set and no binPath was given"))
@@ -51,11 +51,11 @@ export function kobe(args: readonly string[], opts: KobeRunOptions = {}): Promis
 /** Run and parse stdout as JSON; throws on non-zero exit or bad JSON. */
 export async function kobeJson<T = unknown>(args: readonly string[], opts: KobeRunOptions = {}): Promise<T> {
   const res = await kobe(args, opts)
-  if (res.code !== 0) throw new Error(`kobe ${args.join(" ")} exited ${res.code}: ${res.stderr.trim()}`)
+  if (res.code !== 0) throw new Error(`Rove command ${args.join(" ")} exited ${res.code}: ${res.stderr.trim()}`)
   return JSON.parse(res.stdout) as T
 }
 
-/** Toast a notification in every attached kobe UI. */
+/** Toast a notification in every attached Rove UI. */
 export function notify(title: string, body?: string, opts?: KobeRunOptions): Promise<KobeRunResult> {
   return kobe(["api", "notify", "--title", title, ...(body ? ["--body", body] : [])], opts)
 }
@@ -77,7 +77,7 @@ export function openPane(qualifiedPaneId: string, opts?: KobeRunOptions): Promis
 
 /**
  * Ask the human for a line of text via the host's input dialog
- * (`kobe api prompt`). Resolves the entered string, or null when the user
+ * (`rove api prompt`). Resolves the entered string, or null when the user
  * cancelled / the prompt timed out / no TUI is attached. Blocks up to
  * `timeoutMs` (host default 120s), so pass a run timeout to match.
  */

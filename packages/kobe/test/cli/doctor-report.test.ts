@@ -20,8 +20,14 @@ describe("buildReportBundle", () => {
     expect(bundle).toContain("## pty-host.log (last 200 lines)\n(empty or absent)")
   })
 
-  it("captures KOBE_* + known env keys but never arbitrary secrets", () => {
-    const lines = reportEnvLines({ KOBE_HOME_DIR: "/tmp/home", TERM: "xterm", SECRET_TOKEN: "hunter2" })
+  it("captures ROVE_*, KOBE_* + known env keys but never arbitrary secrets", () => {
+    const lines = reportEnvLines({
+      ROVE_HOME_DIR: "/tmp/rove-home",
+      KOBE_HOME_DIR: "/tmp/home",
+      TERM: "xterm",
+      SECRET_TOKEN: "hunter2",
+    })
+    expect(lines).toContain("ROVE_HOME_DIR=/tmp/rove-home")
     expect(lines).toContain("KOBE_HOME_DIR=/tmp/home")
     expect(lines).toContain("TERM=xterm")
     expect(lines.some((l) => l.startsWith("SECRET_TOKEN"))).toBe(false)

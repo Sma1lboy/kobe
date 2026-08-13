@@ -84,7 +84,7 @@ export function useWorkspaceKeybindings(deps: WorkspaceKeybindingDeps): void {
     try {
       renderer?.destroy()
     } catch (err) {
-      console.error("kobe: renderer.destroy() failed during quit:", err)
+      console.error("Rove: renderer.destroy() failed during quit:", err)
     }
     process.exit(0)
   }

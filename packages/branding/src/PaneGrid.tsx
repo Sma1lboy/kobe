@@ -3,17 +3,17 @@ import { colors, monoStack } from "./colors"
 
 // Concept 2 — Pane Grid
 // The literal product. Five panes draw themselves with box-drawing chars,
-// then the wordmark settles into the workspace pane. If kobe's selling
+// then the wordmark settles into the workspace pane. If Rove's selling
 // point is "Conductor-shaped 5-pane TUI," show the 5-pane TUI.
 
 const ROWS = [
   "┌──────────────────────────────────────────────┐",
-  "│ kobe                                         │",
+  "│ rove                                         │",
   "├────────┬────────────────────────┬────────────┤",
   "│ TASKS  │ WORKSPACE              │ FILES      │",
   "│        │                        │            │",
   "│ ●      │                        │ ─ ─ ─      │",
-  "│ ○      │       ▌ kobe ▐         │ ─ ─        │",
+  "│ ○      │       ▌ rove ▐         │ ─ ─        │",
   "│ ○      │                        │            │",
   "│        │                        ├────────────┤",
   "│        │                        │ TERMINAL   │",
@@ -52,18 +52,18 @@ export const PaneGrid: React.FC = () => {
           const visible = line.slice(0, Math.floor(reveal))
 
           // Highlight the wordmark line once it's drawn enough.
-          const isWordmark = line.includes("kobe") && i === 6
+          const isWordmark = line.includes("rove") && i === 6
           const wordmarkOpacity = isWordmark ? interpolate(frame, [70, 90], [0, 1], { extrapolateRight: "clamp" }) : 1
 
           if (isWordmark) {
-            const before = visible.split("kobe")[0] ?? visible
-            const hasWord = visible.includes("kobe")
+            const before = visible.split("rove")[0] ?? visible
+            const hasWord = visible.includes("rove")
             return (
               <div key={i}>
                 <span style={{ color: colors.border }}>{before}</span>
                 {hasWord ? (
                   <>
-                    <span style={{ color: colors.blue, opacity: wordmarkOpacity }}>kobe</span>
+                    <span style={{ color: colors.blue, opacity: wordmarkOpacity }}>rove</span>
                     <span style={{ color: colors.border }}>{visible.slice(before.length + 4)}</span>
                   </>
                 ) : null}

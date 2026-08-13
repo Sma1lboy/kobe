@@ -126,13 +126,13 @@ export function AdoptDialog({ onClose }: { onClose: () => void }) {
               Adopt worktree
             </span>
             <span className="font-mono text-[10px] text-subtle">
-              pull an existing worktree into kobe
+              pull an existing worktree into Rove
             </span>
           </div>
 
           <div className="px-3 py-6 text-center">
             <p className="text-[12px] leading-relaxed text-subtle">
-              No repos known to kobe yet. Create a task in a repo first, then
+              No repos known to Rove yet. Create a task in a repo first, then
               come back to adopt its worktrees.
             </p>
             <button
@@ -182,7 +182,7 @@ export function AdoptDialog({ onClose }: { onClose: () => void }) {
             Adopt worktree
           </span>
           <span className="font-mono text-[10px] text-subtle">
-            pull an existing worktree into kobe
+            pull an existing worktree into Rove
           </span>
         </div>
 
@@ -242,7 +242,7 @@ export function AdoptDialog({ onClose }: { onClose: () => void }) {
                       )}
                       {wt.kobeManaged && (
                         <span className="shrink-0 text-[10px] text-subtle">
-                          kobe
+                          rove
                         </span>
                       )}
                     </div>

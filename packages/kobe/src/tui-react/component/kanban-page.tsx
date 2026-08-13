@@ -190,7 +190,7 @@ export function KanbanPage(props: {
       if (patch.title !== issue.title || patch.body !== issue.body) {
         await props.orchestrator
           ?.mutateIssue(board.repoRoot, { type: "update", id: issue.id, ...patch })
-          .catch((err: unknown) => console.error("[kobe kanban] issue update failed:", err))
+          .catch((err: unknown) => console.error("[rove kanban] issue update failed:", err))
         setReloadTick((tick) => tick + 1)
       }
       if (outcome.kind === "open") {
@@ -259,7 +259,7 @@ export function KanbanPage(props: {
           jump: outcome.start.jump,
         })
       } catch (err) {
-        console.error("[kobe kanban] issue create failed:", err)
+        console.error("[rove kanban] issue create failed:", err)
       }
     })
   }
@@ -282,7 +282,7 @@ export function KanbanPage(props: {
           setSelectedId(null)
           setReloadTick((tick) => tick + 1)
         })
-        .catch((err: unknown) => console.error("[kobe kanban] issue delete failed:", err))
+        .catch((err: unknown) => console.error("[rove kanban] issue delete failed:", err))
     })
   }
 

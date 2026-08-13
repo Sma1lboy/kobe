@@ -4,7 +4,7 @@
 
 ```mermaid
 flowchart LR
-  CLI["kobe CLI / API"] --> D["Daemon"]
+  CLI["Rove CLI / API"] --> D["Daemon"]
   TUI["PureTUI Workspace Host"] --> D
   WEB["Browser dashboard"] --> D
   D --> O["Orchestrator + Task index"]
@@ -57,11 +57,11 @@ Task = git worktree + hosted engine sessions + branch
   never the generated copies.
 - Official plugins live in the separate
   [Sma1lboy/kobe-plugins](https://github.com/Sma1lboy/kobe-plugins) repo
-  (`kobe plugin install Sma1lboy/kobe-plugins/<name>`).
+  (`rove plugin install Sma1lboy/kobe-plugins/<name>`).
 
 ## 3. Launch and lifetime
 
-Plain `kobe` starts `src/tui/index.tsx`, which dynamically loads the React
+Plain `rove` starts `src/tui/index.tsx`, which dynamically loads the React
 Workspace Host. Startup has one behavior; there is no launch-mode parser or
 environment switch.
 
@@ -73,8 +73,8 @@ idle exit leaves the PTY Host untouched. The PTY Host idle-exits only when it
 owns zero live sessions.
 
 Tmux is not a session backend. The CLI retains one quarantined compatibility
-seam solely for upgrades from pre-v0.8: `kobe doctor` reports processes still
-owned by the retired `tmux -L kobe` server, and `kobe reset` terminates those
+seam solely for upgrades from pre-v0.8: `rove doctor` reports processes still
+owned by the retired `tmux -L kobe` server, and `rove reset` terminates those
 pane process groups before stopping that server.
 
 ## 4. Hosted session addressing
@@ -88,7 +88,7 @@ quoting, repository init scripts, engine argv/protocol, resume context, and
 first-prompt priority. Both the Workspace Host and headless API automation call
 it.
 
-`kobe api send`, prompted `add`, and `fan-out`:
+`rove api send`, prompted `add`, and `fan-out`:
 
 1. ensure the Worktree;
 2. ensure the PTY Host;

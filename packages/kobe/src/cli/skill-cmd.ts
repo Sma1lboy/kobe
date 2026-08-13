@@ -27,20 +27,23 @@ import {
   npxSkillsCommand,
   runNpxSkillsInstall,
 } from "../lib/skill-install.ts"
+import { activeCliName } from "./rename-compat.ts"
+
+const CLI_NAME = activeCliName()
 
 const SKILL_VERBS = ["install", "status", "command", "print"] as const
 
 function skillUsage(): string {
   return [
-    "usage: kobe skill <verb>",
+    `usage: ${CLI_NAME} skill <verb>`,
     "",
     "verbs:",
-    "  install [--project] [--agent NAME]…  Install the kobe agent skill (wraps `npx skills add`)",
+    "  install [--project] [--agent NAME]…  Install the Rove agent skill (wraps `npx skills add`)",
     "  status                               Show whether the skill is installed",
     "  command [--project] [--agent NAME]…  Print the underlying npx command without running it",
-    "  print                                Print the bundled SKILL.md (also: `kobe --skill`)",
+    `  print                                Print the bundled SKILL.md (also: \`${CLI_NAME} --skill\`)`,
     "",
-    "The skill teaches a coding agent how to drive `kobe api`. Installs are",
+    `The skill teaches a coding agent how to drive \`${CLI_NAME} api\`. Installs are`,
     "global (user-level) by default; --project installs into the current project",
     "instead. With no --agent, the agent-skills CLI detects your installed agents",
     "and asks; repeat --agent to name them (e.g. --agent claude-code --agent codex).",
@@ -65,7 +68,7 @@ function parseInstallFlags(rest: readonly string[]): { agents: string[]; global:
     } else if (arg === "--agent") {
       const v = rest[i + 1]
       if (!v || v.startsWith("--")) {
-        process.stderr.write("kobe skill: --agent requires a value\n")
+        process.stderr.write(`${CLI_NAME} skill: --agent requires a value\n`)
         process.exit(2)
       }
       agents.push(v)
@@ -73,7 +76,7 @@ function parseInstallFlags(rest: readonly string[]): { agents: string[]; global:
     } else if (arg.startsWith("--agent=")) {
       agents.push(arg.slice("--agent=".length))
     } else {
-      process.stderr.write(`kobe skill: unknown flag "${arg}"\n\n${skillUsage()}\n`)
+      process.stderr.write(`${CLI_NAME} skill: unknown flag "${arg}"\n\n${skillUsage()}\n`)
       process.exit(2)
     }
   }
@@ -82,7 +85,7 @@ function parseInstallFlags(rest: readonly string[]): { agents: string[]; global:
   const joined = agents.find((a) => a.includes(","))
   if (joined) {
     process.stderr.write(
-      `kobe skill: --agent takes one name; repeat the flag instead of "${joined}"\n` +
+      `${CLI_NAME} skill: --agent takes one name; repeat the flag instead of "${joined}"\n` +
         `  e.g. ${joined
           .split(",")
           .map((a) => `--agent ${a.trim()}`)
@@ -101,7 +104,7 @@ export async function runSkillSubcommand(argv: readonly string[]): Promise<void>
     return
   }
   if (!SKILL_VERBS.includes(verb as (typeof SKILL_VERBS)[number])) {
-    process.stderr.write(`kobe skill: unknown verb "${verb}"\n\n${skillUsage()}\n`)
+    process.stderr.write(`${CLI_NAME} skill: unknown verb "${verb}"\n\n${skillUsage()}\n`)
     process.exit(2)
   }
 
@@ -111,7 +114,9 @@ export async function runSkillSubcommand(argv: readonly string[]): Promise<void>
     const bundled = bundledSkillDir()
     const path = bundled ? join(bundled, "SKILL.md") : kobeSkillPaths().find((p) => existsSync(p))
     if (!path) {
-      process.stderr.write("kobe skill: no SKILL.md found (not bundled, not installed) — run `kobe skill install`\n")
+      process.stderr.write(
+        `${CLI_NAME} skill: no SKILL.md found (not bundled, not installed) — run \`${CLI_NAME} skill install\`\n`,
+      )
       process.exit(1)
     }
     process.stdout.write(readFileSync(path, "utf8"))
@@ -124,13 +129,13 @@ export async function runSkillSubcommand(argv: readonly string[]): Promise<void>
     const head = !state.installed
       ? "✗ not installed"
       : state.stale
-        ? `⚠ out of date (installed ${state.installedVersion === null ? "unstamped" : `v${state.installedVersion}`}, this kobe wants v${state.currentVersion})`
+        ? `⚠ out of date (installed ${state.installedVersion === null ? "unstamped" : `v${state.installedVersion}`}, this Rove wants v${state.currentVersion})`
         : `✓ installed (v${state.installedVersion})`
     process.stdout.write(
       [
-        `kobe skill: ${head}`,
+        `${CLI_NAME} skill: ${head}`,
         `  looked in: ${paths.join("\n             ")}`,
-        state.installed && !state.stale ? "" : "  → run `kobe skill install` to install / refresh",
+        state.installed && !state.stale ? "" : `  → run \`${CLI_NAME} skill install\` to install / refresh`,
         "",
       ].join("\n"),
     )
@@ -148,17 +153,17 @@ export async function runSkillSubcommand(argv: readonly string[]): Promise<void>
   const { agents, global } = parseInstallFlags(rest)
   const bundled = bundledSkillDir()
   process.stdout.write(
-    `kobe skill: running \`${npxSkillsCommand({ agent: agents, global })}\`\n${
-      bundled ? "" : "kobe skill: no bundled skill found — falling back to a repo clone (large download).\n"
+    `${CLI_NAME} skill: running \`${npxSkillsCommand({ agent: agents, global })}\`\n${
+      bundled ? "" : `${CLI_NAME} skill: no bundled skill found — falling back to a repo clone (large download).\n`
     }`,
   )
   const code = await runNpxSkillsInstall(agents, global)
   if (code !== 0) {
     process.stderr.write(
-      `\nkobe skill install failed (npx exited ${code}). Is \`npx\` on PATH?\n` +
+      `\n${CLI_NAME} skill install failed (npx exited ${code}). Is \`npx\` on PATH?\n` +
         `You can run it yourself: ${npxSkillsCommand({ agent: agents, global })}\n`,
     )
     process.exit(code || 1)
   }
-  process.stdout.write("kobe skill: installed.\n")
+  process.stdout.write(`${CLI_NAME} skill: installed.\n`)
 }

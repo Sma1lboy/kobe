@@ -36,7 +36,7 @@ export function detectShell(env: NodeJS.ProcessEnv = process.env): ShellKind | n
 }
 
 /** Marker that makes the rc-append idempotent across re-runs. */
-const RC_MARKER = "kobe completions"
+const RC_MARKER = "rove completions"
 
 /**
  * Hook completions into the shell, returning the file that was touched.
@@ -49,15 +49,15 @@ const RC_MARKER = "kobe completions"
 export function installCompletions(shell: ShellKind, home: string = homedir()): string {
   if (shell === "fish") {
     const dir = join(home, ".config", "fish", "completions")
-    const path = join(dir, "kobe.fish")
+    const path = join(dir, "rove.fish")
     mkdirSync(dir, { recursive: true })
-    writeFileSync(path, "kobe completions fish | source\n")
+    writeFileSync(path, "rove completions fish | source\n")
     return path
   }
   const rc = join(home, shell === "zsh" ? ".zshrc" : ".bashrc")
   const existing = existsSync(rc) ? readFileSync(rc, "utf8") : ""
   if (!existing.includes(RC_MARKER)) {
-    const line = `\n# kobe completions\ncommand -v kobe >/dev/null && source <(kobe completions ${shell})\n`
+    const line = `\n# rove completions\ncommand -v rove >/dev/null && source <(rove completions ${shell})\n`
     appendFileSync(rc, line)
   }
   return rc
@@ -82,15 +82,15 @@ export function applyOnboardingChoices(choices: OnboardingChoices, shell: ShellK
     if (choices.completions) {
       out(t("onboarding.appliedCompletions", { path: installCompletions(shell) }))
     } else {
-      out(t("onboarding.skippedCompletions", { command: "kobe completions --help" }))
+      out(t("onboarding.skippedCompletions", { command: "rove completions --help" }))
     }
   }
   if (choices.skill) {
     out(t("onboarding.installingSkill", { command: npxSkillsCommand() }))
     const result = spawnSync("npx", npxSkillsArgv(), { stdio: "inherit" })
-    if (result.status !== 0) out(t("onboarding.skillFailed", { command: "kobe skill install" }))
+    if (result.status !== 0) out(t("onboarding.skillFailed", { command: "rove skill install" }))
   } else {
-    out(t("onboarding.skippedSkill", { command: "kobe skill install" }))
+    out(t("onboarding.skippedSkill", { command: "rove skill install" }))
   }
   out("")
   out(t("onboarding.ready"))

@@ -89,7 +89,7 @@ export function EngineRow({
       </label>
       <label className="mt-2 block">
         <span className="text-[11px] text-muted">
-          Launch command (argv that kobe runs)
+          Launch command (argv that Rove runs)
         </span>
         <input
           value={command}
@@ -267,7 +267,7 @@ export function BoardSection() {
       </label>
       <div className="flex items-center justify-between gap-3">
         <span className="text-[11px] text-subtle">
-          Empty = built-in default. kobe appends its status/URL guardrails at
+          Empty = built-in default. Rove appends its status/URL guardrails at
           send time.
         </span>
         <button

@@ -26,6 +26,9 @@ import { homeDir, kobeStateDir, kvStatePath } from "../env.ts"
 import { SKILL_INSTALL_COMMAND, kobeSkillState } from "../lib/skill-install.ts"
 import { CURRENT_VERSION } from "../version.ts"
 import { inspectLegacyTmux, legacyTmuxDoctorLines } from "./legacy-tmux.ts"
+import { activeCliName } from "./rename-compat.ts"
+
+const CLI_NAME = activeCliName()
 
 type PtySessionStatus = { alive?: boolean; parked?: boolean }
 
@@ -187,7 +190,7 @@ async function collectDoctorLines(): Promise<string[]> {
   const tasksPath = join(kobeStateDir(), "tasks.json")
   const statePath = kvStatePath()
   const out = [
-    "kobe doctor",
+    "Rove doctor",
     `  build:  v${CURRENT_VERSION} (${process.platform} ${process.arch}, bun ${Bun.version})`,
     `  home:   ${homeDir()}`,
     "",
@@ -208,7 +211,7 @@ async function collectDoctorLines(): Promise<string[]> {
     const version = typeof daemon.kobeVersion === "string" ? daemon.kobeVersion : undefined
     if (version && version !== CURRENT_VERSION) {
       out.push(`         ⚠ stale build: daemon is v${version}, you launched v${CURRENT_VERSION}`)
-      out.push("         → run `kobe daemon restart`, then relaunch kobe")
+      out.push(`         → run \`${CLI_NAME} daemon restart\`, then relaunch Rove`)
     } else if (version) out.push(`         build: v${version}`)
   } else {
     await appendUnavailableProcess(out, "daemon ", defaultDaemonPidPath(), daemonSocket)
@@ -262,12 +265,12 @@ async function collectDoctorLines(): Promise<string[]> {
 
   const skill = kobeSkillState()
   if (!skill.installed) {
-    out.push("skill:   ✗ kobe agent skill not installed", `         → ${SKILL_INSTALL_COMMAND}`)
+    out.push("skill:   ✗ Rove agent skill not installed", `         → ${SKILL_INSTALL_COMMAND}`)
   } else if (skill.stale) {
     const installed = skill.installedVersion === null ? "unstamped" : `v${skill.installedVersion}`
-    out.push(`skill:   ⚠ kobe agent skill out of date (${installed}; this kobe wants v${skill.currentVersion})`)
+    out.push(`skill:   ⚠ Rove agent skill out of date (${installed}; this Rove wants v${skill.currentVersion})`)
     out.push(`         → ${SKILL_INSTALL_COMMAND}`)
-  } else out.push(`skill:   ✓ kobe agent skill installed (v${skill.installedVersion})`)
+  } else out.push(`skill:   ✓ Rove agent skill installed (v${skill.installedVersion})`)
   out.push("")
 
   const count = taskCount(tasksPath)
@@ -282,7 +285,7 @@ export async function runDoctorSubcommand(argv: readonly string[] = []): Promise
   if (argv.some((arg) => arg === "--help" || arg === "-h" || arg === "help")) {
     process.stdout.write(
       [
-        "Usage: kobe doctor [--report]",
+        `Usage: ${CLI_NAME} doctor [--report]`,
         "",
         "Read-only diagnosis of the daemon / Hosted PTY / engines / git / legacy tmux / state.",
         "",
@@ -297,7 +300,9 @@ export async function runDoctorSubcommand(argv: readonly string[] = []): Promise
   const report = argv.some((arg) => arg === "--report")
   const unknown = argv.find((arg) => arg.length > 0 && arg !== "--report")
   if (unknown !== undefined) {
-    process.stderr.write(`kobe doctor: unexpected argument "${unknown}"\n\nUsage: kobe doctor [--report]\n`)
+    process.stderr.write(
+      `${CLI_NAME} doctor: unexpected argument "${unknown}"\n\nUsage: ${CLI_NAME} doctor [--report]\n`,
+    )
     process.exit(2)
   }
 

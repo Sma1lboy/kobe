@@ -198,10 +198,10 @@ export function Board() {
       >
         <DesktopWindowControls />
         {/* Workspace ↔ Board are peer views — the top-left toggle is the only
-            switch between them (no back link). The [kobe] brand mirrors the
+            switch between them (no back link). The [rove] brand mirrors the
             Workspace header so the logo + toggle sit identically in both. */}
         <span className="font-mono text-[13px] font-bold text-primary">
-          [kobe]
+          [rove]
         </span>
         <ViewToggle />
         <label className="flex h-7 items-center gap-1.5 border border-line bg-bg px-2 text-muted focus-within:border-line-active">

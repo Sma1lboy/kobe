@@ -107,7 +107,7 @@ export function useIssueChat(
     await orch.setVendor(main.id, vendor)
     await orch
       .mutateIssue(repoRoot, { type: "setStatus", id: issue.id, status: "doing" })
-      .catch((err: unknown) => console.error("[kobe kanban] issue setStatus failed:", err))
+      .catch((err: unknown) => console.error("[rove kanban] issue setStatus failed:", err))
     const { tab } = appendBackgroundEngineTab(kv, main.id, defaultShell(), { vendor })
     const spawn = buildIssueTabSpawn({
       taskId: main.id,
@@ -133,7 +133,7 @@ export function useIssueChat(
     const task = await orch.createTask({ repo: repoRoot, title: issueChatTaskTitle(issue), vendor })
     await orch
       .mutateIssue(repoRoot, { type: "link", id: issue.id, taskId: task.id })
-      .catch((err: unknown) => console.error("[kobe kanban] issue link failed:", err))
+      .catch((err: unknown) => console.error("[rove kanban] issue link failed:", err))
     const worktreePath = await orch.ensureWorktree(task.id)
     const spawn = buildIssueChatBackgroundSpawn({ issue, taskId: task.id, repoRoot, worktreePath, vendor, api })
     getDefaultPtyRegistry().acquire(spawn.ptyKey, worktreePath, { command: spawn.command })

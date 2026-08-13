@@ -39,7 +39,7 @@ import { getPersistedString, setPersistedString } from "../state/repos.ts"
  * marker is below this number is STALE: the binary moved on, the skill
  * didn't, so we prompt the developer to re-run `kobe skill install`.
  */
-export const KOBE_SKILL_VERSION = 20
+export const KOBE_SKILL_VERSION = 21
 
 /**
  * Where an installed kobe skill can be FOUND, relative to a home/project
@@ -55,7 +55,7 @@ export const KOBE_SKILL_VERSION = 20
 const SKILL_REL_PATHS = [".agents/skills/kobe/SKILL.md", ".claude/skills/kobe/SKILL.md"] as const
 
 /** The kobe-side wrapper command a user runs. Shown in hints / doctor. */
-export const SKILL_INSTALL_COMMAND = "kobe skill install"
+export const SKILL_INSTALL_COMMAND = "rove skill install"
 
 /**
  * The public repo slug. Only a FALLBACK now (and the documented route for
@@ -223,7 +223,7 @@ export async function maybeHintSkillInstall(io: SkillHintIO = {}): Promise<void>
     if (getPersistedString(HINT_SEEN_KEY) === "1") return
     setPersistedString(HINT_SEEN_KEY, "1")
     process.stderr.write(
-      `\nkobe: the kobe agent skill isn't installed — install it so your coding agent can drive kobe via \`kobe api\`:\n  ${SKILL_INSTALL_COMMAND}\n  (wraps \`${npxSkillsCommand()}\`; check anytime with \`kobe doctor\`)\n\n`,
+      `\nrove: the Rove agent skill isn't installed — install it so your coding agent can drive Rove via \`rove api\`:\n  ${SKILL_INSTALL_COMMAND}\n  (wraps \`${npxSkillsCommand()}\`; check anytime with \`rove doctor\`)\n\n`,
     )
     return
   }
@@ -237,19 +237,19 @@ export async function maybeHintSkillInstall(io: SkillHintIO = {}): Promise<void>
   if (!interactive) {
     setPersistedString(key, "1")
     process.stderr.write(
-      `\nkobe: your kobe agent skill is out of date (${was}; this kobe wants v${state.currentVersion}) — refresh it so \`kobe api\` guidance matches:\n  ${SKILL_INSTALL_COMMAND}\n\n`,
+      `\nrove: your Rove agent skill is out of date (${was}; this Rove wants v${state.currentVersion}) — refresh it so \`rove api\` guidance matches:\n  ${SKILL_INSTALL_COMMAND}\n\n`,
     )
     return
   }
 
   process.stderr.write(
-    `\nkobe: a new version of the kobe agent skill is available (${was} → v${state.currentVersion}).\nUpdate now? [y]es / [n]o / [d]on't notify for this version: `,
+    `\nrove: a new version of the Rove agent skill is available (${was} → v${state.currentVersion}).\nUpdate now? [y]es / [n]o / [d]on't notify for this version: `,
   )
   const answer = (await (io.ask ?? promptLine)()).trim().toLowerCase()
   if (answer === "y" || answer === "yes") {
     const code = await (io.install ?? runNpxSkillsInstall)()
-    if (code === 0) process.stderr.write("kobe: skill updated.\n")
-    else process.stderr.write(`kobe: skill update failed (exit ${code}) — run \`${SKILL_INSTALL_COMMAND}\` manually.\n`)
+    if (code === 0) process.stderr.write("rove: skill updated.\n")
+    else process.stderr.write(`rove: skill update failed (exit ${code}) — run \`${SKILL_INSTALL_COMMAND}\` manually.\n`)
   } else if (answer.startsWith("d")) {
     setPersistedString(key, "1")
   }

@@ -27,6 +27,9 @@ import { errorMessage } from "@/lib/error-message"
 import { expandTilde } from "../lib/path-home.ts"
 import { userThemesDir } from "../tui/context/theme/loader"
 import { validateTheme } from "../tui/context/theme/schema"
+import { activeCliName } from "./rename-compat.ts"
+
+const CLI_NAME = activeCliName()
 
 /**
  * Filenames in `src/tui/context/theme/` that ship as bundled themes.
@@ -44,7 +47,7 @@ import { validateTheme } from "../tui/context/theme/schema"
 const BUNDLED_NAMES: readonly string[] = ["claude", "conductor", "tokyonight"]
 
 function fail(message: string): never {
-  process.stderr.write(`kobe theme: ${message}\n`)
+  process.stderr.write(`${CLI_NAME} theme: ${message}\n`)
   process.exit(1)
 }
 
@@ -56,7 +59,7 @@ function fail(message: string): never {
  * when it guesses the command shape wrong, not a bare one-liner.
  */
 function failUsage(message: string): never {
-  process.stderr.write(`kobe theme: ${message}\n\n`)
+  process.stderr.write(`${CLI_NAME} theme: ${message}\n\n`)
   printUsage()
   process.exit(2)
 }
@@ -183,7 +186,7 @@ async function addTheme(args: string[]): Promise<void> {
   }
   const result = validateTheme(parsed)
   if (!result.ok) {
-    fail(`source is not a valid kobe theme: ${result.reason}`)
+    fail(`source is not a valid Rove theme: ${result.reason}`)
   }
 
   const name = opts.name ?? defaultName
@@ -220,10 +223,10 @@ function removeTheme(args: string[]): void {
   process.stdout.write(`removed theme "${name}" (${dest})\n`)
 }
 
-function printUsage(): void {
-  process.stderr.write(
+function printUsage(out: NodeJS.WriteStream = process.stderr): void {
+  out.write(
     [
-      "Usage: kobe theme <command> [args]",
+      `Usage: ${CLI_NAME} theme <command> [args]`,
       "",
       "Commands:",
       "  list                          List bundled and user-installed themes",
@@ -245,7 +248,7 @@ function printUsage(): void {
 export async function runThemeSubcommand(args: string[]): Promise<void> {
   const [action, ...rest] = args
   if (!action || action === "--help" || action === "-h" || action === "help") {
-    printUsage()
+    printUsage(action ? process.stdout : process.stderr)
     if (!action) process.exit(2)
     return
   }

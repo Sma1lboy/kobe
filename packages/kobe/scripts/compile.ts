@@ -1,10 +1,10 @@
 /**
  * Standalone-binary build entry.
  *
- * Produces the compiled `kobe` binary for the *current platform* via
+ * Produces the compiled `rove` binary for the *current platform* via
  * `Bun.build({ compile: true })`:
  *
- *   ./release-bin/kobe
+ *   ./release-bin/rove
  *
  * Output lives outside `./dist/` on purpose: `dist/` is what `npm
  * publish` ships, and embedding a 60+ MB executable into the npm
@@ -23,11 +23,9 @@
  * dashboard ships in the npm `dist/web-ui` artifact, not inside the compiled
  * single-file binary.
  *
- * After the kobed → kobe bin merge (KOB-136), the single `kobe` binary
- * also hosts the daemon (`kobe daemon start|stop|status|restart`), so
+ * After the kobed → kobe bin merge (KOB-136), the single Rove binary
+ * also hosts the daemon (`rove daemon start|stop|status|restart`), so
  * there is no separate `kobed` binary to compile.
- * Phase one exposes `rove` through the npm package; the standalone artifact
- * intentionally keeps the compatibility `kobe` filename until a later phase.
  */
 
 import { mkdirSync } from "node:fs"
@@ -35,9 +33,9 @@ import { mkdirSync } from "node:fs"
 const OUT_DIR = "./release-bin"
 mkdirSync(OUT_DIR, { recursive: true })
 
-const outfile = `${OUT_DIR}/kobe`
+const outfile = `${OUT_DIR}/rove`
 const result = await Bun.build({
-  entrypoints: ["./src/cli/kobe.ts"],
+  entrypoints: ["./src/cli/rove.ts"],
   conditions: ["browser"],
   external: ["node-pty"],
   minify: true,

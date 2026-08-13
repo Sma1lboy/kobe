@@ -16,7 +16,7 @@ export const WORK_ITEM_VERBS: readonly VerbSpec[] = [
   {
     name: "workitem-list",
     summary:
-      "List a repo's GitHub issues through the `gh` CLI. Read-only — nothing is copied into kobe's own issue store.",
+      "List a repo's GitHub issues through the `gh` CLI. Read-only — nothing is copied into Rove's own issue store.",
     flags: [
       F.repo(),
       { name: "state", type: "enum", values: WORK_ITEM_STATES, default: "open", description: "Issue state filter." },

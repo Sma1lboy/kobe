@@ -1,4 +1,4 @@
-/* kobe marketplace — the plugin list and the hash-routed detail view.
+/* Rove marketplace — the plugin list and the hash-routed detail view.
    Loaded by plugins.html after KOBE_I18N is defined. Classic script (no module),
    so it also runs from file:// while iterating locally. */
 (function () {
@@ -21,11 +21,11 @@
     { ref: 'Sma1lboy/kobe-plugins/notify', name: 'notify', owner: 'Sma1lboy', firstParty: true,
       desc: { en: 'Desktop or ntfy notifications when an agent finishes a turn or needs your input.', zh: '代理跑完一轮或需要你介入时，发桌面通知 / ntfy 推送。' } },
     { ref: 'Sma1lboy/kobe-plugins/github-start', name: 'github-start', owner: 'Sma1lboy', firstParty: true,
-      desc: { en: 'Start a kobe task straight from a GitHub issue or pull request.', zh: '直接从一个 GitHub issue 或 PR 起一个 kobe 任务。' } },
+      desc: { en: 'Start a Rove task straight from a GitHub issue or pull request.', zh: '直接从一个 GitHub issue 或 PR 起一个 Rove 任务。' } },
     { ref: 'Sma1lboy/kobe-plugins/worktree-include', name: 'worktree-include', owner: 'Sma1lboy', firstParty: true,
       desc: { en: 'Copy gitignored files matching .worktreeinclude into every new worktree.', zh: '把 .worktreeinclude 匹配到的 gitignore 文件复制进每个新建的 worktree。' } },
     { ref: 'Sma1lboy/kobe-plugins/linear-start', name: 'linear-start', owner: 'Sma1lboy', firstParty: true,
-      desc: { en: 'Pick a Linear issue (fzf) and start a kobe task on its branch with the issue as the prompt.', zh: '用 fzf 选一个 Linear issue，在它的分支上起一个 kobe 任务，issue 内容作为首条提示词。' } },
+      desc: { en: 'Pick a Linear issue (fzf) and start a Rove task on its branch with the issue as the prompt.', zh: '用 fzf 选一个 Linear issue，在它的分支上起一个 Rove 任务，issue 内容作为首条提示词。' } },
     { ref: 'Sma1lboy/kobe-plugins/lazygit', name: 'lazygit', owner: 'Sma1lboy', firstParty: true,
       desc: { en: 'Open lazygit on the task worktree as a terminal-tab pane in the running TUI.', zh: '在运行中的 TUI 里以终端 tab 面板打开任务 worktree 的 lazygit。' } },
     { ref: 'Sma1lboy/kobe-plugins/browser', name: 'browser', owner: 'Sma1lboy', firstParty: true,
@@ -85,7 +85,7 @@
   }
 
   function card(it) {
-    var cmd = 'kobe plugin install ' + it.ref;
+    var cmd = 'rove plugin install ' + it.ref;
     var meta = metaRow(it);
     return '<article class="card" data-ref="' + esc(it.ref) + '">' +
       '<div class="card-top">' +
@@ -199,7 +199,7 @@
   }
 
   function detailHtml(it) {
-    var cmd = 'kobe plugin install ' + it.ref;
+    var cmd = 'rove plugin install ' + it.ref;
     var facts = ['<span class="det-fact">' + STAR_SVG + starsOf(it) + '</span>'];
     if (it.lang) facts.push('<span class="det-fact"><span class="dot" aria-hidden="true"></span>' + esc(it.lang) + '</span>');
     if (it.pushed) facts.push('<span class="det-fact">' + esc(KOBE_I18N.t('det.pushed')) + ' ' + esc(relTime(it.pushed)) + '</span>');
@@ -230,7 +230,7 @@
     headSec.hidden = true; listSec.hidden = true; pubSec.hidden = true;
     detailSec.hidden = false;
     detailSec.innerHTML = detailHtml(it);
-    document.title = it.owner + '/' + it.name + ' — kobe';
+    document.title = it.owner + '/' + it.name + ' — Rove';
     loadReadme(it);
   }
 

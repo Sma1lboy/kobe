@@ -66,7 +66,8 @@ describe("runThemeSubcommand — usage / dispatch", () => {
 
   it("--help prints usage without exiting", async () => {
     await runThemeSubcommand(["--help"])
-    expect(err()).toContain("Usage: kobe theme")
+    expect(out()).toContain("Usage: kobe theme")
+    expect(err()).toBe("")
     expect(exitSpy).not.toHaveBeenCalled()
   })
 
@@ -151,7 +152,7 @@ describe("runThemeSubcommand add (local path)", () => {
     const src = join(home, "invalid.json")
     writeFileSync(src, JSON.stringify({ nope: true }), "utf8")
     await expect(runThemeSubcommand(["add", src])).rejects.toThrow("exit 1")
-    expect(err()).toContain("not a valid kobe theme")
+    expect(err()).toContain("not a valid Rove theme")
   })
 
   it("fails when the source file cannot be read", async () => {

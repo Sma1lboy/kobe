@@ -24,10 +24,10 @@ export function DaemonBanner() {
     <div className="flex shrink-0 items-center gap-2 border-b border-kobe-yellow/40 bg-kobe-yellow/10 px-3 py-1.5 text-[11px] text-kobe-yellow">
       <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-kobe-yellow" />
       <span className="min-w-0 flex-1">
-        The kobe daemon is offline — task data is frozen and mutations will fail
+        The Rove daemon is offline — task data is frozen and mutations will fail
         until it reconnects (it auto-reconnects; the dashboard recovers on its
-        own). If it doesn't recover, run <code>kobe doctor</code> or{" "}
-        <code>kobe reset</code> in a terminal.
+        own). If it doesn't recover, run <code>rove doctor</code> or{" "}
+        <code>rove reset</code> in a terminal.
       </span>
       <button
         type="button"

@@ -79,7 +79,7 @@ export function newTaskBranchCoda(taskId: string, api: string = kobeApiInvocatio
   // Send-back, not `report`: a stored report only surfaces if the spawner
   // explicitly awaits, which in practice it never does — outcomes silently
   // vanished. `send` lands a full turn in the spawner's chat tab.
-  return `${rename}\n\nYou were spawned by kobe task ${spawnerTaskId}. When the work is finished, send your outcome back to it — include the final branch name: \`${api} send --task-id ${spawnerTaskId} --prompt "<succeeded|failed>: <one-line summary> (branch kobe/<slug>)"\``
+  return `${rename}\n\nYou were spawned by Rove task ${spawnerTaskId}. When the work is finished, send your outcome back to it — include the final branch name: \`${api} send --task-id ${spawnerTaskId} --prompt "<succeeded|failed>: <one-line summary> (branch kobe/<slug>)"\``
 }
 
 const INIT_SCRIPT_REL = join(".kobe", "init.sh")

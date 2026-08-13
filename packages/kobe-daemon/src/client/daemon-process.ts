@@ -170,7 +170,7 @@ export async function ensureDaemonReachable(): Promise<string> {
     // Leave recovery to the human-driven path (a real TUI boot / `kobe
     // doctor`); fail with the cause instead.
     throw new Error(
-      `kobe: daemon at ${socketPath} is not answering hello (busy or wedged); not restarting it from inside an engine session — retry, or run \`kobe daemon restart\` from a regular shell`,
+      `rove: daemon at ${socketPath} is not answering hello (busy or wedged); not restarting it from inside an engine session — retry, or run \`rove daemon restart\` from a regular shell`,
     )
   }
 
@@ -184,7 +184,7 @@ export async function ensureDaemonReachable(): Promise<string> {
       await new Promise((resolveTimer) => setTimeout(resolveTimer, 150))
     }
     throw new Error(
-      `kobe: another process is starting the daemon but it never became reachable at ${socketPath}; check ${defaultDaemonLogPath()} or run \`kobe doctor\``,
+      `rove: another process is starting the daemon but it never became reachable at ${socketPath}; check ${defaultDaemonLogPath()} or run \`rove doctor\``,
     )
   }
   try {
@@ -207,7 +207,7 @@ export async function ensureDaemonReachable(): Promise<string> {
       await new Promise((resolveTimer) => setTimeout(resolveTimer, 100))
     }
     throw new Error(
-      `kobe: daemon did not start (or stayed wedged) at ${socketPath}; check ${defaultDaemonLogPath()} or run \`kobe doctor\``,
+      `rove: daemon did not start (or stayed wedged) at ${socketPath}; check ${defaultDaemonLogPath()} or run \`rove doctor\``,
     )
   } finally {
     try {

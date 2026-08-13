@@ -54,7 +54,7 @@ describe("submitFeedback", () => {
     expect(secondArgs).toContain("repositoryId=repo-id")
     expect(secondArgs).toContain("categoryId=cat-id")
     expect(secondArgs).toContain("title=A small idea")
-    expect(secondArgs.some((arg) => arg.includes("Submitted from kobe"))).toBe(true)
+    expect(secondArgs.some((arg) => arg.includes("Submitted from Rove"))).toBe(true)
   })
 
   it("fails clearly when the configured Discussion category is absent", () => {

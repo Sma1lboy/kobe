@@ -131,7 +131,7 @@ async function fetchKobeApiInvocation(): Promise<string> {
   )
   return typeof data.api === "string" && data.api.trim().length > 0
     ? data.api
-    : "kobe api"
+    : "rove api"
 }
 
 /* ----- pure helpers ------------------------------------------------------- */
@@ -296,12 +296,12 @@ export function resolveIssueRepoSelection(
  * already flipped the issue to `doing`; the prompt asks the agent to report
  * completion through the daemon-owned issue API, not by editing repo files.
  */
-export function quickStartPrompt(issue: Issue, api = "kobe api"): string {
+export function quickStartPrompt(issue: Issue, api = "rove api"): string {
   const lines = [`Work on user story #${issue.id}: ${issue.title}`, ""]
   const body = issue.body.trim()
   if (body) lines.push(body, "")
   lines.push(
-    "Treat this as the story's dedicated kobe task session: work only in this task worktree, and preserve any repo init instructions already delivered to the session.",
+    "Treat this as the story's dedicated Rove task session: work only in this task worktree, and preserve any repo init instructions already delivered to the session.",
     "Before finishing, verify the acceptance criteria implied by the story and summarize what changed plus any verification still needed.",
     "Then merge the task branch back into the current project's main branch after the worktree is clean and checks pass.",
     `When the work lands, run: ${api} issue-set-status --repo . --id ${issue.id} --status done`,
@@ -315,7 +315,7 @@ export function quickStartPrompt(issue: Issue, api = "kobe api"): string {
  * {@link quickStartPrompt}, but without the worktree/merge instructions —
  * the work happens on the checkout as-is.
  */
-export function projectChatPrompt(issue: Issue, api = "kobe api"): string {
+export function projectChatPrompt(issue: Issue, api = "rove api"): string {
   const lines = [`Work on user story #${issue.id}: ${issue.title}`, ""]
   const body = issue.body.trim()
   if (body) lines.push(body, "")
@@ -332,7 +332,7 @@ export function projectChatPrompt(issue: Issue, api = "kobe api"): string {
  * worktree. This is intentionally delivered to the task session instead of
  * merging in the web UI: the engine owns the final code/check/conflict work.
  */
-export function issueMergePrompt(issue: Issue, api = "kobe api"): string {
+export function issueMergePrompt(issue: Issue, api = "rove api"): string {
   return [
     `Finish user story #${issue.id}: ${issue.title}`,
     "",
@@ -373,7 +373,7 @@ export async function quickStartIssue(
   // path pairs selectTask with this (Board/NewTaskDialog), and the
   // /task/$taskId route effect won't fire it (selectTask runs first).
   setActiveTaskBestEffort(taskId)
-  const api = await fetchKobeApiInvocation().catch(() => "kobe api")
+  const api = await fetchKobeApiInvocation().catch(() => "rove api")
   const tabId = ensureEngineTab(taskId)
   await sendPtyText(tabId, taskId, quickStartPrompt(issue, api))
   return { taskId }
@@ -437,7 +437,7 @@ export async function startIssueChat(
     )
     return { taskId, workspaceTaskId: taskId }
   }
-  const api = await fetchKobeApiInvocation().catch(() => "kobe api")
+  const api = await fetchKobeApiInvocation().catch(() => "rove api")
   const { task } = await rpc<{ task: { id: string } }>("task.ensureMain", {
     repo: repoRoot,
   })
@@ -474,7 +474,7 @@ export async function promptIssueMerge(
   taskId: string,
   issue: Issue,
 ): Promise<void> {
-  const api = await fetchKobeApiInvocation().catch(() => "kobe api")
+  const api = await fetchKobeApiInvocation().catch(() => "rove api")
   const tabId = ensureEngineTab(taskId)
   await sendPtyText(tabId, taskId, issueMergePrompt(issue, api))
 }

@@ -60,7 +60,7 @@ function warnOnce(): void {
   if (warnedOnce) return
   warnedOnce = true
   try {
-    process.stderr.write("[kobe] client log write failed; continuing without it\n")
+    process.stderr.write("[rove] client log write failed; continuing without it\n")
   } catch {
     /* give up */
   }

@@ -23,11 +23,14 @@ import { readPidFile, startDaemonServer } from "@sma1lboy/kobe-daemon/daemon/ser
 import { daemonRuntime } from "../core/daemon-runtime.ts"
 import { createKobeCore } from "../core/index.ts"
 import { LEGACY_KOBE_PRODUCT_NAME } from "../product.ts"
+import { activeCliName } from "./rename-compat.ts"
+
+const CLI_NAME = activeCliName()
 
 function printDaemonUsage(out: Pick<typeof process.stderr, "write">): void {
   out.write(
     [
-      "Usage: kobe daemon <command>",
+      `Usage: ${CLI_NAME} daemon <command>`,
       "",
       "Commands:",
       "  status     Print the running daemon's status JSON (default)",
@@ -63,8 +66,8 @@ export async function runDaemonSubcommand(argv: readonly string[]): Promise<void
       console.log(JSON.stringify(status, null, 2))
     } catch {
       const pid = await readPidFile(pidPath)
-      if (pid) console.log(`kobe daemon: no daemon socket at ${socketPath} (stale pidfile pid=${pid})`)
-      else console.log(`kobe daemon: no daemon running at ${socketPath}`)
+      if (pid) console.log(`${CLI_NAME} daemon: no daemon socket at ${socketPath} (stale pidfile pid=${pid})`)
+      else console.log(`${CLI_NAME} daemon: no daemon running at ${socketPath}`)
       process.exitCode = 1
     } finally {
       client.close()
@@ -76,13 +79,13 @@ export async function runDaemonSubcommand(argv: readonly string[]): Promise<void
     const client = new KobeDaemonClient(socketPath)
     try {
       await client.request("daemon.stop")
-      console.log("kobe daemon: stop requested")
+      console.log(`${CLI_NAME} daemon: stop requested`)
     } catch {
       // No daemon answering the socket → "stop" is already satisfied. Report
       // it cleanly and exit 0 (a defensive `daemon stop` in a teardown script
       // must not fail just because nothing was running) rather than letting
       // the connection error bubble to the top-level "failed to start" catch.
-      console.log(`kobe daemon: no daemon running at ${socketPath}`)
+      console.log(`${CLI_NAME} daemon: no daemon running at ${socketPath}`)
     } finally {
       client.close()
     }
@@ -98,12 +101,12 @@ export async function runDaemonSubcommand(argv: readonly string[]): Promise<void
     await stopDaemonProcess(socketPath, pidPath)
     const next = await connectOrStartDaemon()
     next.close()
-    console.log(`kobe daemon: restarted, listening on ${socketPath}`)
+    console.log(`${CLI_NAME} daemon: restarted, listening on ${socketPath}`)
     return
   }
 
   if (command !== "start") {
-    process.stderr.write(`kobe daemon: unknown command "${command}"\n\n`)
+    process.stderr.write(`${CLI_NAME} daemon: unknown command "${command}"\n\n`)
     printDaemonUsage(process.stderr)
     process.exit(2)
   }
@@ -137,8 +140,8 @@ export async function runDaemonSubcommand(argv: readonly string[]): Promise<void
       await core.close()
     },
   })
-  console.log(`kobe daemon: listening on ${server.socketPath}`)
-  if (server.webPort) console.log(`kobe daemon: web transport listening on http://127.0.0.1:${server.webPort}`)
+  console.log(`${CLI_NAME} daemon: listening on ${server.socketPath}`)
+  if (server.webPort) console.log(`${CLI_NAME} daemon: web transport listening on http://127.0.0.1:${server.webPort}`)
 
   const shutdown = async () => {
     await server.close()

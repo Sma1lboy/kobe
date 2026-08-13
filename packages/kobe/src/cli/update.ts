@@ -26,6 +26,9 @@ import {
   fetchReleaseSummaries,
   recommendedGlobalInstallCommand,
 } from "../version.ts"
+import { activeCliName } from "./rename-compat.ts"
+
+const CLI_NAME = activeCliName()
 
 export type UpdatePlan = {
   command: string
@@ -83,7 +86,7 @@ export function parseUpdateArgs(args: readonly string[]): ParsedArgs {
     // Malformed invocation → show the error AND the usage, exit 2. An
     // agent that guesses a flag wrong should land on the instruction
     // surface, not a bare one-liner.
-    process.stderr.write(`kobe update: unknown argument "${arg}"\n\n`)
+    process.stderr.write(`${CLI_NAME} update: unknown argument "${arg}"\n\n`)
     printUsage(process.stderr)
     process.exit(2)
   }
@@ -94,9 +97,9 @@ export function parseUpdateArgs(args: readonly string[]): ParsedArgs {
 function printUsage(out: Pick<typeof process.stderr, "write">): void {
   out.write(
     [
-      "Usage: kobe update [version|list|dry-run]",
+      `Usage: ${CLI_NAME} update [version|list|dry-run]`,
       "",
-      "Runs kobe's GitHub-hosted update script. With [version] (e.g.",
+      "Runs Rove's GitHub-hosted update script. With [version] (e.g.",
       "0.7.90) the script installs that exact release instead of latest.",
       "",
       "Verbs (--flag spellings also accepted):",
@@ -114,10 +117,10 @@ function printUsage(out: Pick<typeof process.stderr, "write">): void {
       `  ${recommendedGlobalInstallCommand()}`,
       "",
       "Examples:",
-      "  kobe update",
-      "  kobe update 0.7.90",
-      "  kobe update list",
-      "  kobe update dry-run",
+      `  ${CLI_NAME} update`,
+      `  ${CLI_NAME} update 0.7.90`,
+      `  ${CLI_NAME} update list`,
+      `  ${CLI_NAME} update dry-run`,
       "",
     ].join("\n"),
   )
@@ -127,19 +130,19 @@ function printUsage(out: Pick<typeof process.stderr, "write">): void {
 async function printVersionList(io: RunDeps): Promise<void> {
   const releases = await fetchReleaseSummaries(20)
   if (releases.length === 0) {
-    io.stderr.write("kobe update: could not fetch the release list (offline or rate-limited)\n")
+    io.stderr.write(`${CLI_NAME} update: could not fetch the release list (offline or rate-limited)\n`)
     io.exit(1)
   }
   for (const release of releases) {
     const markers = [
       release.version === CURRENT_VERSION ? "(current)" : "",
-      BREAKING_VERSIONS.includes(release.version) ? "(breaking — needs `kobe reset`)" : "",
+      BREAKING_VERSIONS.includes(release.version) ? `(breaking — needs \`${CLI_NAME} reset\`)` : "",
     ]
       .filter(Boolean)
       .join(" ")
     io.stdout.write(`${release.version}${markers ? `  ${markers}` : ""}\n`)
   }
-  io.stdout.write("\ninstall one with: kobe update <version>\n")
+  io.stdout.write(`\ninstall one with: ${CLI_NAME} update <version>\n`)
 }
 
 /**
@@ -158,7 +161,7 @@ async function warnBreakingCrossings(target: string | undefined, io: RunDeps): P
   io.stderr.write(
     [
       `warning: ${CURRENT_VERSION} -> ${resolved} crosses breaking version(s): ${crossed.join(", ")}.`,
-      "After this update, kobe will refuse to start until you run `kobe reset`",
+      `After this update, Rove will refuse to start until you run \`${CLI_NAME} reset\``,
       "(worktrees are never touched; add --hard only to also wipe the task index).",
       "",
     ].join("\n"),
@@ -191,14 +194,14 @@ export async function runUpdateSubcommand(args: readonly string[], deps?: Partia
   }
 
   const plan = updatePlan(parsed.version)
-  io.stdout.write(`kobe ${CURRENT_VERSION} -> ${parsed.version ?? "latest"}\n`)
+  io.stdout.write(`${CLI_NAME} ${CURRENT_VERSION} -> ${parsed.version ?? "latest"}\n`)
   io.stdout.write(`running: ${plan.display}\n`)
   if (parsed.dryRun) return
   await warnBreakingCrossings(parsed.version, io)
 
   const result = io.spawn(plan.command, plan.args, { stdio: "inherit" })
   if (result.error) {
-    io.stderr.write(`kobe update: failed to run ${plan.command}: ${result.error.message}\n`)
+    io.stderr.write(`${CLI_NAME} update: failed to run ${plan.command}: ${result.error.message}\n`)
     io.exit(1)
   }
   io.exit(result.status ?? 1)

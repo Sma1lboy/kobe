@@ -12,7 +12,7 @@ import { readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 import { defaultDaemonLogPath, defaultPtyHostLogPath } from "@sma1lboy/kobe-daemon/daemon/paths"
 
-/** Explicit non-secret env keys worth capturing, plus every KOBE_* var. */
+/** Explicit non-secret env keys worth capturing, plus every ROVE_ and KOBE_ var. */
 const REPORT_ENV_KEYS = [
   "SHELL",
   "TERM",
@@ -38,7 +38,7 @@ function logTail(path: string, count: number): string {
 /** `KEY=value` lines for the report's env section (path-shaped vars only). */
 export function reportEnvLines(env: NodeJS.ProcessEnv): string[] {
   const keys = new Set<string>(REPORT_ENV_KEYS)
-  for (const key of Object.keys(env)) if (key.startsWith("KOBE_")) keys.add(key)
+  for (const key of Object.keys(env)) if (key.startsWith("ROVE_") || key.startsWith("KOBE_")) keys.add(key)
   return [...keys].sort().map((key) => `${key}=${env[key] ?? "(unset)"}`)
 }
 
@@ -48,7 +48,7 @@ export function buildReportBundle(
   parts: { generatedAt: string; env: NodeJS.ProcessEnv; daemonLog: string; ptyLog: string },
 ): string {
   return [
-    "# kobe doctor report",
+    "# Rove doctor report",
     `generated: ${parts.generatedAt}`,
     "",
     "## diagnosis",
@@ -66,9 +66,9 @@ export function buildReportBundle(
   ].join("\n")
 }
 
-/** Write the bundle to `kobe-doctor-report.txt` in the cwd; return its path. */
+/** Write the bundle to `rove-doctor-report.txt` in the cwd; return its path. */
 export function writeReportBundle(doctorLines: readonly string[]): string {
-  const path = join(process.cwd(), "kobe-doctor-report.txt")
+  const path = join(process.cwd(), "rove-doctor-report.txt")
   writeFileSync(
     path,
     buildReportBundle(doctorLines, {

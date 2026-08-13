@@ -1,6 +1,6 @@
 /**
  * Regression pin: the pure-TUI host owns the outer terminal tab title while
- * it is running. Packaged kobe previously emitted no OSC title, so iTerm2
+ * it is running. Packaged Rove previously emitted no OSC title, so iTerm2
  * fell back to the JavaScript runtime name (observed as "node").
  */
 
@@ -13,9 +13,9 @@ import { type BehaviorEnv, DIST_CLI, loadNodePty, makeBehaviorEnv } from "./harn
 // can have the module and still be denied posix_spawnp) — see harness.ts.
 const nodePty = await loadNodePty()
 
-const TITLE_SEQUENCE = "\x1b]0;kobe\x07"
+const TITLE_SEQUENCE = "\x1b]0;rove\x07"
 
-describe.skipIf(!nodePty)("kobe outer terminal title (behavior)", () => {
+describe.skipIf(!nodePty)("Rove outer terminal title (behavior)", () => {
   let env: BehaviorEnv
 
   beforeAll(async () => {
@@ -26,7 +26,7 @@ describe.skipIf(!nodePty)("kobe outer terminal title (behavior)", () => {
     await env.dispose()
   })
 
-  it("publishes kobe as the terminal title on pure-TUI boot", async () => {
+  it("publishes rove as the terminal title on pure-TUI boot", async () => {
     if (!nodePty) throw new Error("unreachable: suite is skipped without node-pty")
     const child = nodePty.spawn("bun", [DIST_CLI], {
       cols: 120,

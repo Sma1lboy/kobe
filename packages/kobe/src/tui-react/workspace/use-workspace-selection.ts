@@ -122,11 +122,11 @@ export function useWorkspaceSelection(args: {
       // so narrow mode's "↩ recent" row (and every lastActive consumer)
       // stayed empty until the user switched tasks once.
       if (orch.activeTaskSignal()() !== id)
-        void orch.setActiveTask(id).catch((error) => console.error("[kobe workspace] setActiveTask failed:", error))
+        void orch.setActiveTask(id).catch((error) => console.error("[rove workspace] setActiveTask failed:", error))
       return
     }
     setSelectedId(id)
-    void orch.setActiveTask(id).catch((error) => console.error("[kobe workspace] setActiveTask failed:", error))
+    void orch.setActiveTask(id).catch((error) => console.error("[rove workspace] setActiveTask failed:", error))
     // Plugin UI events: entering a task/project is an observable moment.
     const kind = tasks.find((task) => task.id === id)?.kind === "main" ? "project.opened" : "task.opened"
     orch.reportUiEvent(kind, id)
@@ -143,7 +143,7 @@ export function useWorkspaceSelection(args: {
         ensureWorktree: (taskId) => orch.ensureWorktree(taskId),
         selectTask,
         focusWorkspace: args.focusWorkspace,
-        reportError: (error) => console.error("[kobe workspace] task.ensureWorktree failed:", error),
+        reportError: (error) => console.error("[rove workspace] task.ensureWorktree failed:", error),
         isCurrent: () => activationGenerationRef.current === generation,
       },
       id,

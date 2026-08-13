@@ -147,9 +147,9 @@ describe("runDoctorSubcommand", () => {
     await runDoctorSubcommand(["--report"])
 
     expect(output()).toContain("report written:")
-    expect(existsSync(join(home, "kobe-doctor-report.txt"))).toBe(true)
-    const bundle = readFileSync(join(home, "kobe-doctor-report.txt"), "utf8")
-    expect(bundle).toContain("# kobe doctor report")
+    expect(existsSync(join(home, "rove-doctor-report.txt"))).toBe(true)
+    const bundle = readFileSync(join(home, "rove-doctor-report.txt"), "utf8")
+    expect(bundle).toContain("# Rove doctor report")
     expect(bundle).toContain("## diagnosis")
     cwdSpy.mockRestore()
   })

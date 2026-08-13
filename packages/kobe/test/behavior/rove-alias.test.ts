@@ -31,6 +31,31 @@ describe("rove CLI compatibility entry", () => {
     expect(result.stdout).not.toContain("complete -F _kobe kobe")
   })
 
+  test("subcommand help consistently names the invoked rove executable", () => {
+    const cases: ReadonlyArray<readonly [readonly string[], string]> = [
+      [["api", "--help"], "usage: rove api"],
+      [["config", "--help"], "Usage: rove config"],
+      [["daemon", "--help"], "Usage: rove daemon"],
+      [["doctor", "--help"], "Usage: rove doctor"],
+      [["export", "--help"], "Usage: rove export"],
+      [["feedback", "--help"], "Usage: rove feedback"],
+      [["plugin", "--help"], "usage: rove plugin"],
+      [["repo", "--help"], "Usage: rove repo"],
+      [["reset", "--help"], "Usage: rove reset"],
+      [["skill", "--help"], "usage: rove skill"],
+      [["theme", "--help"], "Usage: rove theme"],
+      [["update", "--help"], "Usage: rove update"],
+      [["web", "--help"], "Usage: rove web"],
+    ]
+
+    for (const [args, expected] of cases) {
+      const result = runRove(args, behavior)
+      expect(result.code, args.join(" ")).toBe(0)
+      expect(result.stdout, args.join(" ")).toContain(expected)
+      expect(result.stdout, args.join(" ")).not.toMatch(/(?:Usage|usage): kobe\b/)
+    }
+  })
+
   test("ROVE_HOME_DIR wins but still resolves the compatibility config path", () => {
     const originalLegacyHome = behavior.env.KOBE_HOME_DIR
     behavior.env.KOBE_HOME_DIR = join(behavior.home, "legacy-home")

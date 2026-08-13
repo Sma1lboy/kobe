@@ -23,7 +23,7 @@ export function tryPluginFileOpen(absPath: string): boolean {
   try {
     const [cmd, ...rest] = [...kobeCliInvocation(), "plugin", "action", "invoke", handler.qualifiedAction, absPath]
     const child = spawn(cmd as string, rest, { detached: true, stdio: "ignore" })
-    child.on("error", (err) => console.warn(`[kobe/plugins] ${handler?.qualifiedAction}: ${String(err)}`))
+    child.on("error", (err) => console.warn(`[rove/plugins] ${handler?.qualifiedAction}: ${String(err)}`))
     child.unref()
     return true
   } catch {

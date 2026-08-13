@@ -28,6 +28,7 @@ import {
   savePluginRegistry,
 } from "@sma1lboy/kobe-daemon/plugins/registry"
 import { PluginCliError, installPlugin } from "./plugin-install.ts"
+import { activeCliName } from "./rename-compat.ts"
 
 export interface OutdatedRow {
   readonly id: string
@@ -132,7 +133,8 @@ export async function updatePlugins(ids: readonly string[], opts: { all: boolean
     if (ids.length === 0) throw new PluginCliError("update takes plugin ids or --all")
     targets = ids.map((id) => {
       const row = rows.find((r) => r.id === id)
-      if (!row) throw new PluginCliError(`\`${id}\` is not a GitHub-installed plugin; see \`kobe plugin list\``)
+      if (!row)
+        throw new PluginCliError(`\`${id}\` is not a GitHub-installed plugin; see \`${activeCliName()} plugin list\``)
       return row
     })
   }

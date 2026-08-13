@@ -66,7 +66,7 @@ export function useWorkspaceTaskActions(deps: WorkspaceTaskActionDeps): Workspac
       notifyInfo: deps.notifyInfo,
       selectedId: deps.selectedId,
       setSelectedId: deps.setSelectedId,
-      logPrefix: "[kobe workspace]",
+      logPrefix: "[rove workspace]",
       enterTask: deps.activateTask,
     }),
     onTaskDeleted: (() => {

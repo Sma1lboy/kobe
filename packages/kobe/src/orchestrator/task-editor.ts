@@ -84,7 +84,7 @@ export class TaskEditor {
       if (!nextBranch) return
       await this.setBranch(taskBefore.id, nextBranch)
     } catch (err) {
-      console.error(`[kobe] follow-branch-to-title failed for ${taskBefore.id}:`, err)
+      console.error(`[rove] follow-branch-to-title failed for ${taskBefore.id}:`, err)
     }
   }
 

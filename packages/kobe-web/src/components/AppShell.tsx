@@ -47,7 +47,7 @@ function TopBar({
     >
       <DesktopWindowControls />
       <span className="font-mono text-[13px] font-bold text-primary">
-        [kobe]
+        [rove]
       </span>
       <ViewToggle />
       {task ? (
@@ -117,7 +117,7 @@ function StatusBar() {
         </span>
       )}
       <span className="ml-auto">
-        {update?.latest ? `update ${update.latest} available` : "kobe web"}
+        {update?.latest ? `update ${update.latest} available` : "Rove web"}
       </span>
     </footer>
   )

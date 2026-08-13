@@ -41,8 +41,6 @@ input, `○` idle).
 `ctrl+a` `i` opens it. The Inbox answers two questions — *what needs me?* and
 *where was I?* — with one section for each:
 
-![The Inbox: ATTENTION items that need you — a question, two finished turns — and RECENT jump targets](assets/inbox.png)
-
 - **ATTENTION** — pending items, oldest first. An item appears when a turn
   completes, a session asks for input, hits a rate limit, or errors. One item
   per task-and-tab: a newer event replaces the older one, and starting a new
@@ -66,8 +64,6 @@ says so.
 The files pane shows what changed; diff review lets you respond. Press `d`
 on a file to open its read-only diff, then:
 
-![Diff review: a range selected across lines 4-6 and a note being written for the engine](assets/diff-review.png)
-
 1. `j` / `k` move the line cursor.
 2. `v` anchors a range — move to the other end with `j`/`k`; `v` again
    cancels. Skip this for a single-line note.
@@ -89,8 +85,6 @@ keys are fixed and not rebindable.
 
 `ctrl+e` is the one dialog for starting anything. It lists your detected
 engines, a `shell`, and any plugin panes. Two toggles set what happens:
-
-![The new-conversation dialog: pick an engine or a shell; the toggles below choose destination and context](assets/new-session-dialog.png)
 
 - `tab` flips the **destination**: a new tab in this worktree ⇄ a forked
   child task in a fresh worktree.
@@ -122,11 +116,9 @@ workspace. The chords stay live, so you can hop between pages directly.
 The [issue store](CONCEPTS.md#the-issue-store) as a board, one project at a
 time (`tab` cycles projects). Three columns:
 
-![The Kanban page: Backlog, In progress, and Done columns, with the linked card showing live engine activity](assets/kanban.png)
-
 - **Backlog** — open, doing, or on hold, not linked to a task.
 - **In progress** — linked to a task. The link *is* the column: agents move
-  cards with `kobe api issue-update --task`, and in-progress cards show the
+  cards with `rove api issue-update --task`, and in-progress cards show the
   linked task's live engine activity.
 - **Done** — status `done`.
 
@@ -144,12 +136,10 @@ Daemon-owned scheduled prompts on five-field cron expressions. Each row shows
 the repo, the schedule, and the next run; the detail box below shows the
 prompt, the precheck if any, and the last few runs with their outcomes.
 
-![The Routines page: two scheduled prompts with their cron expressions and next runs, and the detail box below](assets/routines.png)
-
 `n` creates a routine (name, repo, prompt, schedule), `e` pauses or resumes,
 `s` runs one now, `enter` opens the task created by the latest run. There is
-no in-page editing — recreate the routine, or use `kobe api routine-update`
-(which also sets prechecks; see [kobe api](API.md)). An enabled routine keeps
+no in-page editing — recreate the routine, or use `rove api routine-update`
+(which also sets prechecks; see [rove api](API.md)). An enabled routine keeps
 the daemon alive so schedules fire with no TUI attached.
 
 ### GitHub Issues (`ctrl+a` `3`)
@@ -159,7 +149,7 @@ if `gh` works in your terminal, this page works too; otherwise the page tells
 you exactly what's missing. `a` filters to issues assigned to you, `tab`
 switches repos, `r` refreshes past the cache.
 
-`enter` starts a kobe task from the selected issue: the issue body arrives as
+`enter` starts a Rove task from the selected issue: the issue body arrives as
 the first prompt (fenced, and explicitly marked as an untrusted report), and
 the task keeps a `linkedWorkItem` pointer back to the issue. Nothing is
 imported into the local issue store and nothing is written back to GitHub.
@@ -169,8 +159,6 @@ imported into the local issue store and nothing is written back to GitHub.
 Below **70 columns** the TUI switches to one panel at a time — made for
 phone-sized SSH sessions. Nothing changes at 70 columns or wider, and there
 is no setting: it follows the terminal width.
-
-![Narrow mode: the task list fills a phone-width terminal, with the Recent jump row at the top](assets/narrow-sidebar.png)
 
 - The task list and the workspace alternate: opening a task shows the
   workspace full-width, `ctrl+q` returns to the list. No new chords.
@@ -196,7 +184,7 @@ your file manager:
 
 `ctrl+v` in those dialogs does the same with the clipboard: a copied file
 attaches by path, a raw screenshot is saved under `~/.kobe/attachments/`
-first. kobe only ever passes paths — the engine reads the file itself.
+first. Rove only ever passes paths — the engine reads the file itself.
 
 ## Quota in the footer
 
@@ -206,6 +194,6 @@ shows each usage window the vendor reports — e.g. `CLAUDE 5h 42% → 14:00 ·
 from 95%. The same numbers, same thresholds, appear in Settings → General.
 
 The daemon refreshes quota roughly every 15 minutes, so treat the figure as
-approximate, not live. When Claude hits its subscription window, kobe
+approximate, not live. When Claude hits its subscription window, Rove
 schedules an automatic resume for the affected task and continues it once
 the window resets.

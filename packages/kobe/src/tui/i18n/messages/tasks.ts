@@ -104,7 +104,7 @@ export const en = {
   toast: {
     noDaemonWorktree: "No daemon running — can't create the worktree",
     noDaemonOpen: "No daemon running — can't open this task",
-    noEditor: "No editor found — set KOBE_OPEN_EDITOR (e.g. 'code', 'cursor', 'nvim')",
+    noEditor: "No editor found — set ROVE_OPEN_EDITOR (e.g. 'code', 'cursor', 'nvim')",
     openWorktreeFailed: "Couldn't open worktree with {label}",
     sessionStartFailed: "Couldn't start this task's session",
     moveTaskFailed: "Couldn't move task: {message}",
@@ -191,7 +191,7 @@ export const zh: typeof en = {
   toast: {
     noDaemonWorktree: "守护进程未运行——无法创建 worktree",
     noDaemonOpen: "守护进程未运行——无法打开此任务",
-    noEditor: "未找到编辑器——请设置 KOBE_OPEN_EDITOR（如 'code'、'cursor'、'nvim'）",
+    noEditor: "未找到编辑器——请设置 ROVE_OPEN_EDITOR（如 'code'、'cursor'、'nvim'）",
     openWorktreeFailed: "无法用 {label} 打开 worktree",
     sessionStartFailed: "无法启动此任务的会话",
     moveTaskFailed: "无法移动任务：{message}",

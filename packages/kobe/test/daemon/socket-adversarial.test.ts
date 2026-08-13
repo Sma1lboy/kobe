@@ -61,12 +61,12 @@ describe("daemon socket adversarial paths", () => {
     // An ancient client below the daemon's minimum → clear upgrade error.
     const ancient = MIN_COMPATIBLE_PROTOCOL_VERSION - 1
     await expect(client.request("hello", { protocolVersion: ancient, minProtocolVersion: ancient })).rejects.toThrow(
-      /Upgrade your kobe/,
+      /Upgrade Rove/,
     )
     // A future client whose MINIMUM is above the daemon's version → also refused.
     const future = DAEMON_PROTOCOL_VERSION + 50
     await expect(client.request("hello", { protocolVersion: future, minProtocolVersion: future })).rejects.toThrow(
-      /Upgrade your kobe/,
+      /Upgrade Rove/,
     )
     // The mismatch is per-request: the same connection completes a compatible
     // handshake afterwards, and the daemon advertises its own range.

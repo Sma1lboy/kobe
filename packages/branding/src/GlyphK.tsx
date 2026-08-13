@@ -1,20 +1,18 @@
 import { AbsoluteFill, interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion"
 import { colors, monoStack } from "./colors"
 
-// Concept 4 — Glyph K (app-icon shape, Conductor-style pixel tile)
-// Rounded-square dark tile + a chunky pixel-grid "K". Mirrors the Conductor
+// Concept 4 — Glyph R (app-icon shape, Conductor-style pixel tile)
+// Rounded-square dark tile + a chunky pixel-grid "R". Mirrors the Conductor
 // app icon's grammar: blocky letterform sitting in a tinted rounded tile,
 // reads as a real macOS / iOS / Linux app icon. Pixels reveal row-by-row
-// on intro; tile holds a subtle inner glow. Survives the rename — swap
-// the K_PATTERN cells for whatever first letter the new name gives us.
+// on intro; tile holds a subtle inner glow.
 
-// 7×5 pixel K. Left column is the vertical bar; the two diagonals meet
-// the bar at row 3 (the middle), forming a cleanly readable "K".
-const K_PATTERN: ReadonlyArray<ReadonlyArray<0 | 1>> = [
+// 7×5 pixel R: a closed upper bowl and a diagonal leg.
+const R_PATTERN: ReadonlyArray<ReadonlyArray<0 | 1>> = [
+  [1, 1, 1, 1, 0],
   [1, 0, 0, 0, 1],
-  [1, 0, 0, 1, 0],
-  [1, 0, 1, 0, 0],
-  [1, 1, 0, 0, 0],
+  [1, 0, 0, 0, 1],
+  [1, 1, 1, 1, 0],
   [1, 0, 1, 0, 0],
   [1, 0, 0, 1, 0],
   [1, 0, 0, 0, 1],
@@ -22,8 +20,8 @@ const K_PATTERN: ReadonlyArray<ReadonlyArray<0 | 1>> = [
 
 const PIXEL = 56
 const GAP = 4
-const COLS = K_PATTERN[0].length
-const ROWS = K_PATTERN.length
+const COLS = R_PATTERN[0].length
+const ROWS = R_PATTERN.length
 
 export const GlyphK: React.FC = () => {
   const frame = useCurrentFrame()
@@ -80,7 +78,7 @@ export const GlyphK: React.FC = () => {
           }}
         />
 
-        {/* Pixel grid K */}
+        {/* Pixel grid R */}
         <div
           style={{
             display: "grid",
@@ -90,7 +88,7 @@ export const GlyphK: React.FC = () => {
             position: "relative",
           }}
         >
-          {K_PATTERN.flatMap((row, rIdx) =>
+          {R_PATTERN.flatMap((row, rIdx) =>
             row.map((cell, cIdx) => {
               if (cell === 0) {
                 return <div key={`${rIdx}-${cIdx}`} />

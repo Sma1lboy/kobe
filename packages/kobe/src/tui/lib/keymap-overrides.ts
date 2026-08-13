@@ -136,7 +136,7 @@ export function applyKeymapOverrides(
   for (const entry of entries) {
     const row = keymap.find((b) => b.id === entry.id)
     if (!row) {
-      warnings.push(`${entry.id}: unknown binding id (press F1 in kobe for the full list)`)
+      warnings.push(`${entry.id}: unknown binding id (press F1 in Rove for the full list)`)
       continue
     }
     const fixedReason = fixedIds[entry.id]

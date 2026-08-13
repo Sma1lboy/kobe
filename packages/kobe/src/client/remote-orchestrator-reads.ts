@@ -221,13 +221,13 @@ export function subscribeTasksOp(s: ReadSignals, listener: (snapshot: readonly T
   try {
     listener(listTasksOp(s))
   } catch (err) {
-    console.error("[kobe RemoteOrchestrator] task listener threw on subscribe:", err)
+    console.error("[rove RemoteOrchestrator] task listener threw on subscribe:", err)
   }
   return s.tasksAcc.subscribe(() => {
     try {
       listener(s.tasksAcc.get())
     } catch (err) {
-      console.error("[kobe RemoteOrchestrator] task listener threw:", err)
+      console.error("[rove RemoteOrchestrator] task listener threw:", err)
     }
   })
 }

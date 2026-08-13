@@ -87,7 +87,7 @@ export class TaskIndexStore {
       try {
         listener(this.cache.tasks.slice())
       } catch (err) {
-        console.error("[kobe TaskIndexStore] listener threw on subscribe:", err)
+        console.error("[rove TaskIndexStore] listener threw on subscribe:", err)
       }
     }
     return () => {
@@ -133,7 +133,7 @@ export class TaskIndexStore {
       // without a copy the user's tasks are gone for good (PR #276).
       const backup = await backupCorruptManifest(this.path)
       console.warn(
-        `[kobe] tasks.json at ${this.path} is corrupted (${(err as Error).message}); recovering with empty index.${
+        `[rove] tasks.json at ${this.path} is corrupted (${(err as Error).message}); recovering with empty index.${
           backup ? ` Original bytes backed up to ${backup}.` : " Backup copy failed; the stale file is left in place."
         }`,
       )
@@ -493,7 +493,7 @@ export class TaskIndexStore {
       try {
         listener(snapshot)
       } catch (err) {
-        console.error("[kobe TaskIndexStore] listener threw on notify:", err)
+        console.error("[rove TaskIndexStore] listener threw on notify:", err)
       }
     }
   }

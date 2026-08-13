@@ -78,7 +78,7 @@ describe("maybeHintSkillInstall", () => {
   it("absent skill: hints exactly once, then persists the flag and stays quiet", async () => {
     await maybeHintSkillInstall()
     expect(stderrSpy).toHaveBeenCalledTimes(1)
-    expect(String(stderrSpy.mock.calls[0]?.[0])).toContain("kobe skill install")
+    expect(String(stderrSpy.mock.calls[0]?.[0])).toContain("rove skill install")
     expect(getPersistedString("skillHintSeen")).toBe("1")
 
     await maybeHintSkillInstall()

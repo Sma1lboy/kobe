@@ -51,7 +51,7 @@ function DiffError({ onRetry }: { onRetry: () => void }) {
   if (offline) {
     return (
       <div className="px-3 py-4 text-[12px] leading-relaxed text-subtle">
-        The kobe daemon is offline — changes will reappear once it reconnects.
+        The Rove daemon is offline — changes will reappear once it reconnects.
       </div>
     )
   }

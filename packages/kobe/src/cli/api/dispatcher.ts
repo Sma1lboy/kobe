@@ -14,6 +14,7 @@
 
 import type { SerializedTask } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import type { DaemonRpc } from "../daemon-session.ts"
+import { activeCliName } from "../rename-compat.ts"
 import { ApiError, type ApiRuntime } from "./types.ts"
 
 /** The dispatcher pair as recorded on a task. */
@@ -77,7 +78,7 @@ export async function resolveDispatcherTab(runtime: ApiRuntime, dispatcher: Disp
     "DISPATCHER_UNREACHABLE",
     {
       dispatcher,
-      hint: "address an alive target explicitly with --task-id/--tab (see `kobe api pty-list`), or notify the user with `kobe api notify`",
+      hint: `address an alive target explicitly with --task-id/--tab (see \`${activeCliName()} api pty-list\`), or notify the user with \`${activeCliName()} api notify\``,
       nextCommandArgs: ["api", "pty-list"],
     },
   )

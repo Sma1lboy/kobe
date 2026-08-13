@@ -75,12 +75,12 @@ export function loadUserThemes(): LoadedTheme[] {
       parsed = JSON.parse(text)
     } catch (err) {
       const msg = errorMessage(err)
-      console.warn(`[kobe] skipping user theme ${path}: invalid JSON — ${msg}`)
+      console.warn(`[rove] skipping user theme ${path}: invalid JSON — ${msg}`)
       continue
     }
     const result = validateTheme(parsed)
     if (!result.ok) {
-      console.warn(`[kobe] skipping user theme ${path}: ${result.reason}`)
+      console.warn(`[rove] skipping user theme ${path}: ${result.reason}`)
       continue
     }
     const name = file.slice(0, -".json".length)

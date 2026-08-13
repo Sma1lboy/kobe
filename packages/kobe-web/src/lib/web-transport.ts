@@ -52,7 +52,7 @@ export function webTransportTopBarView(
       ok: false,
       label: "no daemon",
       title:
-        "Daemon offline — if it doesn't recover, run `kobe doctor` or `kobe reset` in a terminal.",
+        "Daemon offline — if it doesn't recover, run `rove doctor` or `rove reset` in a terminal.",
     }
   }
   return { ok: false, label: "connecting…" }

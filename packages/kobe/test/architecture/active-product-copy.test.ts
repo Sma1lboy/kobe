@@ -53,4 +53,29 @@ describe("active product copy", () => {
     const source = read(path)
     for (const stale of phrases) expect(source, `${path} still claims "${stale}"`).not.toContain(stale)
   })
+
+  test("current product pages do not publish pre-Rove terminal recordings", () => {
+    const readme = read("README.md")
+    expect(readme).not.toContain("docs/assets/demo.gif")
+    expect(readme).not.toContain("docs/assets/demo.mp4")
+    expect(readme).not.toContain("docs/assets/diff-review.png")
+    expect(readme).not.toContain("docs/assets/narrow-sidebar.png")
+    expect(readme).not.toContain("docs/assets/routines.png")
+
+    const tuiDocs = read("docs/TUI.md")
+    for (const asset of [
+      "inbox.png",
+      "diff-review.png",
+      "new-session-dialog.png",
+      "kanban.png",
+      "routines.png",
+      "narrow-sidebar.png",
+    ]) {
+      expect(tuiDocs, `docs/TUI.md still publishes historical ${asset}`).not.toContain(`assets/${asset}`)
+    }
+
+    const landing = read("packages/kobe-landing/index.html")
+    expect(landing).not.toContain("assets/quicklook.mp4")
+    expect(landing).not.toContain("assets/quicklook-poster.jpg")
+  })
 })

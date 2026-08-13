@@ -1,6 +1,6 @@
-# kobe api
+# rove api
 
-`kobe api` is kobe's scriptable surface: the verbs a shell script — or
+`rove api` is Rove's scriptable surface: the verbs a shell script — or
 another AI agent — uses to spawn tasks, supervise them, read their output,
 and land the winner, with no TUI attached.
 
@@ -8,14 +8,14 @@ Each invocation is a short-lived process: connect to (or auto-start) the
 daemon, do the work, print one JSON object to stdout, exit. Read-only verbs
 marked *offline* below skip the daemon entirely.
 
-`kobe api schema` is **the** source of truth when this page and the binary
+`rove api schema` is **the** source of truth when this page and the binary
 disagree: names, types, required flags, and enum values, as JSON. Agents
 should read it once and drill in with `--verb <name>` instead of parsing
 this page. The rest of the binary is documented in the
 [CLI reference](./CLI.md).
 
 To teach a coding agent this surface, install the bundled agent skill —
-`kobe skill install` — instead of pasting this page into a prompt.
+`rove skill install` — instead of pasting this page into a prompt.
 
 ## The orchestration loop
 
@@ -26,32 +26,32 @@ verb each.
 **Fan out** — one prompt, N isolated attempts, one call:
 
 ```bash
-kobe api fan-out --repo "$PWD" \
+rove api fan-out --repo "$PWD" \
   --agents claude:2,codex:2,copilot:1 \
   --prompt "Try independent approaches to simplify the auth flow."
 ```
 
-**Completion** — a worker spawned from another kobe task sends its outcome
+**Completion** — a worker spawned from another Rove task sends its outcome
 back to the dispatching chat tab: creation records the dispatcher
 (task + tab), so a bare `send` routes home without any id in hand; no
 stored report, no blocking wait. Silence is a checkpoint, never a verdict:
 
 ```bash
-kobe api send --prompt "succeeded: auth flow simplified (branch kobe/auth-flow)"
+rove api send --prompt "succeeded: auth flow simplified (branch kobe/auth-flow)"
 ```
 
 **Observe** — read the engine's own structured session, never scrape a TUI
 screen:
 
 ```bash
-kobe api read-output --task-id <id>    # paged history, honest terminal fallback
+rove api read-output --task-id <id>    # paged history, honest terminal fallback
 ```
 
 **Fan in** — compare the attempts, then land one:
 
 ```bash
-kobe api collect --task-ids a,b,c      # read-only comparison snapshot
-kobe api land --task-id a              # merge the winning branch
+rove api collect --task-ids a,b,c      # read-only comparison snapshot
+rove api land --task-id a              # merge the winning branch
 ```
 
 ## Output + exit-code contract
@@ -65,7 +65,7 @@ kobe api land --task-id a              # merge the winning branch
   (unknown verb, bad/missing flag, unreachable daemon) · `3` partial
   fan-out (some tasks created, some failed; the full payload still goes to
   stdout so created tasks are never lost).
-- `kobe api <verb> --help` prints that verb's usage and exits 0.
+- `rove api <verb> --help` prints that verb's usage and exits 0.
 
 Flag parsing: `--key value` and `--key=value` both work; boolean flags may
 be given bare (`--force` ⇒ true) or explicitly (`--archived=false`);
@@ -92,7 +92,7 @@ paths against `$PWD` (`~` expanded). Engine vendors: `claude`, `codex`,
   (`code`/`signal`/`at`); clean exits stay `exit: null`. A live PTY session
   the persisted snapshot does not list still gets a row, marked
   `unregistered: true` — an alive engine is never invisible here.
-  `.task.dispatcher` (`{taskId, tabId}`) = the kobe session that created the
+  `.task.dispatcher` (`{taskId, tabId}`) = the Rove session that created the
   task, when one did — the lineage read for a fan-out round's parent.
 - `collect [--task-ids a,b,c] [--repo PATH]`: read-only comparison
   snapshot of several tasks: identity, branch, lineage (`.dispatcher`,
@@ -101,7 +101,7 @@ paths against `$PWD` (`~` expanded). Engine vendors: `claude`, `codex`,
 - `digest --repo PATH [--since-days N]`: the repo's recent agent work —
   tasks touched in the window plus routine outcomes by status. Default
   window 7 days. Task outcomes are deliberately absent: completion travels
-  to the spawning agent's chat tab (`send`), not into kobe state.
+  to the spawning agent's chat tab (`send`), not into Rove state.
 - `pty-list` *(offline)*: hosted PTY sessions (key, alive, pid, command,
   live window title). Empty when no PTY host runs.
 - `read-output [--task-id ID] [--source auto|history|terminal] [--cursor C]
@@ -135,7 +135,7 @@ paths against `$PWD` (`~` expanded). Engine vendors: `claude`, `codex`,
   [--vendor V] [--title T] [--base-branch B]`: spawn N tasks of one prompt
   in a single call (parallel attempts). Capped at 10.
 
-A create issued from inside a kobe engine tab (`add`, `fan-out`) records
+A create issued from inside a Rove engine tab (`add`, `fan-out`) records
 the caller as the new task's `dispatcher` (`{taskId, tabId}` from
 `$KOBE_TASK_ID`/`$KOBE_TAB_ID`) — the reply address the worker's bare
 `send` routes back to. Creates from a plain shell or the TUI record none.
@@ -154,7 +154,7 @@ placeholder branch to a descriptive name. Prompts into existing sessions
   tab when the tab died, and failing loud (`DISPATCHER_UNREACHABLE`) when
   nothing on that task is alive, never silently spawning a new engine.
   Otherwise the default is the active task and its canonical engine tab.
-  From another kobe task, the message includes `[KOBE PEER]` provenance and
+  From another Rove task, the message includes `[KOBE PEER]` provenance and
   a tab-precise reply command (`--task-id <sender> --tab <sender's tab>`);
   `--plain` skips that prefix. `--tab new` spawns a fresh engine tab, while `--tab
   tab-N` targets that exact tab (`TAB_NOT_FOUND` if it is dead or absent).
@@ -223,7 +223,7 @@ The daemon-owned issue store (backlog; see
 
 A **read-only** view of a repo's GitHub issues (through the `gh` CLI), plus one
 action: start a task on one. Deliberately not an import — the issue stays
-GitHub's, and nothing is copied into kobe's own issue store. Mechanics:
+GitHub's, and nothing is copied into Rove's own issue store. Mechanics:
 [design/work-items.md](./design/work-items.md).
 
 - `workitem-list --repo PATH [--state open|closed|all] [--limit N] [--search Q]
@@ -290,16 +290,16 @@ to do) from `dispatch_failed` (needs a human).
 - `ensure-worktree --task-id ID`: materialize a task's git worktree on
   disk now (without starting an engine). Returns `{ worktreePath }`.
 - `discover-adoptable --repo PATH`: list existing git worktrees not yet
-  tracked as kobe tasks.
+  tracked as Rove tasks.
 - `adopt --repo PATH --worktree PATH [--branch B] [--vendor V] [--title T]`:
-  import an existing git worktree as a kobe task.
+  import an existing git worktree as a Rove task.
 
 ## feedback + other
 
 - `feedback --title T --body TEXT [--category SLUG]` *(offline)*: create a
-  GitHub Discussion in the kobe repo's Feedback category via `gh`.
+  GitHub Discussion in the Rove repository's Feedback category via `gh`.
 - `notify --title TEXT [--kind KIND] [--task-id ID] [--source TAG]`: show
-  a toast in every attached kobe UI. `done` / `needs_input` / `error` get
+  a toast in every attached Rove UI. `done` / `needs_input` / `error` get
   severity styling; any other kind renders neutrally.
 - `prompt --title TEXT [--placeholder T] [--initial T] [--timeout MS]`:
   ask the human for a line of text through the attached TUI's input dialog;

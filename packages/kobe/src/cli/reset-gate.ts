@@ -15,6 +15,7 @@
 
 import { loadStateFile, patchStateFile } from "../state/store.ts"
 import { BREAKING_VERSIONS, CURRENT_VERSION, compareSemver } from "../version.ts"
+import { activeCliName } from "./rename-compat.ts"
 
 export const LAST_RUN_VERSION_KEY = "app.lastRunVersion"
 
@@ -40,20 +41,21 @@ export function resetGateBlockers(
  * current version (best-effort) and return.
  */
 export function enforceResetGate(): void {
+  const cliName = activeCliName()
   const lastRun = loadStateFile()[LAST_RUN_VERSION_KEY]
   const blockers = resetGateBlockers(lastRun)
   if (blockers.length > 0) {
     const from = typeof lastRun === "string" ? lastRun : "unknown"
     console.error(
       [
-        `kobe ${CURRENT_VERSION}: cannot start — version ${blockers.join(", ")} introduced breaking changes`,
+        `${cliName} ${CURRENT_VERSION}: cannot start — version ${blockers.join(", ")} introduced breaking changes`,
         `(last run: ${from}). Your daemon/session state may be incompatible.`,
         "",
         "Run:",
-        "  kobe reset          # stop daemon + PTY host + sessions (tasks kept)",
-        "  kobe reset --hard   # additionally wipe the task index + UI state",
+        `  ${cliName} reset          # stop daemon + PTY host + sessions (tasks kept)`,
+        `  ${cliName} reset --hard   # additionally wipe the task index + UI state`,
         "",
-        "Then relaunch kobe. Worktrees are never touched.",
+        "Then relaunch Rove. Worktrees are never touched.",
       ].join("\n"),
     )
     process.exit(1)

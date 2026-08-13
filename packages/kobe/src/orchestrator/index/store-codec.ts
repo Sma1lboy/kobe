@@ -88,7 +88,7 @@ export async function backupCorruptManifest(path: string, now: () => Date = () =
  */
 export function normalizeIndex(parsed: unknown, source: string): { version: typeof CURRENT_VERSION; tasks: Task[] } {
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-    console.warn(`[kobe] tasks.json at ${source} is not an object; recovering with empty index.`)
+    console.warn(`[rove] tasks.json at ${source} is not an object; recovering with empty index.`)
     return { version: CURRENT_VERSION, tasks: [] }
   }
 
@@ -96,7 +96,7 @@ export function normalizeIndex(parsed: unknown, source: string): { version: type
   const version = obj.version
   if (version !== undefined && version !== 1 && version !== 2 && version !== 3) {
     console.warn(
-      `[kobe] tasks.json at ${source} has unsupported version=${String(version)}; recovering with empty index.`,
+      `[rove] tasks.json at ${source} has unsupported version=${String(version)}; recovering with empty index.`,
     )
     return { version: CURRENT_VERSION, tasks: [] }
   }
@@ -107,7 +107,7 @@ export function normalizeIndex(parsed: unknown, source: string): { version: type
     const task = coerceTask(entry)
     if (task) tasks.push(task)
     else {
-      console.warn(`[kobe] dropping malformed task entry from ${source}: ${JSON.stringify(entry)}`)
+      console.warn(`[rove] dropping malformed task entry from ${source}: ${JSON.stringify(entry)}`)
     }
   }
   return { version: CURRENT_VERSION, tasks }

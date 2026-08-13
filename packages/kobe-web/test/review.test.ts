@@ -12,7 +12,7 @@ describe("reviewPrompt", () => {
   it("claude: leads with the native /review command", () => {
     const text = reviewPrompt("01HXABC", "claude")
     expect(text.startsWith("/review\n")).toBe(true)
-    expect(text).toContain("kobe api set-status --task-id 01HXABC --status done")
+    expect(text).toContain("rove api set-status --task-id 01HXABC --status done")
     expect(text).not.toContain("api edit")
   })
 
@@ -23,7 +23,7 @@ describe("reviewPrompt", () => {
   it("non-claude engines get the prose form with the same done clause", () => {
     const text = reviewPrompt("t1", "codex")
     expect(text).not.toContain("/review")
-    expect(text).toContain("kobe api set-status --task-id t1 --status done")
+    expect(text).toContain("rove api set-status --task-id t1 --status done")
   })
 
   it("a failing review keeps the status unchanged, in every form", () => {

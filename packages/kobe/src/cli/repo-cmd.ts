@@ -13,9 +13,12 @@ import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
 import { errorMessage } from "@/lib/error-message"
 import { expandTilde } from "../lib/path-home.ts"
+import { activeCliName } from "./rename-compat.ts"
+
+const CLI_NAME = activeCliName()
 
 const REPO_USAGE = [
-  "Usage: kobe repo <show|set|unset> [path] [options]",
+  `Usage: ${CLI_NAME} repo <show|set|unset> [path] [options]`,
   "",
   "Manage a repo's per-user init override (state.json fallback for repos",
   "that don't ship .kobe/init.sh / .kobe/init-prompt.md).",
@@ -36,7 +39,7 @@ const REPO_USAGE = [
 ].join("\n")
 
 function usageError(message: string): never {
-  process.stderr.write(`kobe repo: ${message}\n\n${REPO_USAGE}\n`)
+  process.stderr.write(`${CLI_NAME} repo: ${message}\n\n${REPO_USAGE}\n`)
   process.exit(2)
 }
 

@@ -22,7 +22,7 @@ export function destroyRendererSafely(renderer: DestroyableRenderer | null | und
   try {
     renderer?.destroy()
   } catch (err) {
-    console.error(`kobe: renderer.destroy() failed during ${action}:`, err)
+    console.error(`Rove: renderer.destroy() failed during ${action}:`, err)
   }
 }
 
@@ -32,7 +32,7 @@ export function removeTasksFileForReset(): void {
     unlinkSync(join(homeDir(), ".kobe", "tasks.json"))
   } catch (err) {
     if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
-      console.error("kobe: failed to delete tasks.json during reset:", err)
+      console.error("Rove: failed to delete tasks.json during reset:", err)
     }
   }
 }

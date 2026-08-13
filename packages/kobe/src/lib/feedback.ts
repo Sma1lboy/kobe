@@ -129,7 +129,7 @@ function runGhGraphql<T>(query: string, variables: Record<string, string>, deps:
 }
 
 function discussionBody(body: string): string {
-  return `${body}\n\n---\nSubmitted from kobe ${CURRENT_VERSION}.`
+  return `${body}\n\n---\nSubmitted from Rove ${CURRENT_VERSION}.`
 }
 
 export function submitFeedback(input: SubmitFeedbackInput, deps: Partial<FeedbackDeps> = {}): SubmitFeedbackResult {

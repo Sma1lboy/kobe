@@ -1,6 +1,6 @@
 # Local work tracking
 
-kobe work is tracked locally. There is no external issue tracker. Agents should not file or update tickets in any external system, or require its CLI authentication, during normal development.
+rove work is tracked locally. There is no external issue tracker. Agents should not file or update tickets in any external system, or require its CLI authentication, during normal development.
 
 ## Sources of truth
 
@@ -34,10 +34,10 @@ common-dir, so the source checkout and its worktrees share one issue record:
 
 - **`status`**: `open` → `doing` → `done`, plus `hold` for issues parked on purpose (waiting on a decision, blocked, deliberately deferred). `hold` is a parking lot, not a lifecycle step. Resume by flipping back to `open`. The archive sweep ignores it (only `done` moves), so held issues stay visible in the active file. Status is still the only dimension; don't add label/type fields.
 - **`id`**: take `nextId`, then increment `nextId`. Ids are never reused.
-- **Adding**: use the web Issues page or `kobe api issue-create --repo <path> --title ...`. The daemon stores the repo's issue record under the repo's git common-dir, so a source checkout and its task worktrees share the same issues.
+- **Adding**: use the web Issues page or `rove api issue-create --repo <path> --title ...`. The daemon stores the repo's issue record under the repo's git common-dir, so a source checkout and its task worktrees share the same issues.
 - **Closing**: flip `status` to `done`. Done issues stay visible in the Done column until a future archive/export flow exists.
-- **Agent automation**: use `kobe api issue-list`, `kobe api issue-create`, `kobe api issue-set-status`, and `kobe api issue-update`. From a task worktree, `--repo .` resolves to the same daemon issue record as the source checkout.
-- **Web panel**: the `kobe web` dashboard's Issues page proxies `/api/issues` to daemon `issue.*` RPCs (status flips incl. `hold`, new issues, one-click quick-start of a kobe task from an issue).
+- **Agent automation**: use `rove api issue-list`, `rove api issue-create`, `rove api issue-set-status`, and `rove api issue-update`. From a task worktree, `--repo .` resolves to the same daemon issue record as the source checkout.
+- **Web panel**: the `rove web` dashboard's Issues page proxies `/api/issues` to daemon `issue.*` RPCs (status flips incl. `hold`, new issues, one-click quick-start of a Rove task from an issue).
 
 Code changes still land their user-facing line as a **Changeset** (see [`RELEASING.md`](./RELEASING.md)). Issues are the *backlog of what to do*, the changelog is the *record of what shipped*. They're different things; an issue often closes by landing a change that carries its own changeset.
 

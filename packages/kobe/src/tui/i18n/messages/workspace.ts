@@ -6,7 +6,7 @@
 
 export const en = {
   quit: {
-    confirmTitle: "Quit kobe?",
+    confirmTitle: "Quit Rove?",
     confirmBody: "The daemon and task sessions keep running. This closes only the native workspace.",
     confirmLabel: "Quit",
   },
@@ -38,7 +38,7 @@ export const en = {
 
 export const zh: typeof en = {
   quit: {
-    confirmTitle: "退出 kobe？",
+    confirmTitle: "退出 Rove？",
     confirmBody: "守护进程和任务会话会继续运行，这里只关闭原生工作区。",
     confirmLabel: "退出",
   },

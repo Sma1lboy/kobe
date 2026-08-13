@@ -74,7 +74,7 @@ export function loadStateFile(): StateSnapshot {
     renameSync(path, `${path}.corrupt-${Date.now()}`)
     if (!corruptWarned) {
       corruptWarned = true
-      console.error(`[kobe] ${path} is corrupted; backed up and starting fresh.`)
+      console.error(`[rove] ${path} is corrupted; backed up and starting fresh.`)
     }
   } catch {
     // Nothing more we can do; still return {} below.

@@ -66,7 +66,7 @@ function WorktreeRowView({
             {row.branch || "(detached)"}
           </span>
           {row.kobeManaged && (
-            <span className="shrink-0 text-[10px] text-subtle">kobe</span>
+            <span className="shrink-0 text-[10px] text-subtle">rove</span>
           )}
           {row.dirty && (
             <span className="shrink-0 text-[10px] text-kobe-yellow">dirty</span>
@@ -218,7 +218,7 @@ export function WorktreesPage() {
           </p>
         ) : visibleProjects.length === 0 ? (
           <p className="px-3 py-6 text-center text-[12px] text-subtle">
-            No local projects known to kobe yet.
+            No local projects known to Rove yet.
           </p>
         ) : (
           visibleProjects.map((project) => (

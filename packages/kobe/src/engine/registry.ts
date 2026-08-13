@@ -329,7 +329,7 @@ function customEngineEntry(vendor: VendorId): EngineRegistryEntry {
     defaultCommand: [vendor],
     history: EMPTY_HISTORY,
     detectAccount: async () => ({
-      binary: { found: false, error: "custom engine: kobe has no account detector for it" },
+      binary: { found: false, error: "custom engine: Rove has no account detector for it" },
       account: { kind: "none" },
     }),
     createHookAdapter: () => new NoopHookAdapter(vendor),

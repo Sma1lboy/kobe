@@ -61,10 +61,10 @@ function promptHeader(issue: Issue): string[] {
 }
 
 /** First message for a worktree-task session (web quickStartPrompt parity). */
-export function issueWorktreePrompt(issue: Issue, api = "kobe api"): string {
+export function issueWorktreePrompt(issue: Issue, api = "rove api"): string {
   return [
     ...promptHeader(issue),
-    "Treat this as the story's dedicated kobe task session: work only in this task worktree, and preserve any repo init instructions already delivered to the session.",
+    "Treat this as the story's dedicated Rove task session: work only in this task worktree, and preserve any repo init instructions already delivered to the session.",
     "Before finishing, verify the acceptance criteria implied by the story and summarize what changed plus any verification still needed.",
     "Then merge the task branch back into the current project's main branch after the worktree is clean and checks pass.",
     `When the work lands, run: ${api} issue-set-status --repo . --id ${issue.id} --status done`,
@@ -73,7 +73,7 @@ export function issueWorktreePrompt(issue: Issue, api = "kobe api"): string {
 
 /** First message for a chat directly on the project checkout — no worktree,
  *  so the worktree/merge instructions are replaced with a stay-put note. */
-export function issueProjectPrompt(issue: Issue, api = "kobe api"): string {
+export function issueProjectPrompt(issue: Issue, api = "rove api"): string {
   return [
     ...promptHeader(issue),
     "You are working directly in the project checkout — no dedicated worktree or branch was created. Keep changes reviewable and do not switch branches unless asked.",

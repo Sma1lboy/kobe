@@ -10,7 +10,7 @@ export default function HomePage() {
       <p className="text-fd-muted-foreground">
         Redirecting to the{' '}
         <Link href="/docs" className="font-medium text-fd-primary underline">
-          kobe docs
+          Rove docs
         </Link>
         …
       </p>

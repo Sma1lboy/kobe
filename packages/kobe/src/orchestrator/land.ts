@@ -66,7 +66,7 @@ export interface LandWorktreeCleanup {
  */
 export async function landTaskWithCleanup(task: Task, opts: LandTaskOpts, deps: LandDeps): Promise<LandResult> {
   if (task.kind === "main") throw new Error("landTask: a main task has no branch to land")
-  if (task.kind === "dir") throw new Error("landTask: a directory task has no kobe-managed branch to land")
+  if (task.kind === "dir") throw new Error("landTask: a directory task has no Rove-managed branch to land")
   const result = await landTask(task, { strategy: opts.strategy })
   // Worktree removal runs BEFORE branch deletion: git refuses to delete a
   // branch that's still checked out in a live worktree, so the reverse order

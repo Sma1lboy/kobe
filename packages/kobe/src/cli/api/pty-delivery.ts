@@ -234,7 +234,7 @@ export async function deliverToExactTab(
   const session = sessions.find((s) => s.key === key)
   if (!session?.alive) {
     throw new ApiError(
-      `tab ${tabId} has no live session on task ${taskId} — see \`kobe api pty-list\` for alive tabs`,
+      `tab ${tabId} has no live session on task ${taskId} — see \`rove api pty-list\` for alive tabs`,
       "TAB_NOT_FOUND",
     )
   }

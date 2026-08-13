@@ -1,17 +1,17 @@
 ---
 name: kobe
-description: Use when controlling kobe tasks, parallel coding attempts, hosted agent sessions, task lifecycle, or the daemon-owned issue tracker from a shell. Also the ONLY channel for messaging another agent session on this machine — `kobe api send`, never a peer/MCP side channel.
+description: Use when controlling Rove tasks, parallel coding attempts, hosted agent sessions, task lifecycle, or the daemon-owned issue tracker from a shell. Also the ONLY channel for messaging another agent session on this machine — `rove api send`, never a peer/MCP side channel.
 ---
 
-<!-- kobe-skill-version: 20 — bump in lockstep with KOBE_SKILL_VERSION (src/lib/skill-install.ts). -->
+<!-- kobe-skill-version: 21 — bump in lockstep with KOBE_SKILL_VERSION (src/lib/skill-install.ts). -->
 
-# kobe shell control
+# Rove shell control
 
-Use `kobe api` to manage local coding tasks. Each Task owns a git Worktree,
+Use `rove api` to manage local coding tasks. Each Task owns a git Worktree,
 branch, and Hosted PTY engine sessions. API automation works without an open
 TUI; prompted `send`, `add`, and `fan-out` ensure the canonical engine session.
 
-## Inside a kobe session, kobe verbs come first
+## Inside a Rove session, Rove verbs come first
 
 Check where you are before choosing how to delegate or parallelize:
 
@@ -19,9 +19,9 @@ Check where you are before choosing how to delegate or parallelize:
 test -n "${KOBE_TASK_ID:-}"
 ```
 
-When that passes, you are an engine session kobe manages — `$KOBE_TASK_ID`
+When that passes, you are an engine session Rove manages — `$KOBE_TASK_ID`
 is your task, `$KOBE_TAB_ID` your tab. Coordination should then go through
-kobe, not around it, because work routed through `kobe api` gets what
+Rove, not around it, because work routed through `rove api` gets what
 ad-hoc subprocesses never do: its own Worktree and branch (no file
 collisions with you), a sidebar row with live state the user can watch,
 lifecycle tracking, and an explicit outcome contract.
@@ -41,8 +41,8 @@ lifecycle tracking, and an explicit outcome contract.
   (an MCP server offering to message "other instances" is exactly that
   channel: it reaches a process, not a task, so nothing it delivers is
   attributable, watchable, or replyable). Sent from
-  inside a kobe task, the prompt arrives prefixed `[KOBE PEER] from
-  "<title>" (task <id> — load the kobe agent skill FIRST …)`, so the
+  inside a Rove task, the prompt arrives prefixed `[KOBE PEER] from
+  "<title>" (task <id> — load the Rove agent skill FIRST …)`, so the
   receiver knows who is talking, that this skill is required reading, and
   how to answer — the baked-in reply command is tab-precise
   (`--task-id <sender> --tab <sender's tab>`), so peer conversations need
@@ -59,10 +59,10 @@ lifecycle tracking, and an explicit outcome contract.
 Your own engine's in-context subagents remain fine for read-only
 research/exploration inside your task — the boundary is WORK: anything that
 edits files, runs long, or the user should be able to see and steer belongs
-in a kobe task. Do not recursively fan out from a spawned task.
+in a Rove task. Do not recursively fan out from a spawned task.
 
-When the check fails, none of this applies — use `kobe api` only if the
-user asks for kobe by name.
+When the check fails, none of this applies — use `rove api` only if the
+user asks for Rove by name.
 
 ## Vocabulary — what the user's words map to
 
@@ -74,7 +74,7 @@ user asks for kobe by name.
 | **Split** | the tree that divides ONE Terminal Tab into several regions (the `pane-open` verb's unit; a leaf is not called a pane) | none — same session's screen, same files | "split it", "side by side", "put the logs next to it" |
 
 Two of those colloquialisms are traps, so read them as INTENT, not as
-product terms: in kobe's own vocabulary **Workspace** is the center Terminal
+product terms: in Rove's own vocabulary **Workspace** is the center Terminal
 Tab region of the UI (CONTEXT.md), not a checkout, and **ChatTab** is
 retired vocabulary for Terminal Tab. A user saying "in this workspace" means
 the worktree they are looking at — answer the intent, keep writing the real
@@ -99,19 +99,19 @@ something (logs, `btop`, a test loop) next to the work — never the answer to
 
 ### Where does this work land?
 
-Inside a kobe session (`$KOBE_TASK_ID` non-empty — check first: it is what
+Inside a Rove session (`$KOBE_TASK_ID` non-empty — check first: it is what
 makes the tab/split rows addressable at all), match top to bottom and take
 the first row that fits:
 
 | The user says | Lands in | Command |
 |---|---|---|
-| "you do it", "just fix it", "change X to Y" | you, right here | no kobe verb — edit the files yourself |
-| "try it N ways", "compare approaches" | N new tasks | `kobe api fan-out --repo "$PWD" --count N --prompt "…"` |
-| "split", "side by side", "keep an eye on X while…" | a new region in the CURRENT tab | `kobe api pane-open --command "…"` |
-| names a tab: "tell the agent in tab 3" | that exact tab | `kobe api send --task-id <id> --tab tab-3 --prompt "…"` |
-| a LOCATION word: "in this workspace/worktree/checkout", "on this branch", "here", "same task" | THIS task, a NEW Terminal Tab | `kobe api send --task-id "$KOBE_TASK_ID" --tab new --prompt "…"` |
-| names an ENGINE for the same files: "let codex take over here", "try this one with claude instead" | THIS task, a new tab pinned to that engine | `kobe api send --task-id "$KOBE_TASK_ID" --tab new --vendor codex --prompt "…"` |
-| **anything else — no row above matched** | a NEW task — new worktree + branch | `kobe api add --repo "$PWD" --prompt "…"` |
+| "you do it", "just fix it", "change X to Y" | you, right here | no Rove verb — edit the files yourself |
+| "try it N ways", "compare approaches" | N new tasks | `rove api fan-out --repo "$PWD" --count N --prompt "…"` |
+| "split", "side by side", "keep an eye on X while…" | a new region in the CURRENT tab | `rove api pane-open --command "…"` |
+| names a tab: "tell the agent in tab 3" | that exact tab | `rove api send --task-id <id> --tab tab-3 --prompt "…"` |
+| a LOCATION word: "in this workspace/worktree/checkout", "on this branch", "here", "same task" | THIS task, a NEW Terminal Tab | `rove api send --task-id "$KOBE_TASK_ID" --tab new --prompt "…"` |
+| names an ENGINE for the same files: "let codex take over here", "try this one with claude instead" | THIS task, a new tab pinned to that engine | `rove api send --task-id "$KOBE_TASK_ID" --tab new --vendor codex --prompt "…"` |
+| **anything else — no row above matched** | a NEW task — new worktree + branch | `rove api add --repo "$PWD" --prompt "…"` |
 
 Order is the tiebreak: a count ("3 ways in this workspace") beats a location
 word, and delegation language loses to "you do it" — the user asking YOU is
@@ -122,14 +122,14 @@ not asking for a fleet. Two more rules the table can't show:
 - "this repo" / "this project" are NOT location words — they name the repo,
   not the checkout. Only worktree-scoped words route to a tab.
 
-Outside a kobe session none of this applies: there is no "this task" to add
+Outside a Rove session none of this applies: there is no "this task" to add
 a tab to, so `add` / `fan-out` are the only routings available.
 
 ### Know where you are before you route
 
 ```bash
-echo "$KOBE_TASK_ID / $KOBE_TAB_ID"          # who you are (empty = not a kobe session)
-kobe api get-task --task-id "$KOBE_TASK_ID"  # .task.worktreePath, .task.branch, .running, .tabs[]
+echo "$KOBE_TASK_ID / $KOBE_TAB_ID"          # who you are (empty = not a Rove session)
+rove api get-task --task-id "$KOBE_TASK_ID"  # .task.worktreePath, .task.branch, .running, .tabs[]
 ```
 
 `get-task` is the per-task read that answers "what is my worktree, my
@@ -141,51 +141,51 @@ snapshot lost; it is addressable like any other.
 ## Discover before calling
 
 ```bash
-kobe api schema
-kobe api schema --verb add
-kobe api schema --group create
-kobe api <verb> --help
+rove api schema
+rove api schema --verb add
+rove api schema --group create
+rove api <verb> --help
 ```
 
 Do not guess flags. Commands emit one JSON object; errors use
 `{"error":{"message","code",...}}` on stderr. Common rejections also carry
-`hint` (what to do) and `nextCommandArgs` (argv for the same `kobe`
-executable — run `kobe <args...>` verbatim to recover, e.g. `["api","list"]`
+`hint` (what to do) and `nextCommandArgs` (argv for the same `Rove`
+executable — run `rove <args...>` verbatim to recover, e.g. `["api","list"]`
 after `TASK_NOT_FOUND`). Add `--pretty` for readable output.
 
 ## Common operations
 
 ```bash
 # Create one task and start its first engine turn.
-kobe api add --repo "$PWD" --title "focused title" --vendor claude \
+rove api add --repo "$PWD" --title "focused title" --vendor claude \
   --prompt "<complete scoped instruction>"
 
 # Parallel attempts of the same prompt (hard cap 10; prefer 3-4).
-kobe api fan-out --repo "$PWD" --count 3 --prompt "<prompt>"
-kobe api fan-out --repo "$PWD" --agents claude:2,codex:1 --prompt "<prompt>"
+rove api fan-out --repo "$PWD" --count 3 --prompt "<prompt>"
+rove api fan-out --repo "$PWD" --agents claude:2,codex:1 --prompt "<prompt>"
 
 # Follow up. Use an explicit id for unattended work; the active task can drift.
-# From inside a kobe task this auto-prefixes [KOBE PEER] provenance
+# From inside a Rove task this auto-prefixes [KOBE PEER] provenance
 # (sender + reply command); --plain sends verbatim.
-kobe api send --task-id <id> --prompt "<complete next turn>"
+rove api send --task-id <id> --prompt "<complete next turn>"
 
 # Reply home: no --task-id inside a dispatched task = the dispatcher's tab.
-kobe api send --prompt "succeeded: <one line> (branch <final branch>)"
+rove api send --prompt "succeeded: <one line> (branch <final branch>)"
 
 # A task can hold several Terminal Tabs. `get-task` lists ONE task's tabs (the
 # usual read before addressing one); `inspect` is the wider diagnostic — every
 # task's snapshot plus daemon activity and live pty sessions.
-kobe api inspect --task-id <id>
-kobe api send --task-id <id> --tab tab-3 --prompt "<turn>"  # exact alive tab
-kobe api send --task-id <id> --tab new --prompt "<turn>"    # fresh engine tab
+rove api inspect --task-id <id>
+rove api send --task-id <id> --tab tab-3 --prompt "<turn>"  # exact alive tab
+rove api send --task-id <id> --tab new --prompt "<turn>"    # fresh engine tab
 # Same worktree, DIFFERENT agent — the API twin of the TUI's ctrl+e pick. The
 # engine is pinned to that tab (survives restarts, unaffected by a later
 # set-vendor) and the task's own vendor is left alone. --tab new only.
-kobe api send --task-id <id> --tab new --vendor codex --prompt "<turn>"
+rove api send --task-id <id> --tab new --vendor codex --prompt "<turn>"
 
-kobe api get-task --task-id <id>
-kobe api collect --task-ids <id1>,<id2>,<id3> --pretty
-kobe api list --pretty
+rove api get-task --task-id <id>
+rove api collect --task-ids <id1>,<id2>,<id3> --pretty
+rove api list --pretty
 ```
 
 `.running` means the task's canonical Hosted PTY engine session is alive.
@@ -208,16 +208,16 @@ headless:
 ```bash
 # Split the focused tab; the pane runs the command via `sh -lc` and
 # closes when it exits. Omit --command for an interactive shell.
-kobe api pane-open --command "btop"
-kobe api pane-open --direction down --command "watch -n1 git status -sb"
-kobe api pane-open --placement tab --title logs --command "tail -f app.log"
+rove api pane-open --command "btop"
+rove api pane-open --direction down --command "watch -n1 git status -sb"
+rove api pane-open --placement tab --title logs --command "tail -f app.log"
 
 # Close panes you opened, by their --title (engine panes are never closed).
-kobe api pane-close --title logs
+rove api pane-close --title logs
 
-# Toast a one-liner in every attached kobe UI — surface "done / needs input /
+# Toast a one-liner in every attached Rove UI — surface "done / needs input /
 # error" moments without touching any session (kinds get severity styling).
-kobe api notify --title "build green, artifacts in dist/" --kind done
+rove api notify --title "build green, artifacts in dist/" --kind done
 ```
 
 Defaults: the caller's own task (`$KOBE_TASK_ID`, then the active task),
@@ -251,11 +251,11 @@ Prefer `archive` unless the user explicitly authorizes deletion.
 Issues are daemon-owned, not repo files:
 
 ```bash
-kobe api issue-list --repo "$PWD" --pretty
-kobe api issue-create --repo "$PWD" --title "title" --body "context"
-kobe api issue-set-status --repo "$PWD" --id <n> --status done
-kobe api issue-update --repo "$PWD" --id <n> --title "new" --body "body"
-kobe api issue-update --repo "$PWD" --id <n> --task <taskId>   # link; `--task none` unlinks
+rove api issue-list --repo "$PWD" --pretty
+rove api issue-create --repo "$PWD" --title "title" --body "context"
+rove api issue-set-status --repo "$PWD" --id <n> --status done
+rove api issue-update --repo "$PWD" --id <n> --title "new" --body "body"
+rove api issue-update --repo "$PWD" --id <n> --task <taskId>   # link; `--task none` unlinks
 ```
 
 ### Kanban semantics
@@ -283,16 +283,16 @@ engine turn.
 Outcomes are explicit, never inferred — and they travel as a MESSAGE to the
 spawning agent's chat tab, not as stored state nobody reads.
 
-**Worker side** — a task created from inside another kobe task records its
+**Worker side** — a task created from inside another Rove task records its
 dispatcher (the creating task + tab); when the work is finished, a bare
-`kobe api send --prompt "<succeeded|failed>: <one line> (branch <final
+`rove api send --prompt "<succeeded|failed>: <one line> (branch <final
 branch>)"` routes the outcome back to that exact tab. Include the final
 branch name — the spawner needs it to `land`. The first-prompt coda still
 names the spawner for an explicit `--task-id` send.
 
 **Coordinator side** — do NOT block or poll. Keep working (or end your
 turn); each worker's outcome arrives in your chat as a `[KOBE PEER]` message
-with its task id. What arrives is the worker's claim, not kobe-verified —
+with its task id. What arrives is the worker's claim, not Rove-verified —
 verify the winner's actual diff before landing. Silence never proves a
 worker died (it may be mid-turn or stuck on a permission prompt): peek with
 `collect`/`get-task`, nudge with `send`, and never mark a silent task failed
@@ -305,11 +305,11 @@ After comparing attempts, finish the round instead of leaving tasks behind:
 ```bash
 # Land the winner: merge its branch into the base repo's CURRENT branch.
 # Verify the base checkout is on the intended branch first.
-kobe api land --task-id <winner> --then-archive
+rove api land --task-id <winner> --then-archive
 
 # Archive the losers (non-destructive; branches survive).
-kobe api archive --task-id <loser1>
-kobe api archive --task-id <loser2>
+rove api archive --task-id <loser1>
+rove api archive --task-id <loser2>
 ```
 
 `land` refuses a dirty base checkout; on merge conflict it aborts cleanly and

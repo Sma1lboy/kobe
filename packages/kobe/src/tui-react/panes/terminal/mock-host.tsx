@@ -26,7 +26,7 @@ const MOCK_COLS = 80
 function seedMockPty(): MockTaskPty {
   const pty = new MockTaskPty({ taskId: MOCK_TASK_ID, cwd: MOCK_CWD, cols: MOCK_COLS, rows: MOCK_ROWS })
   const lines = [
-    "\x1b[1;32mkobe terminal pane — React mock\x1b[0m",
+    "\x1b[1;32mRove terminal pane — React mock\x1b[0m",
     "not interactive (MockTaskPty doesn't echo); ctrl+pgup/pgdn scrolls the seeded backlog.",
     "",
   ]
