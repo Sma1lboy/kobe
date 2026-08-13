@@ -44,6 +44,21 @@ export function setRoveEnv(suffix: string, value: string, env: NodeJS.ProcessEnv
 }
 
 /**
+ * Unset a control in BOTH namespaces.
+ *
+ * The mirror image of {@link setRoveEnv}, and required for the same reason:
+ * deleting only `KOBE_*` leaves the `ROVE_*` twin behind, which the next
+ * wrapper faithfully mirrors back. Isolated launchers (dev sandbox, e2e
+ * fixtures) use this to drop an INHERITED path override that would otherwise
+ * outrank their own home — see `scripts/dev-sandbox-args.ts`.
+ */
+export function deleteRoveEnv(suffix: string, env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  delete env[`${ROVE_ENV_PREFIX}${suffix}`]
+  delete env[`${LEGACY_KOBE_ENV_PREFIX}${suffix}`]
+  return env
+}
+
+/**
  * Mirror every public ROVE_* control into the legacy internal namespace.
  * Existing KOBE_* values remain when no new-name value was supplied.
  */

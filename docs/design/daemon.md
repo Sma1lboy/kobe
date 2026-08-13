@@ -205,6 +205,26 @@ TUI may show any task at any time.
 > nor unlinks the socket/pidfile another daemon now owns. Client-side,
 > `ensureDaemonReachable`'s stop+spawn sequence is serialized by a
 > `daemon.pid.spawn-lock` file so concurrent clients can't twin-spawn daemons.
+>
+> **Home ownership (2026-08-13):** succession answers "who owns the path", not
+> "whose data is behind it". An explicit `*_DAEMON_SOCKET_PATH` outranks
+> `*_HOME_DIR` in `paths.ts`, and the TUI stamps the production socket onto its
+> own env — which every task terminal it spawns inherits. A `dev:sandbox`
+> launched from inside a task terminal therefore bound the REAL socket while
+> serving its own empty task index; attached TUIs reconnected onto it and
+> rendered "No active tasks" with every task intact on disk. Two guards, because
+> either alone leaves the hole open:
+>
+> - **Isolated launchers drop inherited paths.** `sandboxChildEnv()` deletes
+>   `DAEMON_SOCKET_PATH` / `DAEMON_PID_PATH` / `PTY_SOCKET_PATH` / `PTY_PID_PATH`
+>   in BOTH env namespaces before stamping its own home, and takes its web port
+>   from `ROVE_SANDBOX_DAEMON_WEB_PORT` rather than the ambient production one.
+> - **Clients verify the home behind the socket.** `hello` reports the daemon's
+>   `homeDir`; a client whose own home differs throws instead of adopting the
+>   task list (`isForeignDaemonHome`). Fatal, unlike the stale-build check —
+>   serving another home's data silently corrupts what the user sees. The
+>   reconnect loop keeps retrying, so re-syncing needs no TUI restart. A daemon
+>   predating the field omits it and is never falsely rejected.
 
 ```bash
 $ kobed start            # binds ~/.kobe/daemon.sock, writes pidfile

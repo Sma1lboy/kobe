@@ -97,6 +97,34 @@ export function isDaemonVersionStale(daemonVersion: string | undefined, clientVe
   return daemonVersion !== clientVersion
 }
 
+/**
+ * Home-ownership check — the third, and bluntest, `hello` guard.
+ *
+ * The protocol range catches a breaking wire change and the build-version
+ * check catches stale code; neither notices a daemon that speaks perfectly but
+ * belongs to a DIFFERENT state root. That happens whenever an explicit
+ * `*_DAEMON_SOCKET_PATH` outranks a sandbox's `*_HOME_DIR` (see
+ * `scripts/dev-sandbox-args.ts`): the sandbox daemon binds the production
+ * socket and answers `hello` with its own empty task index, which the TUI
+ * used to render as a truthful "No active tasks" while every task sat intact
+ * on disk (prod 2026-08-13).
+ *
+ * FATAL by design, unlike {@link isDaemonVersionStale}: serving another home's
+ * data is silent corruption of what the user sees, so the client refuses the
+ * connection and keeps reconnecting rather than trusting the payload.
+ *
+ * Returns `false` when the daemon reports no home (one that predates the
+ * field), so an older daemon is never falsely rejected. Trailing separators
+ * are insignificant — `XDG_RUNTIME_DIR` and friends arrive both ways.
+ *
+ * Pure — unit-tested.
+ */
+export function isForeignDaemonHome(daemonHome: string | undefined, clientHome: string): boolean {
+  if (!daemonHome) return false
+  const strip = (value: string): string => value.replace(/[/\\]+$/, "")
+  return strip(daemonHome) !== strip(clientHome)
+}
+
 export type DaemonFrame =
   | { readonly type: "request"; readonly id: string; readonly name: DaemonRequestName; readonly payload?: unknown }
   | {
