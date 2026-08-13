@@ -118,6 +118,12 @@ export interface DaemonHandlerContext {
   readonly daemon: {
     readonly startedAt: Date
     readonly socketPath: string
+    /** The state root this daemon serves (`<homeDir>/.kobe`). Reported by
+     *  `hello` so a client can detect a daemon from a DIFFERENT home sitting
+     *  on its socket — a sandbox/dev daemon that inherited the production
+     *  socket path serves an EMPTY task index, which used to reach the TUI as
+     *  a legitimate "you have no tasks" (prod 2026-08-13). */
+    readonly homeDir?: string
     /** Loopback web transport port, when this daemon is exposing browser routes. */
     readonly webPort?: number
     /** Why the web transport isn't listening (port taken / bind failed), or
@@ -242,6 +248,11 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
           capabilities: [...CHANNEL_NAMES],
           daemonPid: ctx.daemon.pid,
           clientId: ctx.clientId,
+          // The state root behind `tasks` below. A client whose own home
+          // differs is talking to a foreign daemon (a sandbox one that
+          // inherited the production socket path) and must reject the list
+          // instead of rendering an empty sidebar — protocol.isForeignDaemonHome.
+          homeDir: ctx.daemon.homeDir,
           tasks: ctx.orch.listTasks().map(serializeTask),
         }
       },

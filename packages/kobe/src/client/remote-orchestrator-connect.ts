@@ -15,8 +15,10 @@ import {
   MIN_COMPATIBLE_PROTOCOL_VERSION,
   type SerializedTask,
   type SubscribeRole,
+  isForeignDaemonHome,
   isProtocolCompatible,
 } from "@sma1lboy/kobe-daemon/daemon/protocol"
+import { homeDir } from "../env.ts"
 import { type OrchestratorSignals, deserializeTask } from "./remote-orchestrator-payloads.ts"
 
 export interface PerformInitOptions {
@@ -80,6 +82,9 @@ export async function performInit(
     // Distinct from the protocol versions above: those gate compatibility,
     // this drives the non-fatal stale-build banner (see daemonStaleSignal).
     kobeVersion?: string
+    // The state root the daemon serves. Omitted by a daemon that predates
+    // the field, in which case the ownership check below is skipped.
+    homeDir?: string
     // The daemon's channel/feature set. The client gates the
     // `worktree.changes` consumer on it (see below) — a capability list
     // is the honest rollout mechanism for an additive channel: an old
@@ -102,6 +107,19 @@ export async function performInit(
   ) {
     throw new Error(
       `Rove daemon is protocol v${daemonVersion} (min v${daemonMin}); this client is v${DAEMON_PROTOCOL_VERSION} (min v${MIN_COMPATIBLE_PROTOCOL_VERSION}). Restart the daemon (\`rove daemon restart\`) or upgrade Rove.`,
+    )
+  }
+  // Reject a daemon serving a DIFFERENT home BEFORE any of its state is
+  // believed. A sandbox daemon that inherited the production socket path
+  // answers hello perfectly and hands back its own empty task list; without
+  // this the TUI adopted it as the truth and blanked the sidebar while every
+  // task sat intact on disk (prod 2026-08-13). Throwing keeps the caller's
+  // reconnect loop running, so the moment the real daemon reclaims the socket
+  // the client re-syncs on its own.
+  const clientHome = homeDir()
+  if (isForeignDaemonHome(hello.homeDir, clientHome)) {
+    throw new Error(
+      `kobe daemon on this socket serves ${hello.homeDir}, but this client uses ${clientHome}. A sandbox or dev daemon has taken the production socket — stop it (\`kobe daemon stop\`), or unset ROVE_DAEMON_SOCKET_PATH / KOBE_DAEMON_SOCKET_PATH before starting it.`,
     )
   }
   // Capture the daemon's BUILD version (NON-fatal — the protocol is already

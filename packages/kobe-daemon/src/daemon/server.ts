@@ -15,13 +15,7 @@ import { readActivityLiveness } from "./activity-liveness.ts"
 import { type ActivityLivenessProbe, DaemonActivityRegistry } from "./activity-registry.ts"
 import { AttentionInboxStore, defaultAttentionInboxPath } from "./attention-inbox.ts"
 import { initAutomationsStore } from "./automation-wiring.ts"
-import {
-  type ClientState,
-  type DaemonClientConnection,
-  broadcast,
-  drainClientBuffer,
-  writeFrame,
-} from "./client-connection.ts"
+import { type ClientState, broadcast, drainClientBuffer, writeFrame } from "./client-connection.ts"
 import { ClientWriter } from "./client-writer.ts"
 import { startDaemonCollectors } from "./collectors.ts"
 import type { DaemonOrchestrator } from "./contracts.ts"
@@ -38,12 +32,12 @@ import {
 import { IssuesStore, defaultIssuesStorePath } from "./issues-store.ts"
 import { DaemonLifetime, FIRST_GUI_GRACE_MS, resolveIdleGraceMs } from "./lifetime.ts"
 import { NotesStore, defaultNotesStorePath } from "./notes-store.ts"
-import { defaultDaemonPidPath, defaultDaemonSocketPath } from "./paths.ts"
+import { defaultDaemonPidPath, defaultDaemonSocketPath, resolveDaemonHomeDir } from "./paths.ts"
 import { PromptBroker } from "./prompt-broker.ts"
 import { type DaemonFrame, normalizeChannelFilter, serializeTask } from "./protocol.ts"
 import { PtyLiveHold } from "./pty-live-hold.ts"
 import { QuotaUsageCache } from "./quota-usage-cache.ts"
-import type { DaemonServer, DaemonServerOptions } from "./server-types.ts"
+import type { DaemonServer, DaemonServerOptions } from "./server-options.ts"
 import { createSocketOwnershipGuard, listenOnUnixSocket } from "./socket-guard.ts"
 import { handleSubscribe } from "./subscribe.ts"
 import { TaskDeletionRunner } from "./task-deletion-runner.ts"
@@ -63,12 +57,17 @@ export { readPidFile } from "./socket-guard.ts"
 export { IssuesStore, defaultIssuesStorePath } from "./issues-store.ts"
 export { NotesStore, defaultNotesStorePath } from "./notes-store.ts"
 export type { DaemonClientConnection } from "./client-connection.ts"
-export type { DaemonServer, DaemonServerOptions } from "./server-types.ts"
+export type { DaemonServer, DaemonServerOptions } from "./server-options.ts"
 
 export async function startDaemonServer(orch: DaemonOrchestrator, options: DaemonServerOptions): Promise<DaemonServer> {
   const runtime = options.runtime
   const socketPath = options.socketPath ?? defaultDaemonSocketPath(options.homeDir)
   const pidPath = options.pidPath ?? defaultDaemonPidPath(options.homeDir)
+  // The state root this daemon actually serves. Reported by `hello` so a
+  // client can refuse a daemon that belongs to a DIFFERENT home before it
+  // renders that daemon's (empty) task list as its own — see
+  // `isForeignDaemonHome` in protocol.ts.
+  const homeDir = resolveDaemonHomeDir(options.homeDir)
   const startedAt = options.startedAt ?? new Date()
   // Never steal a live daemon's socket: an unconditional pre-bind unlink let
   // an autospawned daemon usurp the path while the incumbent kept serving its
@@ -365,6 +364,7 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
       daemon: {
         startedAt,
         socketPath,
+        homeDir,
         webPort: webServer?.port,
         webError,
         pid: process.pid,

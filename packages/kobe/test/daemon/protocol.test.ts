@@ -1,6 +1,7 @@
 import {
   isChannelName,
   isDaemonVersionStale,
+  isForeignDaemonHome,
   isProtocolCompatible,
   normalizeChannelFilter,
 } from "@sma1lboy/kobe-daemon/daemon/protocol"
@@ -34,6 +35,31 @@ describe("isProtocolCompatible", () => {
     const ab = isProtocolCompatible({ ...a, remoteVersion: b.localVersion, remoteMin: b.localMin })
     const ba = isProtocolCompatible({ ...b, remoteVersion: a.localVersion, remoteMin: a.localMin })
     expect(ab).toBe(ba)
+  })
+})
+
+describe("isForeignDaemonHome", () => {
+  it("accepts a daemon serving the same home", () => {
+    expect(isForeignDaemonHome("/home/dev", "/home/dev")).toBe(false)
+  })
+
+  it("rejects a sandbox daemon squatting on the production socket", () => {
+    // prod 2026-08-13: `dev:sandbox` inherited KOBE_DAEMON_SOCKET_PATH from the
+    // task terminal, bound the real socket, and served an EMPTY task index.
+    expect(isForeignDaemonHome("/repo/packages/kobe/.dev-sandbox/home", "/home/dev")).toBe(true)
+  })
+
+  it("ignores trailing separators on either side", () => {
+    // XDG_RUNTIME_DIR and friends arrive with and without the trailing slash;
+    // a cosmetic difference must never look like a foreign daemon.
+    expect(isForeignDaemonHome("/home/dev/", "/home/dev")).toBe(false)
+    expect(isForeignDaemonHome("/home/dev", "/home/dev/")).toBe(false)
+  })
+
+  it("accepts a daemon that reports no home (predates the field)", () => {
+    // Same rolling-upgrade rule as kobeVersion: an old daemon is never
+    // rejected on evidence it cannot supply.
+    expect(isForeignDaemonHome(undefined, "/home/dev")).toBe(false)
   })
 })
 
