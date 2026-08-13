@@ -41,7 +41,7 @@ const childEnv = { ...process.env }
 
 const sandboxed = homeDir !== null
 console.log(
-  `\x1b[1m[kobe web dev]\x1b[0m ${sandboxed ? "\x1b[33msandbox\x1b[0m" : "\x1b[31mPRODUCTION\x1b[0m"} · home: ${homeDir ?? `${homedir()}/.rove (production)`}`,
+  `\x1b[1m[rove web dev]\x1b[0m ${sandboxed ? "\x1b[33msandbox\x1b[0m" : "\x1b[31mPRODUCTION\x1b[0m"} · home: ${homeDir ?? `${homedir()}/.rove (production)`}`,
 )
 console.log(`  web :${WEB_PORT}  daemon-web :${DAEMON_WEB_PORT}  pty :${PTY_PORT}`)
 
@@ -53,7 +53,7 @@ try {
   if ((await res.text()).trim() !== "kobe-web") throw new Error("unexpected health marker")
 } catch (err) {
   throw new Error(
-    `daemon web transport is not reachable on :${DAEMON_WEB_PORT}; run \`kobe daemon restart\` so the daemon picks up this build (${err instanceof Error ? err.message : String(err)})`,
+    `daemon web transport is not reachable on :${DAEMON_WEB_PORT}; run \`rove daemon restart\` so the daemon picks up this build (${err instanceof Error ? err.message : String(err)})`,
   )
 }
 

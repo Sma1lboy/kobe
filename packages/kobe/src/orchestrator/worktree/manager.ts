@@ -15,11 +15,11 @@
  *     work on it.
  *   - `remove()` refuses to delete a dirty worktree unless `force` is
  *     true. The single most important safety property of this module:
- *     "I lost my changes because kobe deleted the worktree" must be
+ *     "I lost my changes because Rove deleted the worktree" must be
  *     impossible without explicit consent.
- *   - `list()` only returns worktrees inside kobe-managed roots
+ *   - `list()` only returns worktrees inside Rove-managed roots
  *     (`~/.rove/worktrees/<repo-key>/` plus legacy global/repo-local roots).
- *     Worktrees the user created outside these roots are invisible to kobe.
+ *     Worktrees the user created outside these roots are invisible to Rove.
  *
  * Reference (read, not ported): `refs/vibe-kanban/crates/worktree-manager/`
  * for cleanup invariants and dirty-state semantics.

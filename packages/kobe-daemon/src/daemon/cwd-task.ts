@@ -144,7 +144,7 @@ export function matchRepoByCwd(tasks: ReadonlyArray<CwdMatchTask>, cwd: string):
  * Detect a `cwd` that is an UNADOPTED git worktree under a tracked repo's
  * managed worktree roots — the replacement for the removed WorktreeCreate
  * hook. When an engine starts in a worktree under `~/.rove/worktrees/<repo-key>`
- * or a legacy repo-local root for a repo kobe already has tasks in, the daemon
+ * or a legacy repo-local root for a repo Rove already has tasks in, the daemon
  * adopts it as a task on the engine's `session-start`.
  *
  * Pure + git-free (string paths only, bounded to known repos): returns the

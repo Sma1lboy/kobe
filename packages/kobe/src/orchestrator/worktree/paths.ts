@@ -1,7 +1,7 @@
 /**
- * Canonical filesystem layout for kobe-managed worktrees.
+ * Canonical filesystem layout for Rove-managed worktrees.
  *
- * The worktree root is per-repo and lives in kobe's state dir at
+ * The worktree root is per-repo and lives in Rove's state dir at
  * `~/.rove/worktrees/<repo-key>/<slug>/` (or under `$ROVE_HOME_DIR`
  * when overridden). `<slug>` is an animal-name slug for tasks
  * created after the switch, or the task's ULID for older records whose

@@ -17,7 +17,7 @@
  *      buried at its first use site.
  *
  * This is *not* a generic config layer. We don't load `.env` files,
- * don't cascade through `~/.kobe/config.json`, don't do any of that.
+ * don't cascade through `~/.rove/config.json`, don't do any of that.
  * If we ever need that, build a `loadConfig()` that returns a frozen
  * record once at startup and have these accessors read from it.
  */
@@ -47,7 +47,7 @@ export function isDev(): boolean {
 }
 
 /**
- * `ROVE_HOME_DIR` (or compatible `KOBE_HOME_DIR`) — overrides `os.homedir()` for everything kobe
+ * `ROVE_HOME_DIR` (or compatible `KOBE_HOME_DIR`) — overrides `os.homedir()` for everything Rove
  * persists (state file, task index). Tests point this at a temp dir
  * so they don't trample the real `~/.rove/`.
  */
@@ -99,9 +99,12 @@ export function legacyKobeKvStatePath(): string {
  * settings files land alongside). Not created eagerly — readers treat a
  * missing dir as "no overrides", writers mkdir at the write site.
  */
-export function kobeSettingsDir(): string {
-  return join(kobeStateDir(), "settings")
+export function roveSettingsDir(): string {
+  return join(roveStateDir(), "settings")
 }
+
+/** @deprecated Internal compatibility alias; use {@link roveSettingsDir}. */
+export const kobeSettingsDir = roveSettingsDir
 
 /**
  * User keybinding overrides — `~/.rove/settings/keybindings.yaml`.
@@ -111,7 +114,7 @@ export function kobeSettingsDir(): string {
  * absent.
  */
 export function keybindingsConfigPath(): string {
-  return join(kobeSettingsDir(), "keybindings.yaml")
+  return join(roveSettingsDir(), "keybindings.yaml")
 }
 
 /**
@@ -120,10 +123,10 @@ export function keybindingsConfigPath(): string {
  * root) one level down so an upload can happen before the issue exists. Not
  * created eagerly — the upload route mkdir's at the write site, readers treat
  * a missing dir as "no asset". Honours `KOBE_HOME_DIR` like every other state
- * path via {@link kobeStateDir}.
+ * path via {@link roveStateDir}.
  */
 export function issueAssetsDir(): string {
-  return join(kobeStateDir(), "issue-assets")
+  return join(roveStateDir(), "issue-assets")
 }
 
 /**
@@ -131,15 +134,15 @@ export function issueAssetsDir(): string {
  * screenshots saved to disk so their path can travel in a prompt) —
  * `<home>/.rove/attachments/`. Created lazily at the write site; files
  * are small PNGs named by timestamp+nonce so they never collide. Honours
- * `KOBE_HOME_DIR` via {@link kobeStateDir}.
+ * `KOBE_HOME_DIR` via {@link roveStateDir}.
  */
 export function promptAttachmentsDir(): string {
-  return join(kobeStateDir(), "attachments")
+  return join(roveStateDir(), "attachments")
 }
 
 /**
  * SSH ControlMaster socket for a remote project — one multiplexed connection
- * per host/user/port, reused by every `ssh` kobe runs against that remote (see
+ * per host/user/port, reused by every `ssh` Rove runs against that remote (see
  * `exec/exec-host.ts`). Lives under `<home>/.rove/ssh/`. Keyed by a short hash so a long `user@host:port`
  * never blows past the ~104-char unix-socket path limit.
  */
@@ -148,7 +151,7 @@ export function remoteControlSocketPath(host: string, user: string, port?: numbe
     .update(`${user}@${host}:${port ?? 22}`)
     .digest("hex")
     .slice(0, 16)
-  return join(kobeStateDir(), "ssh", `${hash}.sock`)
+  return join(roveStateDir(), "ssh", `${hash}.sock`)
 }
 
 /**
@@ -161,5 +164,5 @@ export function remoteControlSocketPath(host: string, user: string, port?: numbe
  */
 export function worktreeInitMarkerPath(worktreePath: string): string {
   const hash = createHash("sha1").update(worktreePath).digest("hex").slice(0, 16)
-  return join(kobeStateDir(), "worktree-init", hash)
+  return join(roveStateDir(), "worktree-init", hash)
 }

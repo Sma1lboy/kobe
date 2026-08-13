@@ -2,7 +2,7 @@
  * Worktree manager — kobe's wrapper around `git worktree`.
  *
  * See DESIGN.md §5.3 (orchestrator owns worktree manager) and §11.3
- * (resolved: new kobe-created worktrees use
+ * (resolved: new Rove-created worktrees use
  * `~/.rove/worktrees/<repo-key>/<slug>/`; global/repo-local `.kobe/worktrees`
  * and legacy `.claude/worktrees` task paths remain supported).
  *

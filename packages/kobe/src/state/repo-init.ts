@@ -9,7 +9,7 @@
  *      The legacy `.kobe/` spellings remain field-by-field fallbacks.
  *      These are version-controlled, so they're the project's authoritative
  *      setup and WIN when present.
- *   2. Per-user state.json override (`kobe repo set …`) — a fallback default
+ *   2. Per-user state.json override (`rove repo set …`) — a fallback default
  *      for a repo that doesn't ship its own convention files. Keyed by git
  *      toplevel, so it applies to every worktree of the repo.
  *
@@ -60,7 +60,7 @@ export type PromptDeliveryIntent =
    * sessions (`send`, `send --tab new`, dispatch, cross-engine handoff) must
    * stay `explicit` so they never re-append the coda.
    *
-   * `spawnerTaskId`: the kobe task whose agent created THIS task, when known.
+   * `spawnerTaskId`: the Rove task whose agent created THIS task, when known.
    * Only the CLI layer may supply it (from its own $KOBE_TASK_ID) — never read
    * env here: the daemon can be auto-spawned from inside an engine tab and
    * would bake that stale id into every future automation task.

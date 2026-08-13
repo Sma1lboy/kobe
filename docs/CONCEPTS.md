@@ -116,8 +116,9 @@ Issues track *what to do*; the changelog records *what shipped*.
 | Settings | `~/.config/rove/state.json` (open with `rove config`) |
 | Conversation history | engine-owned, e.g. `~/.claude/projects/**` |
 
-Setting `KOBE_HOME_DIR` moves all of it — that's how the dev sandbox avoids
-touching your real `~/.rove` product data or `.kobe` compatibility runtime.
+Setting `ROVE_HOME_DIR` moves all of it; `KOBE_HOME_DIR` remains a fallback.
+That's how the dev sandbox avoids touching your real `~/.rove` product data or
+`.kobe` compatibility runtime.
 
 ## Three ways people use it
 

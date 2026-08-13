@@ -16,7 +16,7 @@
 
 import { readFileSync, realpathSync } from "node:fs"
 import { join } from "node:path"
-import { kobeStateDir } from "../env.ts"
+import { roveStateDir } from "../env.ts"
 
 /** How many of the newest notes a fresh session is seeded with. */
 export const NOTE_INJECTION_CAP = 15
@@ -29,7 +29,7 @@ export interface StoredFieldNote {
 }
 
 export function fieldNotesPath(): string {
-  return join(kobeStateDir(), "notes.json")
+  return join(roveStateDir(), "notes.json")
 }
 
 /** Resolve symlinks so `/var` vs `/private/var` can't split one repo in two. */

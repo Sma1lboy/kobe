@@ -525,5 +525,5 @@ Constraint: each stream agent gets one focus area. **No cross-stream commits.** 
 | 1 | Default theme | D | **`tokyonight`** (matches agent-deck's Tokyo Night palette; already lifted from opencode) |
 | 2 | Worktree root | B | **Updated 2026-08-13: `~/.rove/worktrees/<repo-key>/<slug>/` for new Rove-created tasks; global/repo-local `.kobe/worktrees` and legacy `.claude/worktrees` remain recognized.** Existing paths are never rewritten. |
 | 3 | Branch naming | E | **Auto** `rove/<slug>-<ulid-suffix>`; existing `kobe/` branches remain unchanged; user can override per-task |
-| 4 | Concurrency cap | E | **4** simultaneous running tasks; configurable via `~/.kobe/config.json` later |
+| 4 | Concurrency cap | E | **4** simultaneous running tasks; configurable via `~/.rove/config.json` later |
 | 5 | Terminal pane | J | **One pty per task**, kept alive while task is `in_progress`, killed on archive |

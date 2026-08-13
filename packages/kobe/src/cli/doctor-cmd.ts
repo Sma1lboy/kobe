@@ -22,7 +22,7 @@ import {
   detectCodexAccount,
   detectCopilotAccount,
 } from "../engine/account-detect.ts"
-import { homeDir, kobeStateDir, kvStatePath } from "../env.ts"
+import { homeDir, kvStatePath, roveStateDir } from "../env.ts"
 import { kobeSkillState, skillInstallCommand } from "../lib/skill-install.ts"
 import { CURRENT_VERSION } from "../version.ts"
 import { inspectLegacyTmux, legacyTmuxDoctorLines } from "./legacy-tmux.ts"
@@ -187,7 +187,7 @@ async function collectDoctorLines(): Promise<string[]> {
   const daemonLog = defaultDaemonLogPath()
   const ptySocket = defaultPtyHostSocketPath()
   const ptyLog = defaultPtyHostLogPath()
-  const tasksPath = join(kobeStateDir(), "tasks.json")
+  const tasksPath = join(roveStateDir(), "tasks.json")
   const statePath = kvStatePath()
   const out = [
     "Rove doctor",

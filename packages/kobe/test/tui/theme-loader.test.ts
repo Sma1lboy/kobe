@@ -22,7 +22,7 @@ let prevHome: string | undefined
 beforeEach(() => {
   tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "kobe-theme-loader-"))
   prevHome = process.env.KOBE_HOME_DIR
-  // env.ts: kobeStateDir() = join(KOBE_HOME_DIR ?? homedir(), ".rove").
+  // env.ts: roveStateDir() = join(KOBE_HOME_DIR ?? homedir(), ".rove").
   // Point at the tmp root so the loader looks under tmpRoot/.kobe/themes/.
   process.env.KOBE_HOME_DIR = tmpRoot
 })

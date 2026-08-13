@@ -142,7 +142,7 @@ export interface Task {
    * `branch === ""`. Regular `"task"` tasks live in a per-task
    * worktree under `~/.rove/worktrees/<repo-key>/<slug>/` (or global/repo-local
    * `.kobe/worktrees` / legacy `.claude/worktrees` for older records).
-   * `"dir"` tasks (`kobe .`) pin an arbitrary existing directory the
+   * `"dir"` tasks (`rove .`) pin an arbitrary existing directory the
    * user opened directly: `worktreePath === repo`, `branch === ""`, no
    * project association, and deletion only drops the index entry — the
    * directory itself is never removed.

@@ -78,15 +78,22 @@ describe("runResetSubcommand", () => {
 
   it("hard reset removes task and UI state while preserving worktrees", async () => {
     const tasksPath = join(home, ".rove", "tasks.json")
+    const legacyTasksPath = join(home, ".kobe", "tasks.json")
     const statePath = join(home, ".config", "rove", "state.json")
+    const legacyStatePath = join(home, ".config", "kobe", "state.json")
     mkdirSync(join(home, ".config", "rove"), { recursive: true })
+    mkdirSync(join(home, ".config", "kobe"), { recursive: true })
     writeFileSync(tasksPath, JSON.stringify({ tasks: [{ id: "a" }] }))
+    writeFileSync(legacyTasksPath, JSON.stringify({ tasks: [{ id: "legacy" }] }))
     writeFileSync(statePath, "{}")
+    writeFileSync(legacyStatePath, "{}")
 
     await runResetSubcommand(["--hard", "--yes"])
 
     expect(existsSync(tasksPath)).toBe(false)
+    expect(existsSync(legacyTasksPath)).toBe(false)
     expect(existsSync(statePath)).toBe(false)
+    expect(existsSync(legacyStatePath)).toBe(false)
     expect(output()).toContain("NOT touch your git worktrees")
     expect(mocks.stampResetGate).not.toHaveBeenCalled()
   })

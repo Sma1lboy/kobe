@@ -2,10 +2,12 @@ import { afterEach, describe, expect, test } from "vitest"
 import {
   homeDir,
   isDev,
+  kobeSettingsDir,
   kobeStateDir,
   kvStatePath,
   legacyKobeKvStatePath,
   legacyKobeStateDir,
+  roveSettingsDir,
   roveStateDir,
 } from "../src/env.ts"
 
@@ -34,6 +36,8 @@ describe("rename-compatible environment access", () => {
     expect(homeDir()).toBe("/rove-home")
     expect(roveStateDir()).toBe("/rove-home/.rove")
     expect(kobeStateDir()).toBe(roveStateDir())
+    expect(roveSettingsDir()).toBe("/rove-home/.rove/settings")
+    expect(kobeSettingsDir()).toBe(roveSettingsDir())
     expect(kvStatePath()).toBe("/rove-home/.config/rove/state.json")
     expect(legacyKobeStateDir()).toBe("/rove-home/.kobe")
     expect(legacyKobeKvStatePath()).toBe("/rove-home/.config/kobe/state.json")

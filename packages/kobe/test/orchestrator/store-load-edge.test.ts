@@ -5,13 +5,13 @@
  * error paths, the subscribe contract (eager fire, unsubscribe, throwing
  * listener isolation), and the archive/remove conveniences.
  *
- * Why they matter: load() recovery is the difference between "kobe boots with
- * an empty sidebar and a warning" and "kobe crashes on a half-written
+ * Why they matter: load() recovery is the difference between "Rove boots with
+ * an empty sidebar and a warning" and "Rove crashes on a half-written
  * tasks.json" — the file is written by multiple processes, so every corrupt
  * shape here is one a real crash can produce.
  */
 
-import { mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises"
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
@@ -35,7 +35,7 @@ async function writeManifest(content: string): Promise<void> {
 }
 
 async function primeDir(): Promise<void> {
-  // Create <home>/.kobe by letting the store write once.
+  // Create <home>/.rove by letting the store write once.
   await store.load()
   await store.create({
     repo: "/r",
@@ -53,6 +53,38 @@ describe("load() recovery", () => {
     const index = await store.load()
     expect(index.tasks).toEqual([])
     expect(store.list()).toEqual([])
+  })
+
+  it("reads the legacy index until migration and carries every legacy task into the first canonical save", async () => {
+    const legacyPath = join(home, ".kobe", "tasks.json")
+    await mkdir(join(home, ".kobe"), { recursive: true })
+    const legacyTask = {
+      id: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
+      title: "legacy",
+      repo: "/r",
+      branch: "kobe/legacy",
+      worktreePath: "/legacy/wt",
+      status: "backlog",
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    }
+    const legacyJson = JSON.stringify({ version: 3, tasks: [legacyTask] })
+    await writeFile(legacyPath, legacyJson, "utf8")
+
+    expect((await store.load()).tasks.map((task) => task.title)).toEqual(["legacy"])
+    await store.create({
+      repo: "/r",
+      title: "new",
+      branch: "rove/new",
+      worktreePath: "/rove/wt",
+      status: "backlog",
+      kind: "task",
+      vendor: "claude",
+    })
+
+    const canonical = JSON.parse(await readFile(store.filePath, "utf8")) as { tasks: Array<{ title: string }> }
+    expect(canonical.tasks.map((task) => task.title)).toEqual(["legacy", "new"])
+    expect(await readFile(legacyPath, "utf8")).toBe(legacyJson)
   })
 
   it("corrupt JSON recovers empty with a warning, backing the original bytes up first", async () => {
