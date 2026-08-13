@@ -1,4 +1,5 @@
 import { spawn as spawnChild } from "node:child_process"
+import { existsSync } from "node:fs"
 import { chmod } from "node:fs/promises"
 import { createRequire } from "node:module"
 import { basename, dirname, join, resolve } from "node:path"
@@ -9,12 +10,20 @@ const require = createRequire(import.meta.url)
 
 const delay = (ms) => new Promise((resolveDelay) => setTimeout(resolveDelay, ms))
 
+// Mirrors isEngineSessionMarker in src/quicklook/puretui-terminal.ts: a
+// capture started from inside an engine session must not hand the recorded
+// engine a parent it does not have. CLAUDE_CONFIG_DIR is not a marker — kobe
+// reads it for engine history and the quota status line.
+export const isEngineSessionMarker = (key) =>
+  key === "CLAUDECODE" || (key.startsWith("CLAUDE_") && key !== "CLAUDE_CONFIG_DIR")
+
 const inheritedEnvironment = (environment) =>
   Object.fromEntries(
     Object.entries(environment).filter(
       ([key, value]) =>
         value !== undefined &&
         !key.startsWith("KOBE_") &&
+        !isEngineSessionMarker(key) &&
         key !== "HOME" &&
         key !== "USERPROFILE" &&
         !key.startsWith("XDG_") &&
@@ -171,7 +180,15 @@ export async function ensureNodePtySpawnHelperExecutable(dependencies = {}) {
     `${dependencies.platform ?? process.platform}-${dependencies.arch ?? process.arch}`,
     "spawn-helper",
   )
-  await chmodFile(helper, 0o755)
+  // Only the darwin prebuilds ship a spawn-helper binary (whose +x bit Bun's
+  // install drops). Linux builds node-pty from source into build/Release and
+  // has no prebuilds directory at all — chmod'ing the missing path there used
+  // to abort the sidecar at startup, so a missing helper is not an error.
+  try {
+    await chmodFile(helper, 0o755)
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error
+  }
 }
 
 const assertRequest = (request) => {
@@ -239,7 +256,14 @@ export function createSidecarController(dependencies) {
     const repoRoot = resolve(request.repoRoot)
     const fixtureRepo = resolve(request.fixtureRepo)
     kobeDir = join(repoRoot, "packages", "kobe")
-    const cliPath = join(kobeDir, "src", "cli", "index.ts")
+    // Prefer the BUILT cli. Prompt codas that kobe writes into an engine
+    // session embed `kobeCliInvocation()`, which resolves to a bare `kobe`
+    // only from a `.js` entry — run from source it bakes the capture host's
+    // absolute bun + repo paths into the recording, showing viewers a command
+    // no installed user ever sees. Run `bun --filter @sma1lboy/kobe build`
+    // before capturing; source is the fallback so tests still drive it.
+    const builtCli = join(kobeDir, "dist", "cli", "index.js")
+    const cliArgs = existsSync(builtCli) ? [builtCli] : ["--conditions=browser", join(kobeDir, "src", "cli", "index.ts")]
     childEnv = isolatedEnvironment(baseEnv, demoRoot)
     const seedTasks = request.seedTasks ?? []
     if (!Array.isArray(seedTasks)) throw new Error("start seedTasks must be an array")
@@ -250,8 +274,7 @@ export function createSidecarController(dependencies) {
       await runSetup(
         "bun",
         [
-          "--conditions=browser",
-          cliPath,
+          ...cliArgs,
           "api",
           "add",
           "--repo",
@@ -265,7 +288,7 @@ export function createSidecarController(dependencies) {
       )
     }
     terminal = createTerminal({ cols: request.cols, rows: request.rows })
-    child = spawnPty("bun", ["--conditions=browser", cliPath], {
+    child = spawnPty("bun", cliArgs, {
       name: "xterm-256color",
       cols: request.cols,
       rows: request.rows,

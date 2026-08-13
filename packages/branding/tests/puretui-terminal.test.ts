@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test"
 import { mkdtemp, writeFile } from "node:fs/promises"
 import { homedir, tmpdir } from "node:os"
 import { join, resolve } from "node:path"
-import { capturePureTui } from "../scripts/capture-puretui"
+import { CAPTURE_SKILL_HINT_VERSION, capturePureTui } from "../scripts/capture-puretui"
 import {
   createSidecarController,
   ensureNodePtySpawnHelperExecutable,
@@ -298,6 +298,32 @@ describe("PureTUI PTY sidecar", () => {
     expect(calls).toEqual([["/deps/node-pty/prebuilds/darwin-arm64/spawn-helper", 0o755]])
   })
 
+  test("tolerates platforms whose node-pty ships no prebuilt spawn-helper", async () => {
+    const missing = Object.assign(new Error("ENOENT"), { code: "ENOENT" })
+    await ensureNodePtySpawnHelperExecutable({
+      platform: "linux",
+      arch: "x64",
+      resolveModule: () => "/deps/node-pty/lib/index.js",
+      chmodFile: async () => {
+        throw missing
+      },
+    })
+  })
+
+  test("still reports spawn-helper permission failures that are not ENOENT", async () => {
+    const denied = Object.assign(new Error("EACCES"), { code: "EACCES" })
+    await expect(
+      ensureNodePtySpawnHelperExecutable({
+        platform: "darwin",
+        arch: "arm64",
+        resolveModule: () => "/deps/node-pty/lib/index.js",
+        chmodFile: async () => {
+          throw denied
+        },
+      }),
+    ).rejects.toThrow("EACCES")
+  })
+
   test("acknowledges stop only after child exit and isolated sandbox reset", async () => {
     const order: string[] = []
     let onExit = () => {}
@@ -424,77 +450,5 @@ describe("PureTUI PTY sidecar", () => {
     onData("\u001b[31mraw ansi\u001b[0m")
     const response = await controller.handle({ id: 2, op: "waitFor", pattern: "missing", timeoutMs: 0 })
     expect(response).toMatchObject({ ok: false, error: { snapshot: "\u001b[31mraw ansi\u001b[0m" } })
-  })
-})
-
-describe("capture PureTUI CLI", () => {
-  test("passes the fixture repo and declared seed tasks to the capture terminal", async () => {
-    const root = await mkdtemp(join(tmpdir(), "kobe-capture-cli-valid-"))
-    const specPath = join(root, "capture.replay.json")
-    const outputPath = join(root, "frames.json")
-    const raw = JSON.parse(
-      await Bun.file(join(resolve(import.meta.dirname, ".."), "src/quicklook/quicklook.replay.json")).text(),
-    )
-    raw.capture.seconds = 0
-    raw.beats = []
-    raw.stages = [{ name: "still", from: 0, to: "end" }]
-    await writeFile(specPath, `${JSON.stringify(raw)}\n`)
-    let received: Parameters<NonNullable<Parameters<typeof capturePureTui>[1]["createCapture"]>>[0] | undefined
-
-    await capturePureTui(
-      { specPath, outputPath, demoRoot: join(root, "demo"), keepDemoRoot: true },
-      {
-        createCapture: async (options) => {
-          received = options
-          return {
-            demoRoot: options.demoRoot,
-            terminal: {
-              async start() {},
-              async snapshot() {
-                return Array.from({ length: options.rows }, () => "")
-              },
-              async type() {},
-              async key() {},
-              async waitFor() {},
-              async stop() {},
-            },
-            async cleanup() {},
-          }
-        },
-        log: () => {},
-      },
-    )
-
-    expect(received).toMatchObject({
-      fixtureRepo: join(root, "demo", "fixture-repo"),
-      seedTasks: [{ title: "fix flaky retry test", status: "in_progress" }],
-    })
-    expect(received).not.toHaveProperty("pathPrefix")
-    expect(await Bun.file(join(root, "demo", "home", ".config", "kobe", "state.json")).json()).toEqual({
-      onboarded: true,
-      skillHintSeen: "1",
-      "skillHintSeen:v6": "1",
-      savedRepos: [join(root, "demo", "fixture-repo")],
-    })
-  })
-
-  test("validates the replay spec before spawning the sidecar", async () => {
-    const root = await mkdtemp(join(tmpdir(), "kobe-capture-cli-"))
-    const specPath = join(root, "invalid.replay.json")
-    await writeFile(specPath, "{}\n")
-    let createCalls = 0
-
-    await expect(
-      capturePureTui(
-        { specPath, outputPath: join(root, "frames.json"), demoRoot: join(root, "demo"), keepDemoRoot: true },
-        {
-          createCapture: async () => {
-            createCalls++
-            throw new Error("sidecar must not start")
-          },
-        },
-      ),
-    ).rejects.toThrow("replay spec")
-    expect(createCalls).toBe(0)
   })
 })

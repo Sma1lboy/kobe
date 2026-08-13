@@ -108,13 +108,21 @@ bun run visual          # hermetic journey: real OpenTUI drives, assertions read
 bun run visual:serve    # warm iteration servers + reusable fixture (keep running)
 bun run visual:dev      # fast baseline check against visual:serve (~2s)
 cd packages/kobe-web && bun run visual:shot -- ctrl+h c   # ad-hoc screenshot (~2s)
+cd packages/kobe-web && bun run visual:shot -- --scale=2 --out=shot.png
 ```
 
 Iterate with the warm loop (`visual:serve` once, then `visual:dev` /
 `visual:shot` per change — `visual:shot` takes key tokens plus `text:…` and
-prints the PNG path); accept with hermetic `visual`, which refuses to reuse a
-running server — stop `visual:serve` first. `KOBE_VISUAL_FRESH=1` forces a
-fixture rebuild.
+`wait:<ms>`, and prints the PNG path); accept with hermetic `visual`, which
+refuses to reuse a running server — stop `visual:serve` first.
+`KOBE_VISUAL_FRESH=1` forces a fixture rebuild.
+
+`--scale=N` sets the device pixel ratio while the viewport stays 1280×800, so
+the TUI keeps its cell grid and only the raster gets denser — that is how a
+`docs/assets` still gets captured at 2× without changing what the TUI lays
+out. Ports come from `KOBE_VISUAL_PORT_BASE`, so pointing the shot at another
+harness instance (a throwaway home with a richer fixture, say) is just an env
+var — the ground-truth path is unchanged.
 
 Both commands rebuild a disposable fixture under `.scratch/opentui-visual-*`
 (real git repo, real task, three issues via `kobe api`). Each journey gets a

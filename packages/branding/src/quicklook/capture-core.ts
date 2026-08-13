@@ -2,6 +2,78 @@ import { rename, writeFile } from "node:fs/promises"
 import { dirname, join } from "node:path"
 import type { CaptureFrame, CaptureLine, ResolvedReplaySpec } from "./replay-spec"
 
+const EMAIL = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g
+const REDACTED = "you@example.com"
+// CSI / OSC / two-byte escapes, in the order they must be tried.
+const ANSI_TOKEN = new RegExp(`\u001b\\[[0-9;?]*[A-Za-z]|\u001b\\][^\u001b\u0007]*(?:\u0007|\u001b\\\\)|\u001b.`, "g")
+
+/**
+ * Blank the account identity Claude Code prints in its welcome box ("<email>'s
+ * Organization"), which would otherwise ship inside a public README asset.
+ *
+ * This is the ONE declared exception to "every frame is the product's own
+ * rendering" — a marketing capture must not publish the operator's address.
+ * Framing around it is not an option: the camera falls back to a wide shot
+ * whenever a stage changes fewer than `camera.minChangedCells`, which is
+ * exactly the quiet "both agents working" beat the demo exists to show.
+ *
+ * The replacement is padded to the matched length because a serialized line
+ * positions each run by absolute column — a shorter substitution would slide
+ * the rest of the row.
+ */
+export function redactAccountIdentity(line: string): string {
+  const pad = (match: string) => REDACTED.slice(0, match.length).padEnd(match.length, " ")
+  // Redact TEXT ONLY. A serialized line interleaves SGR escapes with content,
+  // and an address regex run over the raw string happily eats the parameter
+  // tail in front of it (`…;153m` + `o2620624@…` reads as one local part),
+  // truncating the escape and corrupting every cell that follows.
+  let out = ""
+  let last = 0
+  for (const match of line.matchAll(ANSI_TOKEN)) {
+    const at = match.index ?? 0
+    out += line.slice(last, at).replace(EMAIL, pad) + match[0]
+    last = at + match[0].length
+  }
+  return out + line.slice(last).replace(EMAIL, pad)
+}
+
+/** Longest a single frame may stay on screen before the hold is collapsed. */
+const MAX_HOLD_SECONDS = 10
+
+/**
+ * Collapse dead air. A `sleep` beat waits in one go and snapshots once at the
+ * end, so a long wait for real engines records NOTHING in between — the last
+ * frame simply hangs. Seventy-odd seconds of that reads as a frozen video, and
+ * no content is lost by shortening it because none was ever captured.
+ *
+ * Later frames shift earlier by the same amount, so the timeline stays
+ * monotonic and every stage boundary keeps its frame.
+ */
+export function collapseIdleHolds(
+  frames: readonly CaptureFrame[],
+  maxHoldSeconds: number = MAX_HOLD_SECONDS,
+): CaptureFrame[] {
+  let shift = 0
+  const out: CaptureFrame[] = []
+  for (const [index, frame] of frames.entries()) {
+    const previous = frames[index - 1]
+    if (previous) {
+      const gap = frame.t - previous.t
+      if (gap > maxHoldSeconds) shift += gap - maxHoldSeconds
+    }
+    out.push({ ...frame, t: Number((frame.t - shift).toFixed(3)) })
+  }
+  return out
+}
+
+const redactFrames = (frames: readonly CaptureFrame[]): CaptureFrame[] =>
+  frames.map((frame) => ({
+    ...frame,
+    lines: frame.lines.map((line) =>
+      typeof line === "string" ? redactAccountIdentity(line) : { ...line, rawAnsi: redactAccountIdentity(line.rawAnsi) },
+    ),
+  }))
+
 export interface CaptureTerminal {
   start(): Promise<void>
   snapshot(): Promise<readonly string[]>
@@ -161,7 +233,15 @@ const runCreateTask = async (
 ) => {
   const flow = spec.flows?.createTask
   if (!flow) throw new Error("replay flow createTask is not configured")
-  if (flow.focusPaneBeforeOpen === "leftmost") await sendKey("C-h", terminal, clock, startedAt, frames)
+  // The sidebar owns the bare `n` that opens the dialog, and a fresh boot does
+  // not focus it — an unanchored `n` is simply swallowed. Use the `ctrl+a` `h`
+  // prefix sequence from docs/KEYBINDINGS.md ("move focus left"): it is
+  // idempotent at the leftmost pane, unlike `ctrl+q`, which focuses the
+  // sidebar but QUITS when the sidebar already has focus.
+  if (flow.focusPaneBeforeOpen === "leftmost") {
+    await sendKey("C-a", terminal, clock, startedAt, frames)
+    await sendKey("h", terminal, clock, startedAt, frames)
+  }
   await sendKey(flow.openKey ?? "n", terminal, clock, startedAt, frames)
   await wait(spec, flow.dialogWait, terminal, clock, startedAt, frames)
   if (flow.dialogSettleMs !== undefined) await pause(flow.dialogSettleMs, terminal, clock, startedAt, frames)
@@ -199,7 +279,16 @@ export async function runReplayCapture(
       if (delay > 0) await pollTimeline(delay, spec.capture.fps, terminal, clock, startedAt, frames)
       nominalAt = beat.at
       if (beat.action === "key") await sendKey(beat.key ?? "", terminal, clock, startedAt, frames)
-      if (beat.action === "sleep") await pause(beat.ms ?? 0, terminal, clock, startedAt, frames)
+      // Poll, do not pause: a real engine keeps working through a sleep, and
+      // `pause` snapshots only once at the end — the wait then records as a
+      // single frozen frame instead of the work it was waiting for.
+      if (beat.action === "sleep") {
+        await pollTimeline(beat.ms ?? 0, spec.capture.fps, terminal, clock, startedAt, frames)
+        // A declared zero-duration sleep is still a settle point, and polling
+        // a zero span never runs — snapshot once more (a no-op when nothing
+        // changed, since only differing screens are recorded).
+        await captureSnapshot(terminal, clock, startedAt, frames)
+      }
       if (beat.action === "waitFor" && beat.waitFor) {
         await wait(spec, beat.waitFor, terminal, clock, startedAt, frames)
         const lines = frames.at(-1)?.lines.map((line) => (typeof line === "string" ? line : line.rawAnsi)) ?? []
@@ -229,7 +318,7 @@ export async function runReplayCapture(
     const document: CaptureDocument = {
       cols: spec.viewport.cols,
       rows: spec.viewport.rows,
-      frames,
+      frames: collapseIdleHolds(redactFrames(frames)),
       meta: spec.theme === undefined ? {} : { theme: spec.theme },
     }
     validateCapture(document)

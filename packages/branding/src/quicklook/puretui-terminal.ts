@@ -32,6 +32,8 @@ export type PureTuiCaptureOptions = {
   cols: number
   rows: number
   theme?: Pick<TerminalTheme, "defaultFg" | "defaultBg">
+  /** `capture.shellPrompt` — exported as PS1 so shell beats are waitable. */
+  shellPrompt?: string
   protocolTimeoutMs?: number
   sidecarExitTimeoutMs?: number
   sidecarPath?: string
@@ -48,12 +50,24 @@ type PendingRequest = {
 
 type Diagnostics = { snapshot: string; pid?: number; demoRoot: string }
 
+/**
+ * Session markers an engine CLI sets for its own children. Capturing from
+ * inside such a session would otherwise hand the recorded engine a parent it
+ * does not have — Claude Code answers an inherited `CLAUDE_CODE_CHILD_SESSION`
+ * with a "Transcript saving is off" warning across its input box, which no
+ * user launching kobe from a normal terminal ever sees. `CLAUDE_CONFIG_DIR` is
+ * NOT a marker: kobe reads it for engine history and the quota status line.
+ */
+export const isEngineSessionMarker = (key: string): boolean =>
+  key === "CLAUDECODE" || (key.startsWith("CLAUDE_") && key !== "CLAUDE_CONFIG_DIR")
+
 const inheritedEnvironment = (): Record<string, string> =>
   Object.fromEntries(
     Object.entries(process.env).filter(
       ([key, value]) =>
         value !== undefined &&
         !key.startsWith("KOBE_") &&
+        !isEngineSessionMarker(key) &&
         key !== "HOME" &&
         key !== "USERPROFILE" &&
         !key.startsWith("XDG_") &&
@@ -71,7 +85,17 @@ const capturePort = (demoRoot: string): string => {
   return String(30_000 + (hash % 15_000))
 }
 
-export const captureEnvironment = (demoRoot: string): Record<string, string> => {
+/**
+ * A shell beat can only be waited on if the prompt is a known string, so the
+ * capture pins it rather than inheriting whatever the operator's shell paints.
+ * `/bin/sh` with an exported PS1 is the portable pair: POSIX shells honour an
+ * inherited PS1 and read no rc file that would overwrite it, where a login
+ * bash/zsh would replace it from the user's dotfiles.
+ */
+const shellPromptEnvironment = (shellPrompt?: string): Record<string, string> =>
+  shellPrompt ? { SHELL: "/bin/sh", PS1: shellPrompt } : {}
+
+export const captureEnvironment = (demoRoot: string, shellPrompt?: string): Record<string, string> => {
   const kobeHome = join(demoRoot, "home")
   const inherited = inheritedEnvironment()
   return {
@@ -92,6 +116,7 @@ export const captureEnvironment = (demoRoot: string): Record<string, string> => 
     KOBE_DAEMON_WEB_PORT: capturePort(demoRoot),
     KOBE_CAPTURE_HOST_LABEL: "puretui-replay",
     KOBE_CAPTURE_SESSION_LABEL: basename(demoRoot),
+    ...shellPromptEnvironment(shellPrompt),
   }
 }
 
@@ -297,7 +322,7 @@ export async function createPureTuiCapture(options: PureTuiCaptureOptions): Prom
   const repoRoot = resolve(options.repoRoot)
   const demoRoot = resolve(options.demoRoot)
   const fixtureRepo = resolve(options.fixtureRepo)
-  const env = captureEnvironment(demoRoot)
+  const env = captureEnvironment(demoRoot, options.shellPrompt)
   await Promise.all(
     [
       demoRoot,

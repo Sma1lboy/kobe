@@ -14,9 +14,9 @@ G='\033[38;2;154;202;134m'
 R='\033[0m'
 
 work() {
-  printf "\n${D}\xe2\x97\x8f Reading src/session.ts${R}\n"
+  printf "\n${D}\342\227\217 Reading src/session.ts${R}\n"
   sleep 1
-  printf "${D}\xe2\x97\x8f Editing src/session.ts${R}\n"
+  printf "${D}\342\227\217 Editing src/session.ts${R}\n"
   mkdir -p src
   cat >src/session.ts <<'EOF'
 export type Session = { token: string; expiresAt: number }
@@ -39,17 +39,17 @@ async function refresh(now: number): Promise<Session> {
 }
 EOF
   sleep 1
-  printf "\n${B}\xe2\x80\xa2 Session refresh${R} \xe2\x80\x94 collapsed the double-refresh path into one guarded renewal.\n"
+  printf "\n${B}\342\200\242 Session refresh${R} \342\200\224 collapsed the double-refresh path into one guarded renewal.\n"
   sleep 1
-  printf "${B}\xe2\x80\xa2 Public API${R} \xe2\x80\x94 getSession keeps its signature; callers are untouched.\n"
+  printf "${B}\342\200\242 Public API${R} \342\200\224 getSession keeps its signature; callers are untouched.\n"
   sleep 1
-  printf "\n${D}\xe2\x97\x8f Running bun test src/session.test.ts${R}\n"
+  printf "\n${D}\342\227\217 Running bun test src/session.test.ts${R}\n"
   sleep 2
-  printf "  ${G}\xe2\x9c\x93${R} 12 pass, 0 fail\n"
+  printf "  ${G}\342\234\223${R} 12 pass, 0 fail\n"
   sleep 2
   git add -A >/dev/null 2>&1
   git commit -q -m "refactor: simplify session refresh" >/dev/null 2>&1
-  printf "\n${G}\xe2\x9c\x93${R} committed ${B}refactor: simplify session refresh${R}\n"
+  printf "\n${G}\342\234\223${R} committed ${B}refactor: simplify session refresh${R}\n"
 }
 
 # The launch argv carries engine flags (--session-id <id>,
@@ -69,7 +69,7 @@ while [ $# -gt 0 ]; do
 done
 
 printf '\033[2J\033[H'
-printf "${C}\xe2\x9c\xbb Claude Code${R}  ${D}demo session${R}\n"
+printf "${C}\342\234\273 Claude Code${R}  ${D}demo session${R}\n"
 
 if [ -n "$prompt" ]; then
   printf "\n${D}> %s${R}\n" "$prompt"
@@ -79,8 +79,8 @@ fi
 # `ready ›` is the replay's wait marker: keep it ONE unstyled run so the
 # serialized snapshot line contains the literal text with no SGR codes
 # between the words.
-printf '\nready \xe2\x80\xba '
+printf '\nready \342\200\272 '
 while IFS= read -r _line; do
   work
-  printf '\nready \xe2\x80\xba '
+  printf '\nready \342\200\272 '
 done

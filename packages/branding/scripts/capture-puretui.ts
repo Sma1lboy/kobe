@@ -71,6 +71,27 @@ async function refresh(now: number): Promise<Session> {
 }
 `
 
+/**
+ * A SECOND independent file, so the replay's two concurrent tasks touch
+ * disjoint code. That is the whole point being demonstrated — each task owns a
+ * worktree and a branch, so two agents edit the same repo at the same time
+ * without seeing or clobbering each other. One shared file would show a merge
+ * story instead.
+ */
+const FIXTURE_CLIENT_TS = `import { getSession } from "./session"
+
+export function createClient(baseUrl: string) {
+  return {
+    async fetch(path: string): Promise<Response> {
+      const session = await getSession(Date.now())
+      return fetch(\`\${baseUrl}\${path}\`, {
+        headers: { authorization: \`Bearer \${session.token}\` },
+      })
+    },
+  }
+}
+`
+
 const createFixtureRepository = async (demoRoot: string): Promise<string> => {
   const fixtureRepo = join(demoRoot, "fixture-repo")
   await mkdir(join(fixtureRepo, "src"), { recursive: true })
@@ -79,6 +100,7 @@ const createFixtureRepository = async (demoRoot: string): Promise<string> => {
   await run("git", ["config", "user.name", "kobe capture"], fixtureRepo)
   await writeFile(join(fixtureRepo, "README.md"), "# PureTUI replay fixture\n")
   await writeFile(join(fixtureRepo, "src", "session.ts"), FIXTURE_SESSION_TS)
+  await writeFile(join(fixtureRepo, "src", "client.ts"), FIXTURE_CLIENT_TS)
   await run("git", ["add", "-A"], fixtureRepo)
   await run("git", ["commit", "-q", "-m", "fixture"], fixtureRepo)
   // Self-remote so `origin/main` resolves: the Files pane's Branch (vs-base)
@@ -90,17 +112,22 @@ const createFixtureRepository = async (demoRoot: string): Promise<string> => {
   return fixtureRepo
 }
 
+/**
+ * Mirrors `KOBE_SKILL_VERSION` in `packages/kobe/src/lib/skill-install.ts`.
+ * `skillHintSeen:vN` mutes the versioned skill-update prompt — the capture
+ * keeps the user's real HOME, whose installed skill may be stale — and a
+ * stale N lets that prompt swallow the boot wait. Bump in lockstep; the test
+ * asserts against this constant so the two can't drift apart again.
+ */
+export const CAPTURE_SKILL_HINT_VERSION = 19
+
 const prepareCaptureState = async (demoRoot: string, fixtureRepo: string, claudeCommand?: string): Promise<void> => {
   const configDir = join(demoRoot, "home", ".config", "kobe")
   await mkdir(configDir, { recursive: true })
-  // `skillHintSeen:vN` mutes the versioned skill-update prompt (the capture
-  // keeps the user's real HOME, whose installed skill may be stale). If the
-  // boot wait times out on that prompt after a KOBE_SKILL_VERSION bump,
-  // update N here to match `src/lib/skill-install.ts`.
   const state: Record<string, unknown> = {
     onboarded: true,
     skillHintSeen: "1",
-    "skillHintSeen:v6": "1",
+    [`skillHintSeen:v${CAPTURE_SKILL_HINT_VERSION}`]: "1",
     savedRepos: [fixtureRepo],
   }
   const captureClaudeCommand = claudeCommand?.trim()
@@ -134,6 +161,7 @@ export async function capturePureTui(
     readyTimeoutMs: ready?.timeoutMs,
     cols: spec.viewport.cols,
     rows: spec.viewport.rows,
+    shellPrompt: spec.capture.shellPrompt,
     theme: {
       defaultFg: spec.theme?.defaultFg ?? DEFAULT_TERMINAL_THEME.defaultFg,
       defaultBg: spec.theme?.defaultBg ?? DEFAULT_TERMINAL_THEME.defaultBg,

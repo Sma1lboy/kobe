@@ -177,40 +177,45 @@ describe("replay spec", () => {
   test("keeps quicklook theme limited to terminal state", () => {
     expect(Object.keys(quicklookSpec.theme).sort()).toEqual(["ansi16", "defaultBg", "defaultFg"])
     expect(quicklookSpec.setup).not.toHaveProperty("fixtureEngines")
-    // The stub engine prints this marker as ONE unstyled run so the
-    // serialized snapshot contains the literal text (no SGR codes inside).
-    expect(quicklookSpec.waits.stubReady.pattern).toBe("ready ›")
+    // The replay drives the REAL engine, so readiness keys on Claude Code's
+    // own persistent input footer ("⏵⏵ accept edits on"). Claude Code styles
+    // EVERY WORD as its own run, and a wait pattern cannot span two runs, so
+    // this must stay a single token — "accept edits on" never matches.
+    expect(quicklookSpec.waits.engineReady.pattern).toBe("edits")
+    expect(quicklookSpec.waits.engineReady.pattern.trim().split(/\s+/)).toHaveLength(1)
+    for (const beat of quicklookSpec.beats) {
+      expect(beat.textRef === undefined || quicklookSpec.text[beat.textRef]).toBeTruthy()
+      if (beat.textRef) expect(quicklookSpec.text[beat.textRef]).not.toContain("accept edits on")
+    }
   })
 
-  test("tells the fan-out → land story through real CLI beats", () => {
-    const prompt = quicklookSpec.beats.find(
-      (beat) => beat.action === "typeTextWhenReady" && beat.textRef === "refactorPrompt",
-    )
-    const fanOut = quicklookSpec.beats.find(
-      (beat) => beat.action === "typeText" && beat.textRef === "fanOutCommand",
-    )
-    const fanOutDone = quicklookSpec.beats.find(
-      (beat) => beat.action === "waitFor" && beat.waitFor === "fanOutDone",
-    )
-    const land = quicklookSpec.beats.find((beat) => beat.action === "typeText" && beat.textRef === "landCommand")
-    const landed = quicklookSpec.beats.find((beat) => beat.action === "waitFor" && beat.waitFor === "landed")
+  test("tells the parallel-tasks story through two independent task beats", () => {
+    // The pitch is one TUI holding many engine sessions, each on its own
+    // worktree and branch — NOT many attempts at one prompt. So the storyboard
+    // must start a second task while the first agent is still mid-turn, and
+    // the two prompts must touch disjoint files or "they never trample each
+    // other" is asserted by nothing on screen.
+    const prompts = quicklookSpec.beats.filter((beat) => beat.action === "typeTextWhenReady")
+    expect(prompts).toHaveLength(2)
+    expect(prompts.every((beat) => beat.submit === true)).toBe(true)
 
-    expect(prompt?.submit).toBe(true)
-    expect(quicklookSpec.text.fanOutCommand).toContain("kobe api fan-out")
-    expect(quicklookSpec.text.landCommand).toContain('kobe api land --task-id "$KOBE_TASK_ID"')
-    expect(quicklookSpec.waits.fanOutDone.pattern).toBe('"groupId"')
-    expect(quicklookSpec.waits.landed.pattern).toBe('"landedOn"')
-    expect(fanOut?.submit).toBe(true)
-    expect(land?.submit).toBe(true)
-    expect(fanOutDone?.at).toBeGreaterThan(fanOut?.at ?? Number.POSITIVE_INFINITY)
-    expect(landed?.at).toBeGreaterThan(land?.at ?? Number.POSITIVE_INFINITY)
-    expect(quicklookSpec.text).not.toHaveProperty("codexPrompt")
+    const flows = quicklookSpec.beats.filter((beat) => beat.action === "flow")
+    expect(flows).toHaveLength(2)
+    expect(flows.every((beat) => beat.engine === "claude")).toBe(true)
+    expect(flows[1].at).toBeGreaterThan(prompts[0].at)
+
+    expect(quicklookSpec.text.sessionPrompt).toContain("src/session.ts")
+    expect(quicklookSpec.text.clientPrompt).toContain("src/client.ts")
+
+    // Fan-out is a different (and far more expensive) mode; it is deliberately
+    // not what the demo sells.
+    expect(quicklookSpec.text).not.toHaveProperty("fanOutCommand")
+    expect(quicklookSpec.text).not.toHaveProperty("landCommand")
     expect(Object.keys(quicklookSpec.waits)).not.toEqual(
-      expect.arrayContaining([expect.stringMatching(/^codex/)]),
+      expect.arrayContaining([expect.stringMatching(/^(fanOut|landed)/)]),
     )
+    expect(quicklookSpec.text).not.toHaveProperty("codexPrompt")
     expect(quicklookSpec.flows.createTask).not.toHaveProperty("codexEngineCycleKey")
-    expect(quicklookSpec.flows.createTask).not.toHaveProperty("codexEngineSettleMs")
-    expect(quicklookSpec.regions).not.toHaveProperty("inputCodex")
     expect(quicklookSpec.beats).not.toEqual(
       expect.arrayContaining([expect.objectContaining({ action: "flow", engine: "codex" })]),
     )

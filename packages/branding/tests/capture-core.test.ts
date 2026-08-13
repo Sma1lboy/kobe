@@ -7,6 +7,8 @@ import {
   type CaptureDocument,
   type CaptureOutput,
   type CaptureTerminal,
+  collapseIdleHolds,
+  redactAccountIdentity,
   runReplayCapture,
   writeCaptureAtomically,
 } from "../src/quicklook/capture-core"
@@ -283,7 +285,8 @@ describe("capture core", () => {
 
     expect(terminal.calls).toEqual([
       "start",
-      "key:C-h",
+      "key:C-a",
+      "key:h",
       "key:n",
       "wait:composer:500",
       "key:C-e",
@@ -307,5 +310,59 @@ describe("capture core", () => {
     } finally {
       await rm(root, { recursive: true, force: true })
     }
+  })
+})
+
+describe("account identity redaction", () => {
+  test("blanks an address without shifting the rest of the row", () => {
+    const line = `\u001b[9;20H\u001b[0;38;2;153;153;153mo2620624@gmail.com's Organization\u001b[0m`
+    const out = redactAccountIdentity(line)
+
+    expect(out).not.toContain("o2620624@gmail.com")
+    expect(out).toContain("'s Organization")
+    // A serialized line positions every run by absolute column, so a shorter
+    // substitution would slide the rest of the row.
+    expect(out.length).toBe(line.length)
+  })
+
+  test("never eats the SGR parameters in front of the address", () => {
+    // `…;153m` + `o2620624@…` reads as one local part to an address regex run
+    // over the raw line: the escape gets truncated and every following cell
+    // renders at the wrong place. Redaction must only touch text runs.
+    const line = `\u001b[0;38;2;153;153;153mo2620624@gmail.com's`
+    const out = redactAccountIdentity(line)
+
+    expect(out).toContain(`\u001b[0;38;2;153;153;153m`)
+    expect(out).not.toContain("153mo2620624")
+  })
+
+  test("leaves rows carrying no address untouched", () => {
+    const line = `\u001b[3;5H\u25cf Update(src/client.ts)`
+    expect(redactAccountIdentity(line)).toBe(line)
+  })
+})
+
+describe("idle hold collapse", () => {
+  test("shortens a hold no frame was captured during, keeping later frames monotonic", () => {
+    const frames = [
+      { t: 0, lines: ["boot"] },
+      { t: 5, lines: ["working"] },
+      // A `sleep` beat: waited 70s, snapshotted once at the end.
+      { t: 75, lines: ["done"] },
+      { t: 78, lines: ["diff"] },
+    ]
+    const out = collapseIdleHolds(frames, 10)
+
+    expect(out.map((frame) => frame.t)).toEqual([0, 5, 15, 18])
+    expect(out.map((frame) => frame.lines)).toEqual(frames.map((frame) => frame.lines))
+  })
+
+  test("leaves a capture with no dead air alone", () => {
+    const frames = [
+      { t: 0, lines: ["a"] },
+      { t: 2, lines: ["b"] },
+      { t: 9, lines: ["c"] },
+    ]
+    expect(collapseIdleHolds(frames, 10)).toEqual(frames)
   })
 })

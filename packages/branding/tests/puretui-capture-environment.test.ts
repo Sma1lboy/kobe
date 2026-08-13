@@ -3,9 +3,10 @@ import { mkdtemp, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import { join, resolve } from "node:path"
 import { type CapturePureTuiOptions, capturePureTui } from "../scripts/capture-puretui"
+import { isEngineSessionMarker } from "../src/quicklook/puretui-terminal"
 import * as pureTuiTerminal from "../src/quicklook/puretui-terminal"
 
-type CaptureEnvironment = (demoRoot: string) => Record<string, string>
+type CaptureEnvironment = (demoRoot: string, shellPrompt?: string) => Record<string, string>
 
 const captureEnvironment = (): CaptureEnvironment | undefined =>
   (pureTuiTerminal as typeof pureTuiTerminal & { captureEnvironment?: CaptureEnvironment }).captureEnvironment
@@ -68,6 +69,26 @@ describe("PureTUI capture environment", () => {
     }
   })
 
+  test("pins the shell prompt so shell beats stay waitable off-macOS", () => {
+    const buildEnvironment = captureEnvironment()
+    expect(typeof buildEnvironment).toBe("function")
+    if (!buildEnvironment) return
+
+    // Without the pin the prompt is whatever the operator's login shell
+    // paints — bare `$` under dash — and every shellPrompt wait times out.
+    expect(buildEnvironment("/tmp/kobe-prompt-capture", "kobe-demo$ ")).toMatchObject({
+      SHELL: "/bin/sh",
+      PS1: "kobe-demo$ ",
+    })
+  })
+
+  test("leaves the shell prompt alone when the spec pins none", () => {
+    const buildEnvironment = captureEnvironment()
+    if (!buildEnvironment) return
+    const env = buildEnvironment("/tmp/kobe-prompt-capture")
+    expect(env).not.toHaveProperty("PS1")
+  })
+
   test("leaves the isolated engine command unset by default", async () => {
     const state = await runZeroCapture()
     expect(state).not.toHaveProperty("engineCommand.claude")
@@ -77,5 +98,27 @@ describe("PureTUI capture environment", () => {
     const command = "/usr/bin/env TEST_CAPTURE=1 claude --model test"
     const state = await runZeroCapture(command)
     expect(state["engineCommand.claude"]).toBe(command)
+  })
+})
+
+describe("engine session markers", () => {
+  test("scrubs the markers an outer engine session sets for its children", () => {
+    // Captured from inside Claude Code, these would make the recorded engine
+    // believe it is a nested child and paint a transcript-off warning.
+    for (const key of [
+      "CLAUDECODE",
+      "CLAUDE_CODE_CHILD_SESSION",
+      "CLAUDE_CODE_SESSION_ID",
+      "CLAUDE_CODE_ENTRYPOINT",
+      "CLAUDE_PID",
+      "CLAUDE_EFFORT",
+    ]) {
+      expect(isEngineSessionMarker(key)).toBe(true)
+    }
+  })
+
+  test("keeps CLAUDE_CONFIG_DIR, which kobe reads for history and the quota line", () => {
+    expect(isEngineSessionMarker("CLAUDE_CONFIG_DIR")).toBe(false)
+    expect(isEngineSessionMarker("PATH")).toBe(false)
   })
 })
