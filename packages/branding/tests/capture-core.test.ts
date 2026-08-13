@@ -7,6 +7,7 @@ import {
   type CaptureDocument,
   type CaptureOutput,
   type CaptureTerminal,
+  collapseIdleHolds,
   redactAccountIdentity,
   runReplayCapture,
   writeCaptureAtomically,
@@ -338,5 +339,30 @@ describe("account identity redaction", () => {
   test("leaves rows carrying no address untouched", () => {
     const line = `\u001b[3;5H\u25cf Update(src/client.ts)`
     expect(redactAccountIdentity(line)).toBe(line)
+  })
+})
+
+describe("idle hold collapse", () => {
+  test("shortens a hold no frame was captured during, keeping later frames monotonic", () => {
+    const frames = [
+      { t: 0, lines: ["boot"] },
+      { t: 5, lines: ["working"] },
+      // A `sleep` beat: waited 70s, snapshotted once at the end.
+      { t: 75, lines: ["done"] },
+      { t: 78, lines: ["diff"] },
+    ]
+    const out = collapseIdleHolds(frames, 10)
+
+    expect(out.map((frame) => frame.t)).toEqual([0, 5, 15, 18])
+    expect(out.map((frame) => frame.lines)).toEqual(frames.map((frame) => frame.lines))
+  })
+
+  test("leaves a capture with no dead air alone", () => {
+    const frames = [
+      { t: 0, lines: ["a"] },
+      { t: 2, lines: ["b"] },
+      { t: 9, lines: ["c"] },
+    ]
+    expect(collapseIdleHolds(frames, 10)).toEqual(frames)
   })
 })

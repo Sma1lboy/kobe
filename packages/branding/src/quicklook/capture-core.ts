@@ -37,6 +37,35 @@ export function redactAccountIdentity(line: string): string {
   return out + line.slice(last).replace(EMAIL, pad)
 }
 
+/** Longest a single frame may stay on screen before the hold is collapsed. */
+const MAX_HOLD_SECONDS = 10
+
+/**
+ * Collapse dead air. A `sleep` beat waits in one go and snapshots once at the
+ * end, so a long wait for real engines records NOTHING in between — the last
+ * frame simply hangs. Seventy-odd seconds of that reads as a frozen video, and
+ * no content is lost by shortening it because none was ever captured.
+ *
+ * Later frames shift earlier by the same amount, so the timeline stays
+ * monotonic and every stage boundary keeps its frame.
+ */
+export function collapseIdleHolds(
+  frames: readonly CaptureFrame[],
+  maxHoldSeconds: number = MAX_HOLD_SECONDS,
+): CaptureFrame[] {
+  let shift = 0
+  const out: CaptureFrame[] = []
+  for (const [index, frame] of frames.entries()) {
+    const previous = frames[index - 1]
+    if (previous) {
+      const gap = frame.t - previous.t
+      if (gap > maxHoldSeconds) shift += gap - maxHoldSeconds
+    }
+    out.push({ ...frame, t: Number((frame.t - shift).toFixed(3)) })
+  }
+  return out
+}
+
 const redactFrames = (frames: readonly CaptureFrame[]): CaptureFrame[] =>
   frames.map((frame) => ({
     ...frame,
@@ -250,7 +279,16 @@ export async function runReplayCapture(
       if (delay > 0) await pollTimeline(delay, spec.capture.fps, terminal, clock, startedAt, frames)
       nominalAt = beat.at
       if (beat.action === "key") await sendKey(beat.key ?? "", terminal, clock, startedAt, frames)
-      if (beat.action === "sleep") await pause(beat.ms ?? 0, terminal, clock, startedAt, frames)
+      // Poll, do not pause: a real engine keeps working through a sleep, and
+      // `pause` snapshots only once at the end — the wait then records as a
+      // single frozen frame instead of the work it was waiting for.
+      if (beat.action === "sleep") {
+        await pollTimeline(beat.ms ?? 0, spec.capture.fps, terminal, clock, startedAt, frames)
+        // A declared zero-duration sleep is still a settle point, and polling
+        // a zero span never runs — snapshot once more (a no-op when nothing
+        // changed, since only differing screens are recorded).
+        await captureSnapshot(terminal, clock, startedAt, frames)
+      }
       if (beat.action === "waitFor" && beat.waitFor) {
         await wait(spec, beat.waitFor, terminal, clock, startedAt, frames)
         const lines = frames.at(-1)?.lines.map((line) => (typeof line === "string" ? line : line.rawAnsi)) ?? []
@@ -280,7 +318,7 @@ export async function runReplayCapture(
     const document: CaptureDocument = {
       cols: spec.viewport.cols,
       rows: spec.viewport.rows,
-      frames: redactFrames(frames),
+      frames: collapseIdleHolds(redactFrames(frames)),
       meta: spec.theme === undefined ? {} : { theme: spec.theme },
     }
     validateCapture(document)

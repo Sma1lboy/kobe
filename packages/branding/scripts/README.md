@@ -88,6 +88,14 @@ cp out/demo.gif ../../docs/assets/demo.gif
   full on top of however long each beat really takes, so keep gaps small and
   let waits carry the pacing. `capture.seconds` belongs to that nominal
   timeline (it only pads the tail) — never raise it to the real duration.
+- **A `sleep` beat polls at `capture.fps`.** It used to wait in one go and
+  snapshot once at the end, which recorded a 75-second wait as a SINGLE frame:
+  the delivered video froze for ~18 seconds at 4x, showing none of the work the
+  wait existed for. Anything a beat waits through must be sampled, or it did
+  not happen as far as the recording is concerned.
+- `collapseIdleHolds` caps how long one frame may hang (10s) and shifts the
+  rest of the timeline earlier. It is a safety net for dead air no frame was
+  captured during — it discards no content, because there was none.
 - **A wait on Claude Code's own UI must be a SINGLE token.** It styles every
   word as its own run, and the serialized snapshot carries SGR codes at each
   boundary, so `accept edits on` is stored as `accept`/`edits`/`on` and the
@@ -124,8 +132,10 @@ is zoomed in at every rich moment, and a hero needs the whole workspace), then
 restore the spec.
 
 ```bash
-# stages[].region removed in a scratch copy, then:
-bun x remotion still src/index.ts quicklook-replay hero.png --frame=3570 --scale=2
+# stages[].region removed in a scratch copy, then (30fps × the capture second
+# where the finished turn is on screen — scan frames.json for the milestone,
+# every recapture moves it):
+bun x remotion still src/index.ts quicklook-replay hero.png --frame=1630 --scale=2
 ```
 
 The browser `/harness` path is the ground truth for UI acceptance, but it is

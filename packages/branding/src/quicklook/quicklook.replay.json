@@ -261,24 +261,18 @@
     {
       "name": "parallel",
       "from": 36,
-      "to": 110,
+      "to": 45.6,
       "region": "workspace"
     },
     {
-      "name": "review-one",
-      "from": 110,
-      "to": 119.4,
-      "region": "chat"
-    },
-    {
       "name": "review-two",
-      "from": 119.4,
-      "to": 122.4,
+      "from": 45.6,
+      "to": 57.4,
       "region": "chat"
     },
     {
       "name": "diff",
-      "from": 122.4,
+      "from": 57.4,
       "to": "capture-end",
       "region": "review"
     },
