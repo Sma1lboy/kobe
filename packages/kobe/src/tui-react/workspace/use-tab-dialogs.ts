@@ -24,7 +24,6 @@ import { setRepoLastActiveVendor } from "@/state/vendor-prefs"
 import type { VendorId } from "@/types/vendor"
 import { defaultDaemonSocketPath } from "@sma1lboy/kobe-daemon/daemon/paths"
 import { type PaneLaunch, listPaneLaunches } from "@sma1lboy/kobe-daemon/plugins/pane-command"
-import { LEGACY_KOBE_PRODUCT_NAME } from "../../product.ts"
 import { defaultShell } from "../../tui/panes/terminal/pty-types"
 import { openPluginPane } from "../../tui/workspace/pane-split"
 import {
@@ -165,7 +164,7 @@ export function useTabDialogs(deps: {
       // offered in the default combo (the dialog filters otherwise).
       let panes: PaneLaunch[] = []
       try {
-        panes = listPaneLaunches({ socketPath: defaultDaemonSocketPath(), binPath: LEGACY_KOBE_PRODUCT_NAME })
+        panes = listPaneLaunches({ socketPath: defaultDaemonSocketPath(), binPath: "kobe" })
       } catch {
         /* registry unreadable → engines only */
       }

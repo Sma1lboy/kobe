@@ -54,6 +54,13 @@ const exemptPaths = new Set([...prBody.matchAll(/coverage-exemption:\s*(\S+)/gi)
 // here if it is a subprocess-only entry point with no (and no plausible)
 // direct unit test — re-verify before adding, don't grow this defensively.
 const SUBPROCESS_ONLY_EXCLUSIONS = new Set([
+  // The public `kobe` and `rove` wrappers install invocation/env
+  // compatibility before dynamically importing the shared CLI. Importing
+  // either wrapper directly would execute main()/process.exit in the test
+  // runner; test/behavior/rove-alias.test.ts instead spawns both built
+  // entries and verifies their observable identity and env precedence.
+  "packages/kobe/src/cli/kobe.ts",
+  "packages/kobe/src/cli/rove.ts",
   // `kobe pty-host`: internal subcommand spawned DETACHED by
   // ensurePtyHostReachable() (see src/cli/pty-host-cmd.ts) — it blocks in the
   // foreground running a real server and installs SIGINT/SIGTERM handlers
