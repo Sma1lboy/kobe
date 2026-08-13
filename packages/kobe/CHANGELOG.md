@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.85
+
+### Patch Changes
+
+- 49e5135: Add the `rove` CLI alongside the compatible `kobe` alias, accept `ROVE_*`
+  environment variables with precedence over `KOBE_*`, and continue using the
+  existing state paths without migration.
+
 ## 0.8.84
 
 ### Patch Changes
