@@ -1,5 +1,6 @@
 import { installRoveEnvCompatibility, legacyKobeEnvKey, readRoveEnv } from "@sma1lboy/kobe-daemon/compat-env"
 import { describe, expect, test } from "vitest"
+import { kobeCliInvocation, roveCliInvocation } from "../../src/cli/invocation.ts"
 import {
   activeCliName,
   markKobeInvocation,
@@ -48,5 +49,27 @@ describe("rove environment compatibility", () => {
     const env: NodeJS.ProcessEnv = { ROVE_INVOKED_AS: "rove" }
     markKobeInvocation(env)
     expect(activeCliName(env)).toBe("kobe")
+  })
+
+  test("source-mode child invocations follow the active public wrapper", () => {
+    const original = process.env.ROVE_INVOKED_AS
+    try {
+      markRoveInvocation()
+      expect(roveCliInvocation()).toEqual([
+        process.execPath,
+        "--conditions=browser",
+        expect.stringMatching(/\/cli\/rove\.ts$/),
+      ])
+
+      markKobeInvocation()
+      expect(kobeCliInvocation()).toEqual([
+        process.execPath,
+        "--conditions=browser",
+        expect.stringMatching(/\/cli\/kobe\.ts$/),
+      ])
+    } finally {
+      if (original === undefined) Reflect.deleteProperty(process.env, "ROVE_INVOKED_AS")
+      else process.env.ROVE_INVOKED_AS = original
+    }
   })
 })

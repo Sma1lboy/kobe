@@ -11,13 +11,25 @@
 
 import { homedir, tmpdir } from "node:os"
 import { join } from "node:path"
+import { defaultAttentionInboxPath } from "@sma1lboy/kobe-daemon/daemon/attention-inbox"
+import { defaultAutomationsPath } from "@sma1lboy/kobe-daemon/daemon/automations-store"
+import { defaultIssuesStorePath } from "@sma1lboy/kobe-daemon/daemon/issues-store"
+import { defaultKeybindingsPath } from "@sma1lboy/kobe-daemon/daemon/keybindings-watcher"
+import { defaultNotesStorePath } from "@sma1lboy/kobe-daemon/daemon/notes-store"
 import {
+  defaultClientLogPath,
   defaultDaemonLogPath,
   defaultDaemonPidPath,
   defaultDaemonSocketPath,
+  defaultPtyExitsPath,
+  defaultPtyHostLogPath,
+  defaultPtyHostPidPath,
+  defaultPtyHostSocketPath,
   fitSocketPath,
   shortHomeTag,
 } from "@sma1lboy/kobe-daemon/daemon/paths"
+import { defaultUiPrefsStatePath } from "@sma1lboy/kobe-daemon/daemon/ui-prefs-watcher"
+import { pluginConfigDir, pluginRegistryPath, pluginStateDir } from "@sma1lboy/kobe-daemon/plugins/plugin-paths"
 import { afterEach, beforeEach, describe, expect, test } from "vitest"
 
 const PREV = {
@@ -144,6 +156,51 @@ describe("defaultDaemonLogPath", () => {
   test("sits next to the socket + pidfile under the same .kobe dir", () => {
     process.env.KOBE_HOME_DIR = "/tmp/from-env"
     expect(defaultDaemonLogPath()).toBe(defaultDaemonPidPath().replace(/\.pid$/, ".log"))
+  })
+})
+
+describe("ROVE_HOME_DIR compatibility state matrix", () => {
+  test("every daemon-owned path reuses the established .kobe and .config/kobe layout", () => {
+    process.env.KOBE_HOME_DIR = "/tmp/legacy-home"
+    process.env.ROVE_HOME_DIR = "/tmp/rove-home"
+
+    expect({
+      attention: defaultAttentionInboxPath(),
+      automations: defaultAutomationsPath(),
+      clientLog: defaultClientLogPath(),
+      daemonLog: defaultDaemonLogPath(),
+      daemonPid: defaultDaemonPidPath(),
+      daemonSocket: defaultDaemonSocketPath(),
+      issues: defaultIssuesStorePath(),
+      keybindings: defaultKeybindingsPath(),
+      notes: defaultNotesStorePath(),
+      pluginConfig: pluginConfigDir("demo"),
+      pluginRegistry: pluginRegistryPath(),
+      pluginState: pluginStateDir("demo"),
+      ptyExits: defaultPtyExitsPath(),
+      ptyLog: defaultPtyHostLogPath(),
+      ptyPid: defaultPtyHostPidPath(),
+      ptySocket: defaultPtyHostSocketPath(),
+      uiPrefs: defaultUiPrefsStatePath(),
+    }).toEqual({
+      attention: "/tmp/rove-home/.kobe/attention-inbox.json",
+      automations: "/tmp/rove-home/.kobe/automations.json",
+      clientLog: "/tmp/rove-home/.kobe/client.log",
+      daemonLog: "/tmp/rove-home/.kobe/daemon.log",
+      daemonPid: "/tmp/rove-home/.kobe/daemon.pid",
+      daemonSocket: "/tmp/rove-home/.kobe/daemon.sock",
+      issues: "/tmp/rove-home/.kobe/issues.json",
+      keybindings: "/tmp/rove-home/.kobe/settings/keybindings.yaml",
+      notes: "/tmp/rove-home/.kobe/notes.json",
+      pluginConfig: "/tmp/rove-home/.kobe/plugins/demo/config",
+      pluginRegistry: "/tmp/rove-home/.kobe/plugins.json",
+      pluginState: "/tmp/rove-home/.kobe/plugins/demo/state",
+      ptyExits: "/tmp/rove-home/.kobe/pty-exits.json",
+      ptyLog: "/tmp/rove-home/.kobe/pty.log",
+      ptyPid: "/tmp/rove-home/.kobe/pty.pid",
+      ptySocket: "/tmp/rove-home/.kobe/pty.sock",
+      uiPrefs: "/tmp/rove-home/.config/kobe/state.json",
+    })
   })
 })
 

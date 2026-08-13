@@ -23,10 +23,14 @@ let outSpy: MockInstance<typeof process.stdout.write>
 let errSpy: MockInstance<typeof process.stderr.write>
 let exitSpy: MockInstance<typeof process.exit>
 let fetchMock: ReturnType<typeof vi.fn>
+let originalRoveWebPort: string | undefined
+let originalRoveStaticDir: string | undefined
 let originalWebPort: string | undefined
 let originalStaticDir: string | undefined
 
 beforeEach(() => {
+  originalRoveWebPort = process.env.ROVE_DAEMON_WEB_PORT
+  originalRoveStaticDir = process.env.ROVE_DAEMON_WEB_STATIC_DIR
   originalWebPort = process.env.KOBE_DAEMON_WEB_PORT
   originalStaticDir = process.env.KOBE_DAEMON_WEB_STATIC_DIR
 
@@ -48,6 +52,10 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  if (originalRoveWebPort === undefined) Reflect.deleteProperty(process.env, "ROVE_DAEMON_WEB_PORT")
+  else process.env.ROVE_DAEMON_WEB_PORT = originalRoveWebPort
+  if (originalRoveStaticDir === undefined) Reflect.deleteProperty(process.env, "ROVE_DAEMON_WEB_STATIC_DIR")
+  else process.env.ROVE_DAEMON_WEB_STATIC_DIR = originalRoveStaticDir
   if (originalWebPort === undefined) Reflect.deleteProperty(process.env, "KOBE_DAEMON_WEB_PORT")
   else process.env.KOBE_DAEMON_WEB_PORT = originalWebPort
   if (originalStaticDir === undefined) Reflect.deleteProperty(process.env, "KOBE_DAEMON_WEB_STATIC_DIR")
@@ -79,6 +87,7 @@ describe("runWebSubcommand", () => {
 
   it("routes-only success: sets the port env, verifies the health marker, prints the URL + home label", async () => {
     fetchMock.mockResolvedValue({ ok: true, text: () => Promise.resolve("kobe-web") })
+    process.env.ROVE_DAEMON_WEB_PORT = "4999"
 
     // The success path parks on a forever-promise — don't await it.
     void runWebSubcommand(["--routes-only", "--port", "5199"])
@@ -86,6 +95,7 @@ describe("runWebSubcommand", () => {
     await vi.waitFor(() => {
       expect(out()).toContain("kobe daemon web transport listening on http://localhost:5199 (routes only)")
     })
+    expect(process.env.ROVE_DAEMON_WEB_PORT).toBe("5199")
     expect(process.env.KOBE_DAEMON_WEB_PORT).toBe("5199")
     expect(mocks.ensureDaemonReachable).toHaveBeenCalledTimes(1)
     expect(fetchMock).toHaveBeenCalledWith("http://127.0.0.1:5199/__kobe_web", expect.anything())

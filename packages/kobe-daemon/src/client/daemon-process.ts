@@ -90,8 +90,22 @@ function insideEngineSession(env: NodeJS.ProcessEnv = process.env): boolean {
  * Exported for tests.
  */
 export function autospawnDaemonEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
-  const { KOBE_TASK_ID: _task, KOBE_TAB_ID: _tab, KOBE_TUI: _tui, KOBE_TERMINAL_PTY: _pty, ...rest } = env
-  return { ...rest, KOBE_DAEMON_AUTOSPAWNED: "1" }
+  const {
+    KOBE_TASK_ID: _task,
+    KOBE_TAB_ID: _tab,
+    KOBE_TUI: _tui,
+    KOBE_TERMINAL_PTY: _pty,
+    ROVE_TASK_ID: _roveTask,
+    ROVE_TAB_ID: _roveTab,
+    ROVE_TUI: _roveTui,
+    ROVE_TERMINAL_PTY: _rovePty,
+    ROVE_DAEMON_AUTOSPAWNED: _roveAutospawned,
+    ...rest
+  } = env
+  // The child re-enters through the kobe wrapper, so stamp both names. A
+  // stale ROVE_DAEMON_AUTOSPAWNED value must not override this internal flag
+  // when the wrapper reapplies ROVE_* precedence.
+  return { ...rest, KOBE_DAEMON_AUTOSPAWNED: "1", ROVE_DAEMON_AUTOSPAWNED: "1" }
 }
 
 /**

@@ -138,8 +138,12 @@ async function startPtyServer(opts: {
 }
 
 async function ensureDaemonWeb(port: number, staticDir?: string): Promise<void> {
+  process.env.ROVE_DAEMON_WEB_PORT = String(port)
   process.env.KOBE_DAEMON_WEB_PORT = String(port)
-  if (staticDir) process.env.KOBE_DAEMON_WEB_STATIC_DIR = staticDir
+  if (staticDir) {
+    process.env.ROVE_DAEMON_WEB_STATIC_DIR = staticDir
+    process.env.KOBE_DAEMON_WEB_STATIC_DIR = staticDir
+  }
   await ensureDaemonReachable()
   let body: string
   try {
