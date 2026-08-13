@@ -2,6 +2,7 @@ import { type StdioOptions, spawn } from "node:child_process"
 import { closeSync, existsSync, mkdirSync, openSync, statSync, unlinkSync } from "node:fs"
 import { dirname, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
+import { LEGACY_KOBE_PRODUCT_NAME, ROVE_PRODUCT_NAME } from "../compat-env.ts"
 import { stopDaemonProcess } from "../daemon/lifecycle.ts"
 import { defaultDaemonLogPath, defaultDaemonPidPath, defaultDaemonSocketPath } from "../daemon/paths.ts"
 import { DAEMON_PROTOCOL_VERSION } from "../daemon/protocol.ts"
@@ -90,8 +91,20 @@ function insideEngineSession(env: NodeJS.ProcessEnv = process.env): boolean {
  * Exported for tests.
  */
 export function autospawnDaemonEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
-  const { KOBE_TASK_ID: _task, KOBE_TAB_ID: _tab, KOBE_TUI: _tui, KOBE_TERMINAL_PTY: _pty, ...rest } = env
-  return { ...rest, KOBE_DAEMON_AUTOSPAWNED: "1" }
+  const {
+    KOBE_TASK_ID: _task,
+    KOBE_TAB_ID: _tab,
+    KOBE_TUI: _tui,
+    KOBE_TERMINAL_PTY: _pty,
+    ROVE_TASK_ID: _roveTask,
+    ROVE_TAB_ID: _roveTab,
+    ROVE_TUI: _roveTui,
+    ROVE_TERMINAL_PTY: _rovePty,
+    ...rest
+  } = env
+  // The child re-enters through a public wrapper, so stamp both names before
+  // that wrapper reapplies ROVE_* precedence.
+  return { ...rest, KOBE_DAEMON_AUTOSPAWNED: "1", ROVE_DAEMON_AUTOSPAWNED: "1" }
 }
 
 /**
@@ -273,35 +286,38 @@ export async function testDaemonResponds(
 }
 
 /**
- * Build the argv used to spawn a detached `kobe <subcommand>` child.
+ * Build the argv used to spawn a detached CLI child.
  * Returns `[command, ...args]`; callers pass to `child_process.spawn`
  * as `spawn(command, args, opts)`.
  *
  * Four layouts are possible:
  *  - dev, pre-extraction: running from kobe source. `import.meta.url`
- *    points at `.../src/client/daemon-process.ts`; the cli entry sits at
- *    `../cli/index.ts` relative to it.
+ *    points at `.../src/client/daemon-process.ts`; the active compatibility
+ *    entry sits at `../cli/<name>.ts` relative to it.
  *  - dev, daemon workspace: running from `packages/kobe-daemon` source.
  *    The cli entry sits in sibling workspace `packages/kobe/src/cli`.
- *  - npm package: daemon-process is bundled INTO `dist/cli/index.js`, so
- *    `import.meta.url` resolves there. `../cli/index.js` resolves back
- *    to the same bundled entry — bun re-executes itself against it.
+ *  - npm package: daemon-process is bundled into `dist/cli/<name>.js`, so
+ *    `import.meta.url` resolves there and the active wrapper is reused.
  *  - standalone: running a `bun build --compile` binary. `process.execPath`
  *    IS the kobe binary, so we re-exec it directly. After the kobed → kobe
  *    bin merge, no sibling lookup is needed.
  */
-export function resolveKobeSpawn(subcommand: readonly string[]): string[] {
+export function resolveKobeSpawn(subcommand: readonly string[], env: NodeJS.ProcessEnv = process.env): string[] {
   const here = fileURLToPath(import.meta.url)
   if (here.startsWith("/$bunfs") || here.startsWith("B:\\~BUN")) {
     return [process.execPath, ...subcommand]
   }
   const dir = dirname(here)
+  const cliName = env.ROVE_INVOKED_AS === ROVE_PRODUCT_NAME ? ROVE_PRODUCT_NAME : LEGACY_KOBE_PRODUCT_NAME
   const candidates = [
+    resolve(dir, `../cli/${cliName}.ts`),
+    resolve(dir, `../../../kobe/src/cli/${cliName}.ts`),
+    resolve(dir, `../cli/${cliName}.js`),
     resolve(dir, "../cli/index.ts"),
     resolve(dir, "../../../kobe/src/cli/index.ts"),
     resolve(dir, "../cli/index.js"),
   ]
   const entry = candidates.find((candidate) => existsSync(candidate))
   if (entry) return [process.execPath, entry, ...subcommand]
-  throw new Error(`kobe: could not locate kobe entry near ${dir}; checked ${candidates.join(", ")}`)
+  throw new Error(`${cliName}: could not locate ${cliName} entry near ${dir}; checked ${candidates.join(", ")}`)
 }

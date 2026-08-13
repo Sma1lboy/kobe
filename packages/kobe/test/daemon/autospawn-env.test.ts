@@ -3,7 +3,8 @@
  *
  * Why this matters: a `kobe` helper running INSIDE an engine tab inherits
  * the session's identity env (KOBE_TASK_ID/KOBE_TAB_ID/KOBE_TUI/
- * KOBE_TERMINAL_PTY). Passing that straight into a spawned daemon produced
+ * KOBE_TERMINAL_PTY, plus their ROVE_* aliases). Passing that straight into
+ * a spawned daemon produced
  * the 2026-07-13 zombies: long-lived shared daemons stamped with one tab's
  * identity, invisible to the idle-stop policy (they never saw a gui). The
  * spawn env must drop the session markers and carry the autospawn flag the
@@ -20,6 +21,12 @@ describe("autospawnDaemonEnv", () => {
       KOBE_TAB_ID: "tab-3",
       KOBE_TUI: "1",
       KOBE_TERMINAL_PTY: "1",
+      ROVE_TASK_ID: "01ROVE",
+      ROVE_TAB_ID: "tab-rove",
+      ROVE_TUI: "1",
+      ROVE_TERMINAL_PTY: "1",
+      ROVE_DAEMON_AUTOSPAWNED: "0",
+      ROVE_INVOKED_AS: "rove",
       KOBE_HOME_DIR: "/tmp/sandbox-home",
       KOBE_DAEMON_SOCKET_PATH: "/tmp/sandbox.sock",
       PATH: "/usr/bin",
@@ -28,10 +35,16 @@ describe("autospawnDaemonEnv", () => {
     expect(env.KOBE_TAB_ID).toBeUndefined()
     expect(env.KOBE_TUI).toBeUndefined()
     expect(env.KOBE_TERMINAL_PTY).toBeUndefined()
+    expect(env.ROVE_TASK_ID).toBeUndefined()
+    expect(env.ROVE_TAB_ID).toBeUndefined()
+    expect(env.ROVE_TUI).toBeUndefined()
+    expect(env.ROVE_TERMINAL_PTY).toBeUndefined()
+    expect(env.ROVE_INVOKED_AS).toBe("rove")
     // Explicit isolation overrides (dev:sandbox, captures) must survive.
     expect(env.KOBE_HOME_DIR).toBe("/tmp/sandbox-home")
     expect(env.KOBE_DAEMON_SOCKET_PATH).toBe("/tmp/sandbox.sock")
     expect(env.PATH).toBe("/usr/bin")
     expect(env.KOBE_DAEMON_AUTOSPAWNED).toBe("1")
+    expect(env.ROVE_DAEMON_AUTOSPAWNED).toBe("1")
   })
 })

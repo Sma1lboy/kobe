@@ -249,7 +249,7 @@ export function forkSessionArgv(
 /**
  * Shell-ready `… api` command prefix for protocol prompts. Packaged builds
  * bake plain `kobe api`; a source checkout bakes the dev invocation
- * (`bun --preload … src/cli/index.ts api`) — the same {@link
+ * (`bun --preload … src/cli/kobe.ts api`) — the same {@link
  * kobeCliInvocation} every kobe-owned pane uses. Without this, a protocol
  * agent in a dev sandbox resolves `kobe` to whatever STALE global install
  * is on PATH, and any verb newer than that install dies with BAD_VERB

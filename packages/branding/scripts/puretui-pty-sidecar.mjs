@@ -23,6 +23,7 @@ const inheritedEnvironment = (environment) =>
       ([key, value]) =>
         value !== undefined &&
         !key.startsWith("KOBE_") &&
+        !key.startsWith("ROVE_") &&
         !isEngineSessionMarker(key) &&
         key !== "HOME" &&
         key !== "USERPROFILE" &&
@@ -37,6 +38,9 @@ const inheritedEnvironment = (environment) =>
 const isolatedEnvironment = (baseEnv, demoRoot) => {
   const kobeHome = join(demoRoot, "home")
   const nativeHome = baseEnv.HOME ?? kobeHome
+  const daemonWebPort = baseEnv.ROVE_DAEMON_WEB_PORT ?? baseEnv.KOBE_DAEMON_WEB_PORT ?? "5274"
+  const hostLabel = baseEnv.ROVE_CAPTURE_HOST_LABEL ?? baseEnv.KOBE_CAPTURE_HOST_LABEL ?? "puretui-replay"
+  const sessionLabel = baseEnv.ROVE_CAPTURE_SESSION_LABEL ?? baseEnv.KOBE_CAPTURE_SESSION_LABEL ?? basename(demoRoot)
   return {
     ...inheritedEnvironment(baseEnv),
     HOME: nativeHome,
@@ -49,12 +53,18 @@ const isolatedEnvironment = (baseEnv, demoRoot) => {
     TERM: "xterm-256color",
     COLORTERM: "truecolor",
     TERM_PROGRAM: "kobe-capture",
+    ROVE_DEV: "1",
     KOBE_DEV: "1",
+    ROVE_HOME_DIR: kobeHome,
     KOBE_HOME_DIR: kobeHome,
+    ROVE_SANDBOX_HOME_DIR: kobeHome,
     KOBE_SANDBOX_HOME_DIR: kobeHome,
-    KOBE_DAEMON_WEB_PORT: baseEnv.KOBE_DAEMON_WEB_PORT ?? "5274",
-    KOBE_CAPTURE_HOST_LABEL: baseEnv.KOBE_CAPTURE_HOST_LABEL ?? "puretui-replay",
-    KOBE_CAPTURE_SESSION_LABEL: baseEnv.KOBE_CAPTURE_SESSION_LABEL ?? basename(demoRoot),
+    ROVE_DAEMON_WEB_PORT: daemonWebPort,
+    KOBE_DAEMON_WEB_PORT: daemonWebPort,
+    ROVE_CAPTURE_HOST_LABEL: hostLabel,
+    KOBE_CAPTURE_HOST_LABEL: hostLabel,
+    ROVE_CAPTURE_SESSION_LABEL: sessionLabel,
+    KOBE_CAPTURE_SESSION_LABEL: sessionLabel,
   }
 }
 
@@ -262,8 +272,8 @@ export function createSidecarController(dependencies) {
     // absolute bun + repo paths into the recording, showing viewers a command
     // no installed user ever sees. Run `bun --filter @sma1lboy/kobe build`
     // before capturing; source is the fallback so tests still drive it.
-    const builtCli = join(kobeDir, "dist", "cli", "index.js")
-    const cliArgs = existsSync(builtCli) ? [builtCli] : ["--conditions=browser", join(kobeDir, "src", "cli", "index.ts")]
+    const builtCli = join(kobeDir, "dist", "cli", "kobe.js")
+    const cliArgs = existsSync(builtCli) ? [builtCli] : ["--conditions=browser", join(kobeDir, "src", "cli", "kobe.ts")]
     childEnv = isolatedEnvironment(baseEnv, demoRoot)
     const seedTasks = request.seedTasks ?? []
     if (!Array.isArray(seedTasks)) throw new Error("start seedTasks must be an array")

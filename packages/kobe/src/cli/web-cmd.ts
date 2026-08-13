@@ -18,6 +18,7 @@ import { resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { errorMessage } from "@/lib/error-message"
 import { ensureDaemonReachable } from "@sma1lboy/kobe-daemon/client/daemon-process"
+import { readRoveEnv, setRoveEnv } from "@sma1lboy/kobe-daemon/compat-env"
 import { DEFAULT_DAEMON_WEB_PORT } from "@sma1lboy/kobe-daemon/daemon/paths"
 
 const DAEMON_WEB_HEALTH_MARKER = "kobe-web"
@@ -27,7 +28,7 @@ const DAEMON_WEB_HEALTH_PATH = "/__kobe_web"
  *  KOBE_HOME_DIR points it elsewhere (a sandbox). Surfaced in the startup line
  *  so it's never a mystery which task index the dashboard is showing. */
 function homeLabel(): string {
-  const explicit = process.env.KOBE_HOME_DIR?.trim()
+  const explicit = readRoveEnv("HOME_DIR")?.trim()
   return explicit ? `sandbox: ${explicit}` : `${homedir()}/.kobe (production)`
 }
 
@@ -138,8 +139,8 @@ async function startPtyServer(opts: {
 }
 
 async function ensureDaemonWeb(port: number, staticDir?: string): Promise<void> {
-  process.env.KOBE_DAEMON_WEB_PORT = String(port)
-  if (staticDir) process.env.KOBE_DAEMON_WEB_STATIC_DIR = staticDir
+  setRoveEnv("DAEMON_WEB_PORT", String(port))
+  if (staticDir) setRoveEnv("DAEMON_WEB_STATIC_DIR", staticDir)
   await ensureDaemonReachable()
   let body: string
   try {

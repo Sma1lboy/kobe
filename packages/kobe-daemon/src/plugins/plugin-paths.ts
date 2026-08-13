@@ -13,9 +13,10 @@
 
 import { homedir } from "node:os"
 import { join } from "node:path"
+import { COMPAT_STATE_DIR_BASENAME, readRoveEnv } from "../compat-env.ts"
 
 function stateRoot(homeDir?: string): string {
-  return join(homeDir ?? process.env.KOBE_HOME_DIR ?? homedir(), ".kobe")
+  return join(homeDir ?? readRoveEnv("HOME_DIR") ?? homedir(), COMPAT_STATE_DIR_BASENAME)
 }
 
 export function pluginRegistryPath(homeDir?: string): string {

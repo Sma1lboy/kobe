@@ -6,6 +6,7 @@
  */
 
 import { homedir } from "node:os"
+import { readRoveEnv } from "@sma1lboy/kobe-daemon/compat-env"
 import { Orchestrator } from "../orchestrator/core.ts"
 import { TaskIndexStore } from "../orchestrator/index/store.ts"
 import { GitWorktreeManager } from "../orchestrator/worktree/manager.ts"
@@ -23,7 +24,7 @@ export interface KobeCore {
 }
 
 export async function createKobeCore(options: KobeCoreOptions = {}): Promise<KobeCore> {
-  const homeDir = options.homeDir ?? process.env.KOBE_HOME_DIR ?? homedir()
+  const homeDir = options.homeDir ?? readRoveEnv("HOME_DIR") ?? homedir()
   const store = new TaskIndexStore({ homeDir })
   await store.load()
   const worktrees = new GitWorktreeManager()

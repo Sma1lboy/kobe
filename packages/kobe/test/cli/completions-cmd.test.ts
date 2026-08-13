@@ -60,6 +60,15 @@ describe("runCompletionsSubcommand", () => {
     for (const sub of TOP_LEVEL_SUBCOMMANDS) expect(script).toContain(`complete -c kobe -f -a ${sub}`)
   })
 
+  test("rove gets isolated shell registrations and install instructions", async () => {
+    await runCompletionsSubcommand(["zsh"], "rove")
+    const script = stdoutText()
+    expect(script.startsWith("#compdef rove")).toBe(true)
+    expect(script).toContain('if [ "${funcstack[1]}" = "_rove" ]')
+    expect(script).toContain("compdef _rove rove")
+    expect(script).not.toContain("compdef _kobe kobe")
+  })
+
   test("--help prints usage without exiting non-zero", async () => {
     await runCompletionsSubcommand(["--help"])
     expect(stdoutText()).toContain("Usage: kobe completions")

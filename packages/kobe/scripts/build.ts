@@ -6,8 +6,8 @@
  * uses `@opentui/react`'s per-file `@jsxImportSource` pragmas, which Bun's
  * default transpiler honours — no build plugin required.
  *
- * Output: `dist/cli/index.js` with `#!/usr/bin/env bun` shebang and 755
- * perms so `npm install -g` produces a runnable `kobe` binary. After
+ * Output: `dist/cli/kobe.js` and `dist/cli/rove.js` with executable perms,
+ * plus their shared `index.js` implementation. After
  * the kobed → kobe bin merge (KOB-136), daemon lifecycle lives at
  * `kobe daemon ...`, so there is no separate `kobed` binary to build.
  *
@@ -28,7 +28,7 @@
 import { existsSync } from "node:fs"
 import { chmod, cp, mkdir, rm } from "node:fs/promises"
 
-const OUT_FILES = ["./dist/cli/index.js"]
+const OUT_FILES = ["./dist/cli/kobe.js", "./dist/cli/rove.js"]
 /** Canonical skill source (repo root) → its home in the tarball. */
 const SKILL_SRC_DIR = "../../.agents/skills/kobe"
 const SKILL_OUT_DIR = "./dist/skills/kobe"
@@ -88,7 +88,7 @@ async function copySkill(): Promise<void> {
 await buildWebUi()
 
 const result = await Bun.build({
-  entrypoints: ["./src/cli/index.ts"],
+  entrypoints: ["./src/cli/index.ts", "./src/cli/kobe.ts", "./src/cli/rove.ts"],
   outdir: "./dist",
   root: "./src",
   target: "bun",

@@ -60,13 +60,15 @@ Rules:
 
 ## Behavioral self-test
 
-`test/behavior/harness.ts` runs `dist/cli/index.js` in a disposable HOME and
-XDG tree with PATH-first `kobe` and fake engine shims. Daemon and PTY Host paths
-derive from that home, so setup and teardown cannot reach production state.
+`test/behavior/harness.ts` runs the published `dist/cli/kobe.js` and
+`dist/cli/rove.js` entries in a disposable HOME and XDG tree with PATH-first
+CLI and fake engine shims. Daemon and PTY Host paths derive from that home, so
+setup and teardown cannot reach production state.
 
 The suite currently pins:
 
 - built CLI update behavior;
+- `rove` identity plus `ROVE_*` precedence through both public entry points;
 - PureTUI terminal title publication when native PTY support is available;
 - headless `kobe api add --prompt` auto-starting `<taskId>::tab-1`;
 - `send` reusing that exact hosted session;

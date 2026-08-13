@@ -51,17 +51,23 @@ vi.mock("../../src/core/index.ts", () => ({
 import { runDaemonSubcommand } from "../../src/cli/daemon-cmd.ts"
 
 let home: string
+let originalRoveHome: string | undefined
 let originalHome: string | undefined
+let originalRoveWebPort: string | undefined
 let originalWebPort: string | undefined
 let logSpy: MockInstance<typeof console.log>
 let errSpy: MockInstance<typeof process.stderr.write>
 let exitSpy: MockInstance<typeof process.exit>
 
 beforeEach(() => {
+  originalRoveHome = process.env.ROVE_HOME_DIR
   originalHome = process.env.KOBE_HOME_DIR
+  originalRoveWebPort = process.env.ROVE_DAEMON_WEB_PORT
   originalWebPort = process.env.KOBE_DAEMON_WEB_PORT
   home = mkdtempSync(join(tmpdir(), "kobe-daemon-cmd-"))
+  process.env.ROVE_HOME_DIR = home
   process.env.KOBE_HOME_DIR = home
+  Reflect.deleteProperty(process.env, "ROVE_DAEMON_WEB_PORT")
   mkdirSync(join(home, ".kobe"), { recursive: true })
 
   mocks.daemonRequest.mockReset()
@@ -81,8 +87,12 @@ beforeEach(() => {
 })
 
 afterEach(() => {
+  if (originalRoveHome === undefined) Reflect.deleteProperty(process.env, "ROVE_HOME_DIR")
+  else process.env.ROVE_HOME_DIR = originalRoveHome
   if (originalHome === undefined) Reflect.deleteProperty(process.env, "KOBE_HOME_DIR")
   else process.env.KOBE_HOME_DIR = originalHome
+  if (originalRoveWebPort === undefined) Reflect.deleteProperty(process.env, "ROVE_DAEMON_WEB_PORT")
+  else process.env.ROVE_DAEMON_WEB_PORT = originalRoveWebPort
   if (originalWebPort === undefined) Reflect.deleteProperty(process.env, "KOBE_DAEMON_WEB_PORT")
   else process.env.KOBE_DAEMON_WEB_PORT = originalWebPort
   rmSync(home, { recursive: true, force: true })
@@ -195,6 +205,15 @@ describe("kobe daemon start", () => {
     mocks.startDaemonServer.mockResolvedValue({ socketPath: "/tmp/x.sock", webPort: 6000, close: vi.fn() })
     await runDaemonSubcommand(["start"])
     expect(mocks.startDaemonServer).toHaveBeenCalledWith({}, expect.objectContaining({ webPort: 6000 }))
+  })
+
+  it("ROVE_DAEMON_WEB_PORT wins over the compatibility value", async () => {
+    process.env.ROVE_DAEMON_WEB_PORT = "6100"
+    process.env.KOBE_DAEMON_WEB_PORT = "6000"
+    mocks.createKobeCore.mockResolvedValue({ orchestrator: {}, homeDir: home, close: vi.fn() })
+    mocks.startDaemonServer.mockResolvedValue({ socketPath: "/tmp/x.sock", webPort: 6100, close: vi.fn() })
+    await runDaemonSubcommand(["start"])
+    expect(mocks.startDaemonServer).toHaveBeenCalledWith({}, expect.objectContaining({ webPort: 6100 }))
   })
 })
 

@@ -6,7 +6,6 @@
  * write atomicity lives here (write-tmp + fsync + rename).
  *
  * Design notes:
- *
  *   - **Atomic write.** We never overwrite `tasks.json` directly. Write
  *     to `tasks.json.tmp`, fsync, then `rename()` — POSIX rename is
  *     atomic on the same filesystem.
@@ -22,6 +21,7 @@
 import { mkdir, open, readFile, rename, unlink, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { dirname, join } from "node:path"
+import { COMPAT_STATE_DIR_BASENAME } from "../../product.ts"
 import type { Task, TaskId, TaskIndex, TaskStatus } from "../../types/task.ts"
 import { DEFAULT_TASK_VENDOR, toTaskId } from "../../types/task.ts"
 import { release } from "./lockfile.ts"
@@ -75,7 +75,7 @@ export class TaskIndexStore {
 
   constructor(options: TaskIndexStoreOptions = {}) {
     this.homeDir = options.homeDir ?? homedir()
-    this.kobeDir = join(this.homeDir, ".kobe")
+    this.kobeDir = join(this.homeDir, COMPAT_STATE_DIR_BASENAME)
     this.path = join(this.kobeDir, "tasks.json")
     this.tmpPath = `${this.path}.tmp`
     this.lockPath = `${this.path}.lock`

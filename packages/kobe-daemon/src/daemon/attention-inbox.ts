@@ -13,6 +13,7 @@ import { randomUUID } from "node:crypto"
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { dirname, join } from "node:path"
+import { COMPAT_STATE_DIR_BASENAME, readRoveEnv } from "../compat-env.ts"
 import {
   type AttentionInboxItem,
   type AttentionInboxState,
@@ -29,8 +30,8 @@ interface AttentionInboxFile {
   readonly items: AttentionInboxItem[]
 }
 
-export function defaultAttentionInboxPath(homeDir = process.env.KOBE_HOME_DIR ?? homedir()): string {
-  return join(homeDir, ".kobe", "attention-inbox.json")
+export function defaultAttentionInboxPath(homeDir = readRoveEnv("HOME_DIR") ?? homedir()): string {
+  return join(homeDir, COMPAT_STATE_DIR_BASENAME, "attention-inbox.json")
 }
 
 function stateFor(kind: EngineActivityKind, detail?: EngineActivityDetail): AttentionInboxState | null {

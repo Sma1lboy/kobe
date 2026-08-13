@@ -1,6 +1,6 @@
 # CLI reference
 
-Everything the `kobe` binary does. The scriptable surface for agents and
+Everything the `rove` and `kobe` binaries do. The scriptable surface for agents and
 scripts has its own page: [`kobe api`](./API.md).
 
 Two things stay authoritative if this page and the binary ever disagree:
@@ -15,6 +15,12 @@ Needs Bun ≥ 1.3.11, git, and at least one engine CLI on `PATH`.
 bun install -g @sma1lboy/kobe   # install
 bunx @sma1lboy/kobe             # try without installing
 ```
+
+The installed package exposes both `rove` and `kobe`. `rove` is the new-name
+entry point; `kobe` remains a fully supported compatibility alias. They run the
+same commands against the same daemon, worktrees, and persisted state. This
+first rename phase intentionally does not move `~/.kobe` or
+`~/.config/kobe/state.json`.
 
 ```bash
 kobe update            # latest
@@ -278,6 +284,12 @@ without a daemon, use `kobe export --json`.
 
 ## Environment variables
 
+Every user-supplied `KOBE_*` variable also accepts the corresponding `ROVE_*`
+name. If both are set, `ROVE_*` wins. The established names below remain valid
+for compatibility; for example, `ROVE_HOME_DIR` takes precedence over
+`KOBE_HOME_DIR`, and `ROVE_OPEN_EDITOR` takes precedence over
+`KOBE_OPEN_EDITOR`.
+
 | Variable | What it does |
 |---|---|
 | `KOBE_HOME_DIR` | Move everything kobe persists somewhere else |
@@ -292,11 +304,13 @@ without a daemon, use `kobe export --json`.
 
 ## Where state lives
 
-Under `~/.kobe/` (or `KOBE_HOME_DIR`):
+Under `~/.kobe/` (or `ROVE_HOME_DIR`, with `KOBE_HOME_DIR` as fallback):
 
 - `tasks.json` — the task index
 - `worktrees/<repo-key>/<task-slug>/` — per-task worktrees
 - `daemon.log`, `pty-host.log` and their sockets
 - `plugins.json` + `plugins/<id>/`, `themes/`, `settings/keybindings.yaml`
 
-Plus `~/.config/kobe/state.json`, the settings file `kobe config` opens.
+Plus `~/.config/kobe/state.json`, the settings file `rove config` or
+`kobe config` opens. These legacy path names are deliberately unchanged in the
+first rename phase, so no migration or duplicate state tree is created.

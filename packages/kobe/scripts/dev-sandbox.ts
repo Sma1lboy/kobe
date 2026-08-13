@@ -1,5 +1,6 @@
 import { mkdir } from "node:fs/promises"
 import { dirname, join } from "node:path"
+import { readRoveEnv } from "@sma1lboy/kobe-daemon/compat-env"
 import { stopDaemonProcess } from "@sma1lboy/kobe-daemon/daemon/lifecycle"
 import {
   defaultDaemonPidPath,
@@ -7,7 +8,7 @@ import {
   defaultPtyHostPidPath,
   defaultPtyHostSocketPath,
 } from "@sma1lboy/kobe-daemon/daemon/paths"
-import { parseSandboxArgs } from "./dev-sandbox-args.ts"
+import { parseSandboxArgs, sandboxChildEnv } from "./dev-sandbox-args.ts"
 
 function usageError(err: unknown): never {
   console.error(err instanceof Error ? err.message : String(err))
@@ -27,7 +28,7 @@ async function gitCommonDir(): Promise<string> {
 }
 
 async function sandboxHome(): Promise<string> {
-  const explicit = process.env.KOBE_SANDBOX_HOME_DIR?.trim()
+  const explicit = readRoveEnv("SANDBOX_HOME_DIR")?.trim()
   if (explicit) return explicit
 
   // Share one dev sandbox across git worktrees. `git-common-dir` points at
@@ -54,14 +55,9 @@ if (mode === "home") {
 await mkdir(home, { recursive: true })
 console.error(`[kobe dev:sandbox] home: ${home}`)
 
-const env = {
-  ...process.env,
-  KOBE_DEV: "1",
-  KOBE_HOME_DIR: home,
-  // Isolate the sandbox daemon's web port from the production daemon's 5174 —
-  // otherwise starting dev:sandbox races the real daemon for the same port.
-  KOBE_DAEMON_WEB_PORT: process.env.KOBE_DAEMON_WEB_PORT ?? "5274",
-}
+// Isolate the sandbox daemon's home and web port from production. Both env
+// namespaces are stamped so a child wrapper cannot revive an ambient value.
+const env = sandboxChildEnv(home)
 
 if (mode === "reset") {
   await stopDaemonProcess(defaultDaemonSocketPath(home), defaultDaemonPidPath(home))
@@ -70,7 +66,7 @@ if (mode === "reset") {
   process.exit(0)
 }
 
-const args = [process.execPath, "--conditions=browser", "./src/cli/index.ts"]
+const args = [process.execPath, "--conditions=browser", "./src/cli/kobe.ts"]
 
 const child = Bun.spawn(args, {
   cwd: process.cwd(),

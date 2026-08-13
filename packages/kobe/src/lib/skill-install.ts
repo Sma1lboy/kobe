@@ -28,6 +28,7 @@ import { existsSync, readFileSync } from "node:fs"
 import { homedir } from "node:os"
 import { join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
+import { LEGACY_KOBE_PRODUCT_NAME } from "../product.ts"
 import { getPersistedString, setPersistedString } from "../state/repos.ts"
 
 /**
@@ -109,7 +110,7 @@ export function npxSkillsArgv(opts: NpxSkillsOpts = {}): string[] {
     "add",
     source ?? SKILL_SOURCE_SLUG,
     "--skill",
-    "kobe",
+    LEGACY_KOBE_PRODUCT_NAME,
     ...(opts.global === false ? [] : ["--global"]),
     ...agents.flatMap((a) => ["--agent", a]),
   ]

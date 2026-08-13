@@ -23,6 +23,7 @@
 
 import { homedir } from "node:os"
 import { basename, join } from "node:path"
+import { COMPAT_STATE_DIR_BASENAME, readRoveEnv } from "../compat-env.ts"
 import { logDaemonError } from "./crash-log.ts"
 import type { DaemonEventBus } from "./event-bus.ts"
 import { startFileWatchTrigger } from "./file-watch-trigger.ts"
@@ -36,8 +37,8 @@ export const DEFAULT_KEYBINDINGS_DEBOUNCE_MS = 200
  * `<home>/.kobe/settings/keybindings.yaml`. The `.yml` spelling is also
  * honoured — the watch is on the directory, so both filenames match.
  */
-export function defaultKeybindingsPath(homeDir = process.env.KOBE_HOME_DIR ?? homedir()): string {
-  return join(homeDir, ".kobe", "settings", "keybindings.yaml")
+export function defaultKeybindingsPath(homeDir = readRoveEnv("HOME_DIR") ?? homedir()): string {
+  return join(homeDir, COMPAT_STATE_DIR_BASENAME, "settings", "keybindings.yaml")
 }
 
 export interface KeybindingsWatcherOptions {

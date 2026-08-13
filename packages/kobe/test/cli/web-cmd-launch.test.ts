@@ -57,6 +57,8 @@ function routeFetch(routes: Record<string, { ok?: boolean; body?: string } | Err
 
 beforeEach(() => {
   savedEnv = {
+    ROVE_DAEMON_WEB_PORT: process.env.ROVE_DAEMON_WEB_PORT,
+    ROVE_DAEMON_WEB_STATIC_DIR: process.env.ROVE_DAEMON_WEB_STATIC_DIR,
     KOBE_DAEMON_WEB_PORT: process.env.KOBE_DAEMON_WEB_PORT,
     KOBE_DAEMON_WEB_STATIC_DIR: process.env.KOBE_DAEMON_WEB_STATIC_DIR,
     KOBE_HOME_DIR: process.env.KOBE_HOME_DIR,
@@ -156,6 +158,7 @@ describe("runWebSubcommand full launch", () => {
     const env = node?.opts?.env as Record<string, string>
     expect(env.KOBE_DAEMON_WEB_PORT).toBe("5180")
     expect(env.KOBE_PTY_PORT).toBe("5182")
+    expect(process.env.ROVE_DAEMON_WEB_STATIC_DIR).toBe(process.env.KOBE_DAEMON_WEB_STATIC_DIR)
     expect(process.env.KOBE_DAEMON_WEB_STATIC_DIR).toBeTruthy()
 
     // The sandbox home is surfaced, never a mystery.

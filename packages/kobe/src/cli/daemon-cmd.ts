@@ -9,6 +9,7 @@
 
 import { KobeDaemonClient } from "@sma1lboy/kobe-daemon/client"
 import { connectOrStartDaemon } from "@sma1lboy/kobe-daemon/client/daemon-process"
+import { readRoveEnv } from "@sma1lboy/kobe-daemon/compat-env"
 import { installDaemonCrashHandlers } from "@sma1lboy/kobe-daemon/daemon/crash-log"
 import { stopDaemonProcess } from "@sma1lboy/kobe-daemon/daemon/lifecycle"
 import { rotateLogIfNeeded } from "@sma1lboy/kobe-daemon/daemon/log-rotate"
@@ -21,6 +22,7 @@ import {
 import { readPidFile, startDaemonServer } from "@sma1lboy/kobe-daemon/daemon/server"
 import { daemonRuntime } from "../core/daemon-runtime.ts"
 import { createKobeCore } from "../core/index.ts"
+import { LEGACY_KOBE_PRODUCT_NAME } from "../product.ts"
 
 function printDaemonUsage(out: Pick<typeof process.stderr, "write">): void {
   out.write(
@@ -38,7 +40,7 @@ function printDaemonUsage(out: Pick<typeof process.stderr, "write">): void {
 }
 
 function resolveDaemonWebPort(): number | undefined {
-  const raw = process.env.KOBE_DAEMON_WEB_PORT?.trim()
+  const raw = readRoveEnv("DAEMON_WEB_PORT")?.trim()
   if (raw === "0" || raw === "off" || raw === "false") return undefined
   const value = raw ? Number.parseInt(raw, 10) : DEFAULT_DAEMON_WEB_PORT
   return Number.isFinite(value) && value > 0 ? value : DEFAULT_DAEMON_WEB_PORT
@@ -126,11 +128,11 @@ export async function runDaemonSubcommand(argv: readonly string[]): Promise<void
     pidPath,
     homeDir: core.homeDir,
     webPort: resolveDaemonWebPort(),
-    webHost: process.env.KOBE_WEB_HOST,
-    webStaticDir: process.env.KOBE_DAEMON_WEB_STATIC_DIR,
+    webHost: readRoveEnv("WEB_HOST"),
+    webStaticDir: readRoveEnv("DAEMON_WEB_STATIC_DIR"),
     // Plugin callbacks exec the packaged `kobe`, resolved on PATH at spawn
     // time; a dev checkout without one still runs, plugins just log ENOENT.
-    plugins: { binPath: "kobe" },
+    plugins: { binPath: LEGACY_KOBE_PRODUCT_NAME },
     onStop: async () => {
       await core.close()
     },

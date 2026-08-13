@@ -4,9 +4,12 @@ The published kobe CLI and PureTUI package.
 
 ```bash
 bun install -g @sma1lboy/kobe
-kobe add /path/to/repo
-kobe
+rove add /path/to/repo
+rove
 ```
+
+The package also keeps `kobe` as a compatibility alias. Both executable names
+use the existing `~/.kobe` and `~/.config/kobe` state paths.
 
 Plain `kobe` launches one React/opentui Workspace Host. Interactive engine and
 shell processes are owned by the standalone PTY Host, so they survive TUI exits

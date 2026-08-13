@@ -40,6 +40,7 @@
 import { readFileSync } from "node:fs"
 import { homedir } from "node:os"
 import { basename, join } from "node:path"
+import { COMPAT_CONFIG_DIR_BASENAME, readRoveEnv } from "../compat-env.ts"
 import { logDaemonError } from "./crash-log.ts"
 import type { DaemonEventBus } from "./event-bus.ts"
 import { startFileWatchTrigger } from "./file-watch-trigger.ts"
@@ -65,8 +66,8 @@ const FOCUS_ACCENT_SLOT_NAMES = ["primary", "success", "info"] as const
  * pattern as `daemon/paths.ts`): the daemon resolves it from the homeDir
  * the server was started with so sandbox/test homes stay isolated.
  */
-export function defaultUiPrefsStatePath(homeDir = process.env.KOBE_HOME_DIR ?? homedir()): string {
-  return join(homeDir, ".config", "kobe", "state.json")
+export function defaultUiPrefsStatePath(homeDir = readRoveEnv("HOME_DIR") ?? homedir()): string {
+  return join(homeDir, ".config", COMPAT_CONFIG_DIR_BASENAME, "state.json")
 }
 
 /**
