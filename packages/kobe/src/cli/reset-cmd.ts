@@ -96,7 +96,7 @@ export async function runResetSubcommand(argv: readonly string[]): Promise<void>
     const count = taskCount(tasksPath) ?? taskCount(legacyTasksPath)
     console.log(`  • DELETE the task index${count === null ? "" : ` (${count} task(s))`} — ${tasksPath}`)
     console.log(`  • DELETE the UI state — ${statePath}`)
-    console.log("  • DELETE their pre-Rove compatibility copies so migration cannot restore reset state")
+    console.log("  • DELETE the pre-Rove task/UI indexes too, so migration cannot restore reset state")
   }
   console.log("  • NOT touch your git worktrees under ~/.rove/worktrees/, ~/.kobe/worktrees/, or repo-local roots")
   if (!hard) console.log("  (your task list & worktrees are kept — add --hard to also wipe task and UI state)")

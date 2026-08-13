@@ -90,9 +90,8 @@ function repoFileScript(worktreePath: string): string | undefined {
   // Run the committed file by relative path: cwd is the worktree, so
   // `sh .rove/init.sh` works even when the file isn't chmod +x.
   //
-  // The literal, NOT `INIT_SCRIPT_REL`: this string is read by the shell, and
-  // Native `join` separators are only for probing; the returned shell path is
-  // always POSIX because Git Bash treats a backslash as an escape.
+  // Native `join` paths are only for probing. The shell command stays a POSIX
+  // literal because Git Bash treats a backslash as an escape.
   for (const [relative, command] of [
     [INIT_SCRIPT_RELS[0], "sh .rove/init.sh"],
     [INIT_SCRIPT_RELS[1], "sh .kobe/init.sh"],
@@ -110,7 +109,7 @@ function repoFilePrompt(worktreePath: string): string | undefined {
       const text = readFileSync(p, "utf8")
       if (text.trim().length > 0) return text
     } catch {
-      // Try the compatibility file, then the per-user fallback.
+      // An unreadable file does not block the next candidate or user fallback.
     }
   }
   return undefined

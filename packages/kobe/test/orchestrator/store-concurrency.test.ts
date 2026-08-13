@@ -83,6 +83,38 @@ describe("TaskIndexStore multi-process consistency", () => {
     expect(ids).not.toContain(task.id)
   })
 
+  it("does not resurrect a legacy task after a peer creates the canonical index", async () => {
+    const legacyDir = join(home, ".kobe")
+    await mkdir(legacyDir, { recursive: true })
+    const first = {
+      ...input("first"),
+      id: "01J000000000000000000FIRST",
+      archived: false,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    }
+    const second = {
+      ...input("second"),
+      id: "01J00000000000000000SECOND",
+      archived: false,
+      createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+    }
+    await writeFile(join(legacyDir, "tasks.json"), JSON.stringify({ version: 3, tasks: [first, second] }), "utf8")
+
+    const procA = new TaskIndexStore({ homeDir: home })
+    const procB = new TaskIndexStore({ homeDir: home })
+    await procA.load()
+    await procB.load()
+
+    await procA.remove(first.id)
+    await procB.update(second.id, { title: "updated by B" })
+
+    const disk = await readDisk()
+    expect(disk.tasks).toHaveLength(1)
+    expect(disk.tasks[0]).toMatchObject({ id: second.id, title: "updated by B" })
+  })
+
   it("does not resurrect a task this process deleted from a stale disk copy", async () => {
     // Seed disk with one task, load it, delete it. The merge reads the still-
     // present on-disk row but must honor the in-flight removal.

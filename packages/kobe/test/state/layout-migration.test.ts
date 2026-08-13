@@ -1,4 +1,15 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import {
+  chmodSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readlinkSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, describe, expect, test } from "vitest"
@@ -78,5 +89,40 @@ describe("migrateRoveStateLayout", () => {
     write(".kobe/tasks.json", "latest old daemon write")
     expect(migrateRoveDaemonStateLayout({ ROVE_HOME_DIR: root }).warnings).toEqual([])
     expect(readFileSync(join(root, ".rove/tasks.json"), "utf8")).toBe("latest old daemon write")
+  })
+
+  test("copies symlinks as links without following their targets", () => {
+    root = mkdtempSync(join(tmpdir(), "rove-layout-"))
+    write(".kobe/themes/base.json", '{"name":"base"}')
+    symlinkSync("base.json", join(root, ".kobe/themes/current.json"))
+
+    const result = migrateRoveClientStateLayout({ ROVE_HOME_DIR: root })
+
+    const migrated = join(root, ".rove/themes/current.json")
+    expect(result.warnings).toEqual([])
+    expect(lstatSync(migrated).isSymbolicLink()).toBe(true)
+    expect(readlinkSync(migrated)).toBe("base.json")
+  })
+
+  test.skipIf(process.platform === "win32")("leaves the marker absent after a partial failure and retries", () => {
+    root = mkdtempSync(join(tmpdir(), "rove-layout-"))
+    write(".kobe/settings/keybindings.yaml", "ctrl+x: task.close")
+    const blockedDir = join(root, ".rove/settings")
+    mkdirSync(blockedDir, { recursive: true })
+    chmodSync(blockedDir, 0o000)
+
+    try {
+      const failed = migrateRoveClientStateLayout({ ROVE_HOME_DIR: root })
+      expect(failed.attempted).toBe(true)
+      expect(failed.warnings).not.toEqual([])
+      expect(existsSync(join(root, ".rove/.layout-client-migration-v1"))).toBe(false)
+    } finally {
+      chmodSync(blockedDir, 0o700)
+    }
+
+    const retried = migrateRoveClientStateLayout({ ROVE_HOME_DIR: root })
+    expect(retried.warnings).toEqual([])
+    expect(readFileSync(join(blockedDir, "keybindings.yaml"), "utf8")).toContain("task.close")
+    expect(existsSync(join(root, ".rove/.layout-client-migration-v1"))).toBe(true)
   })
 })

@@ -62,13 +62,12 @@ export function autoBranch(title: string, taskId: string): string {
 
 /**
  * Whether `branch` is still the untouched placeholder-derived default for
- * `taskId` — i.e. nobody has renamed the branch since it was auto-allocated
- * from the `(new task)` placeholder. This is the discriminator
+ * `taskId`, including the pre-Rove `kobe/` spelling. This is the discriminator
  * `TaskEditor.followBranchToTitle` uses to fire the first-rename branch
- * follow at most once; keeping it beside {@link autoBranch} and
- * {@link PLACEHOLDER_TASK_TITLE} means the derivation and the equality check
- * can never drift apart into two files.
+ * follow at most once; keeping both accepted spellings beside
+ * {@link autoBranch} and {@link PLACEHOLDER_TASK_TITLE} prevents drift.
  */
 export function isPlaceholderDerivedBranch(branch: string, taskId: string): boolean {
-  return branch === autoBranch(PLACEHOLDER_TASK_TITLE, taskId)
+  const canonical = autoBranch(PLACEHOLDER_TASK_TITLE, taskId)
+  return branch === canonical || branch === canonical.replace(/^rove\//, "kobe/")
 }

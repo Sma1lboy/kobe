@@ -10,8 +10,8 @@
  * Backwards compatibility: older checkouts hold worktrees under
  * repo-local `<repo>/.kobe/worktrees/<slug>/` or
  * `<repo>/.claude/worktrees/<slug>/`. Existing tasks in both roots
- * remain managed and discoverable, but new kobe-created tasks use the
- * global kobe state dir so no repo-level `.gitignore` entry is needed.
+ * remain managed and discoverable, but new Rove-created tasks use the
+ * global Rove state dir so no repo-level `.gitignore` entry is needed.
  *
  * Keeping this in one place means the orchestrator, the worktree
  * manager, the task index, and any future "list all kobe worktrees"
@@ -113,7 +113,7 @@ export function managedWorktreeRootsFor(repo: string): readonly string[] {
   const active = worktreeRootFor(repo)
   const fallback = path.join(defaultLocalWorktreesRoot(), repoWorktreeDirName(repo))
   const legacy = path.join(legacyLocalWorktreesRoot(), repoWorktreeDirName(repo))
-  const primaryRoots = active === fallback ? [active, legacy] : [active, fallback, legacy]
+  const primaryRoots = [active, fallback, legacy]
   return [
     ...new Set([
       ...primaryRoots,

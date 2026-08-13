@@ -159,7 +159,7 @@ More in [`docs/TROUBLESHOOTING.md`](./docs/TROUBLESHOOTING.md).
 
 ```bash
 bun install
-bun run dev:sandbox    # run against a throwaway home, not your real ~/.kobe
+bun run dev:sandbox    # run against a throwaway home, not your real ~/.rove state
 bun run test
 ```
 

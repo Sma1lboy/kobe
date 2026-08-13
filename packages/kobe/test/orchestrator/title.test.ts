@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest"
-import { TITLE_CHAR_CAP, autoBranch, deriveTitleFromPrompt } from "../../src/orchestrator/title.ts"
+import {
+  TITLE_CHAR_CAP,
+  autoBranch,
+  deriveTitleFromPrompt,
+  isPlaceholderDerivedBranch,
+} from "../../src/orchestrator/title.ts"
 
 describe("autoBranch", () => {
   it("builds rove/<slug>-<id6> from title + task id", () => {
@@ -35,6 +40,13 @@ describe("autoBranch", () => {
     const branch = autoBranch(`${"a".repeat(31)} bar`, "01HXQQQQQQ")
     expect(branch).toBe(`rove/${"a".repeat(31)}-qqqqqq`)
     expect(branch).not.toContain("--")
+  })
+
+  it("recognizes canonical and pre-Rove placeholder branches only", () => {
+    const id = "01HXABCDEF"
+    expect(isPlaceholderDerivedBranch("rove/new-task-abcdef", id)).toBe(true)
+    expect(isPlaceholderDerivedBranch("kobe/new-task-abcdef", id)).toBe(true)
+    expect(isPlaceholderDerivedBranch("kobe/real-work-abcdef", id)).toBe(false)
   })
 })
 

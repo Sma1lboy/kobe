@@ -7,10 +7,11 @@
  * (or an ancestor of it, if the engine cd'd into a subdir), so we take the task
  * whose `worktreePath` is the cwd or the LONGEST path-prefix of it.
  *
- * Longest-prefix matters because legacy task worktrees can live under a repo
- * root (`<repo>/.kobe/worktrees/<id>` or `.claude/worktrees/<id>`), and a
- * `main` task's worktreePath IS that repo root. The more specific (longer)
- * worktree wins, so a sub-task is never misattributed to the project.
+ * Longest-prefix matters because managed worktrees may live under canonical
+ * global `~/.rove/worktrees/`, legacy global `~/.kobe/worktrees/`, or repo-local
+ * `.rove/worktrees/`, `.kobe/worktrees/`, and `.claude/worktrees/` roots. A
+ * `main` task's worktreePath can be the repo root itself, so the more specific
+ * (longer) worktree must win.
  *
  * cwds that match no task (an unrelated repo, a project root with no main task)
  * return undefined → the event is dropped.

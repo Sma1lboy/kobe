@@ -54,12 +54,7 @@ export class TaskIndexStore {
   private loaded = false
   private listeners = new Set<TaskIndexListener>()
   private saveChain: Promise<void> = Promise.resolve()
-  /**
-   * Ids this process created/updated/moved since the last successful save, and
-   * ids it removed. They drive the read-merge-write in {@link doSave}: a fresh
-   * on-disk read is the base, OUR changes win for these ids, and concurrent
-   * creates by peer processes survive. Cleared per-id once flushed.
-   */
+  /** Pending changed/removed ids used by the read-merge-write in {@link doSave}. */
   private readonly dirtyIds = new Set<string>()
   private readonly removedIds = new Set<string>()
 
@@ -143,7 +138,6 @@ export class TaskIndexStore {
     }
 
     this.cache = normalizeIndex(parsed, sourcePath)
-    if (sourcePath === this.legacyPath) for (const task of this.cache.tasks) this.dirtyIds.add(task.id)
     this.loaded = true
     this.notifyListeners()
     return this.snapshot()
@@ -206,30 +200,34 @@ export class TaskIndexStore {
 
   /**
    * Read + parse the manifest fresh from disk, returning just the tasks.
-   * Mirrors {@link load}'s tolerance — a missing or corrupt file reads as an
-   * empty list — but never touches `this.cache` / listeners. Used as the merge
-   * base so a save reflects a peer process's writes since we loaded.
+   * Mirrors {@link load}: a missing canonical file falls back to legacy, while
+   * both absent or a corrupt source read as empty. Never touches the cache or
+   * listeners; used so a save reflects peer writes since this process loaded.
    */
   private async readDiskTasks(): Promise<Task[]> {
     let raw: string
+    let sourcePath = this.path
     try {
-      raw = await readFile(this.path, "utf8")
+      raw = await readFile(sourcePath, "utf8")
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") return []
-      throw err
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err
+      sourcePath = this.legacyPath
+      try {
+        raw = await readFile(sourcePath, "utf8")
+      } catch (legacyErr) {
+        if ((legacyErr as NodeJS.ErrnoException).code === "ENOENT") return []
+        throw legacyErr
+      }
     }
     let parsed: unknown
     try {
       parsed = JSON.parse(raw)
     } catch {
-      // A corrupt on-disk file is recovered as empty by load(); don't let it
-      // block a save here either — but our merged write is about to REPLACE
-      // the corrupt bytes, so copy them aside first (covers a file that
-      // corrupted after load, which the load-time backup never saw).
-      await backupCorruptManifest(this.path)
+      // Preserve bytes before the merged write replaces a corrupt source.
+      await backupCorruptManifest(sourcePath)
       return []
     }
-    return normalizeIndex(parsed, this.path).tasks
+    return normalizeIndex(parsed, sourcePath).tasks
   }
 
   /**

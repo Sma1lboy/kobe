@@ -68,7 +68,7 @@ export function roveStateDir(): string {
 /** @deprecated Internal compatibility alias; use {@link roveStateDir}. */
 export const kobeStateDir = roveStateDir
 
-/** Read-only compatibility root for data created before the Rove migration. */
+/** Compatibility root for data created before the Rove migration. */
 export function legacyKobeStateDir(): string {
   return join(homeDir(), LEGACY_KOBE_STATE_DIR_BASENAME)
 }
@@ -87,7 +87,7 @@ export function kvStatePath(): string {
   return join(homeDir(), ".config", ROVE_CONFIG_DIR_BASENAME, "state.json")
 }
 
-/** Read-only compatibility path copied on first launch after upgrade. */
+/** Compatibility path copied on first launch after upgrade. */
 export function legacyKobeKvStatePath(): string {
   return join(homeDir(), ".config", LEGACY_KOBE_CONFIG_DIR_BASENAME, "state.json")
 }

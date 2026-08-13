@@ -1,14 +1,20 @@
 /** Safe, additive migration from the legacy kobe data layout to Rove. */
 
+import { randomUUID } from "node:crypto"
+import type { Stats } from "node:fs"
 import {
   constants,
+  closeSync,
   copyFileSync,
-  existsSync,
+  fsyncSync,
+  linkSync,
   lstatSync,
   mkdirSync,
+  openSync,
   readdirSync,
   readlinkSync,
   symlinkSync,
+  unlinkSync,
   writeFileSync,
 } from "node:fs"
 import { homedir } from "node:os"
@@ -45,12 +51,73 @@ export interface StateLayoutMigrationResult {
   readonly warnings: readonly string[]
 }
 
+function lstatIfExists(path: string): Stats | undefined {
+  try {
+    return lstatSync(path)
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") return undefined
+    throw err
+  }
+}
+
+function removeTemp(path: string): void {
+  try {
+    unlinkSync(path)
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err
+  }
+}
+
+function syncFile(path: string): void {
+  const handle = openSync(path, "r")
+  try {
+    fsyncSync(handle)
+  } finally {
+    closeSync(handle)
+  }
+}
+
+function publishTemp(temp: string, destination: string): boolean {
+  try {
+    linkSync(temp, destination)
+    return true
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code === "EEXIST") return false
+    throw err
+  }
+}
+
+/** Publish a complete regular file atomically, without replacing a winner. */
+function copyRegularFile(source: string, destination: string): number {
+  const temp = `${destination}.migration-${process.pid}-${randomUUID()}.tmp`
+  try {
+    copyFileSync(source, temp, constants.COPYFILE_EXCL)
+    syncFile(temp)
+    return publishTemp(temp, destination) ? 1 : 0
+  } finally {
+    removeTemp(temp)
+  }
+}
+
+/** Write the completion marker with the same crash-safe publication rule. */
+function writeMarker(destination: string): void {
+  const temp = `${destination}.migration-${process.pid}-${randomUUID()}.tmp`
+  try {
+    writeFileSync(temp, "legacy kobe state copied without overwrite\n", { flag: "wx" })
+    syncFile(temp)
+    publishTemp(temp, destination)
+  } finally {
+    removeTemp(temp)
+  }
+}
+
 /** Copy one tree without following symlinks or replacing any destination node. */
 function copyMissing(source: string, destination: string): number {
-  if (!existsSync(source)) return 0
-  const sourceStat = lstatSync(source)
-  if (existsSync(destination)) {
-    if (!sourceStat.isDirectory() || !lstatSync(destination).isDirectory()) return 0
+  const sourceStat = lstatIfExists(source)
+  if (!sourceStat) return 0
+  const destinationStat = lstatIfExists(destination)
+  if (destinationStat) {
+    if (!sourceStat.isDirectory() || !destinationStat.isDirectory()) return 0
     let copied = 0
     for (const name of readdirSync(source)) copied += copyMissing(join(source, name), join(destination, name))
     return copied
@@ -62,9 +129,16 @@ function copyMissing(source: string, destination: string): number {
     for (const name of readdirSync(source)) copied += copyMissing(join(source, name), join(destination, name))
     return copied
   }
-  if (sourceStat.isSymbolicLink()) symlinkSync(readlinkSync(source), destination)
-  else copyFileSync(source, destination, constants.COPYFILE_EXCL)
-  return 1
+  if (sourceStat.isSymbolicLink()) {
+    try {
+      symlinkSync(readlinkSync(source), destination)
+      return 1
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === "EEXIST") return 0
+      throw err
+    }
+  }
+  return copyRegularFile(source, destination)
 }
 
 /**
@@ -86,9 +160,17 @@ function migrateStateEntries(
   const legacyConfig = join(home, ".config", LEGACY_KOBE_CONFIG_DIR_BASENAME, "state.json")
   const roveConfig = join(home, ".config", ROVE_CONFIG_DIR_BASENAME, "state.json")
   const marker = join(roveState, markerName)
-  if (existsSync(marker)) return { attempted: false, copied: 0, warnings: [] }
-
-  const hasSource = existsSync(legacyState) || (includeConfig && existsSync(legacyConfig))
+  let hasSource: boolean
+  try {
+    if (lstatIfExists(marker)) return { attempted: false, copied: 0, warnings: [] }
+    hasSource = Boolean(lstatIfExists(legacyState) || (includeConfig && lstatIfExists(legacyConfig)))
+  } catch (err) {
+    return {
+      attempted: true,
+      copied: 0,
+      warnings: [`migration preflight: ${err instanceof Error ? err.message : String(err)}`],
+    }
+  }
   if (!hasSource) return { attempted: false, copied: 0, warnings: [] }
 
   let copied = 0
@@ -110,11 +192,9 @@ function migrateStateEntries(
   if (warnings.length === 0) {
     mkdirSync(roveState, { recursive: true })
     try {
-      writeFileSync(marker, "legacy kobe state copied without overwrite\n", { flag: "wx" })
+      writeMarker(marker)
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code !== "EEXIST") {
-        warnings.push(`migration marker: ${err instanceof Error ? err.message : String(err)}`)
-      }
+      warnings.push(`migration marker: ${err instanceof Error ? err.message : String(err)}`)
     }
   }
   return { attempted: true, copied, warnings }
