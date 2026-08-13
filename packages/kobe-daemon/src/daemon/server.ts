@@ -15,16 +15,10 @@ import { readActivityLiveness } from "./activity-liveness.ts"
 import { type ActivityLivenessProbe, DaemonActivityRegistry } from "./activity-registry.ts"
 import { AttentionInboxStore, defaultAttentionInboxPath } from "./attention-inbox.ts"
 import { initAutomationsStore } from "./automation-wiring.ts"
-import {
-  type ClientState,
-  type DaemonClientConnection,
-  broadcast,
-  drainClientBuffer,
-  writeFrame,
-} from "./client-connection.ts"
+import { type ClientState, broadcast, drainClientBuffer, writeFrame } from "./client-connection.ts"
 import { ClientWriter } from "./client-writer.ts"
 import { startDaemonCollectors } from "./collectors.ts"
-import type { DaemonOrchestrator, UpdateInfo } from "./contracts.ts"
+import type { DaemonOrchestrator } from "./contracts.ts"
 import { logDaemonError, logDaemonInfo } from "./crash-log.ts"
 import { EngineEventLog } from "./engine-events-log.ts"
 import { DaemonEventBus } from "./event-bus.ts"
@@ -38,12 +32,12 @@ import {
 import { IssuesStore, defaultIssuesStorePath } from "./issues-store.ts"
 import { DaemonLifetime, FIRST_GUI_GRACE_MS, resolveIdleGraceMs } from "./lifetime.ts"
 import { NotesStore, defaultNotesStorePath } from "./notes-store.ts"
-import { defaultDaemonPidPath, defaultDaemonSocketPath } from "./paths.ts"
+import { defaultDaemonPidPath, defaultDaemonSocketPath, resolveDaemonHomeDir } from "./paths.ts"
 import { PromptBroker } from "./prompt-broker.ts"
 import { type DaemonFrame, normalizeChannelFilter, serializeTask } from "./protocol.ts"
 import { PtyLiveHold } from "./pty-live-hold.ts"
 import { QuotaUsageCache } from "./quota-usage-cache.ts"
-import type { DaemonRuntimeAdapter } from "./runtime.ts"
+import type { DaemonServer, DaemonServerOptions } from "./server-options.ts"
 import { createSocketOwnershipGuard, listenOnUnixSocket } from "./socket-guard.ts"
 import { handleSubscribe } from "./subscribe.ts"
 import { TaskDeletionRunner } from "./task-deletion-runner.ts"
@@ -63,56 +57,17 @@ export { readPidFile } from "./socket-guard.ts"
 export { IssuesStore, defaultIssuesStorePath } from "./issues-store.ts"
 export { NotesStore, defaultNotesStorePath } from "./notes-store.ts"
 export type { DaemonClientConnection } from "./client-connection.ts"
-
-export interface DaemonServerOptions {
-  /** Product/runtime behavior injected by the kobe composition root. */
-  readonly runtime: DaemonRuntimeAdapter
-  readonly socketPath?: string
-  readonly pidPath?: string
-  readonly homeDir?: string
-  readonly startedAt?: Date
-  readonly onStop?: () => void | Promise<void>
-  /** Override the npm version check (tests inject a fake to avoid the network). */
-  readonly checkUpdate?: () => Promise<UpdateInfo | null>
-  /** Re-check interval in ms; `0` disables the poller. Defaults to 6h. */
-  readonly updatePollMs?: number
-  /** Auto-title re-scan interval in ms; `0` disables. Defaults to `DEFAULT_AUTO_TITLE_POLL_MS`. */
-  readonly autoTitlePollMs?: number
-  /** PR-status (`gh pr view`) poll interval in ms; `0` disables. Defaults to `DEFAULT_PR_STATUS_POLL_MS`. */
-  readonly prStatusPollMs?: number
-  /** UI-prefs watcher debounce in ms; `0` disables. Defaults to `DEFAULT_UI_PREFS_DEBOUNCE_MS`. */
-  readonly uiPrefsDebounceMs?: number
-  /** Keybindings watcher debounce in ms; `0` disables. Defaults to `DEFAULT_KEYBINDINGS_DEBOUNCE_MS`. */
-  readonly keybindingsDebounceMs?: number
-  /** Worktree-changes collector tick in ms; `0` disables. Defaults to `DEFAULT_WORKTREE_CHANGES_TICK_MS`. */
-  readonly worktreeChangesTickMs?: number
-  /** Transcript-activity collector tick in ms; `0` disables. Defaults to `DEFAULT_TRANSCRIPT_ACTIVITY_TICK_MS`. */
-  readonly transcriptActivityTickMs?: number
-  /** Optional loopback HTTP/SSE browser transport. Omitted in tests unless explicitly requested. */
-  readonly webPort?: number
-  /** Optional hostname for the browser transport. Defaults to 127.0.0.1. */
-  readonly webHost?: string
-  /** Optional static web UI directory served by the daemon web transport. */
-  readonly webStaticDir?: string
-  /** Enable the plugin runtime; `binPath` becomes plugins' KOBE_BIN_PATH. Omitted in tests. */
-  readonly plugins?: { readonly binPath: string }
-  /** Socket-ownership watch interval in ms; `0` disables the periodic check. */
-  readonly socketWatchMs?: number
-}
-
-export interface DaemonServer {
-  readonly socketPath: string
-  readonly pidPath: string
-  readonly startedAt: Date
-  readonly webPort?: number
-  readonly clients: ReadonlySet<DaemonClientConnection>
-  close(): Promise<void>
-}
+export type { DaemonServer, DaemonServerOptions } from "./server-options.ts"
 
 export async function startDaemonServer(orch: DaemonOrchestrator, options: DaemonServerOptions): Promise<DaemonServer> {
   const runtime = options.runtime
   const socketPath = options.socketPath ?? defaultDaemonSocketPath(options.homeDir)
   const pidPath = options.pidPath ?? defaultDaemonPidPath(options.homeDir)
+  // The state root this daemon actually serves. Reported by `hello` so a
+  // client can refuse a daemon that belongs to a DIFFERENT home before it
+  // renders that daemon's (empty) task list as its own — see
+  // `isForeignDaemonHome` in protocol.ts.
+  const homeDir = resolveDaemonHomeDir(options.homeDir)
   const startedAt = options.startedAt ?? new Date()
   // Never steal a live daemon's socket: an unconditional pre-bind unlink let
   // an autospawned daemon usurp the path while the incumbent kept serving its
@@ -409,6 +364,7 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
       daemon: {
         startedAt,
         socketPath,
+        homeDir,
         webPort: webServer?.port,
         webError,
         pid: process.pid,
