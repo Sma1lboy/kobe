@@ -53,7 +53,7 @@ export function repoSlug(): string | null {
 }
 
 /** Remote update script URL. Kept on GitHub so install flow changes don't require a binary release. */
-export const UPDATE_SCRIPT_URL = "https://raw.githubusercontent.com/Sma1lboy/kobe/main/scripts/update.sh"
+export const UPDATE_SCRIPT_URL = "https://raw.githubusercontent.com/Sma1lboy/rove/main/scripts/update.sh"
 
 /** Standard update command shown in the update dialog. */
 export const UPDATE_COMMAND = `curl -fsSL ${UPDATE_SCRIPT_URL} | sh`

@@ -131,7 +131,7 @@ describe("semver helpers", () => {
 
 describe("repo slug + static commands", () => {
   it("derives owner/repo from package.json#repository.url", () => {
-    expect(repoSlug()).toBe("Sma1lboy/kobe")
+    expect(repoSlug()).toBe("Sma1lboy/rove")
   })
 
   it("recommendedGlobalInstallCommand targets this package", () => {
@@ -139,7 +139,7 @@ describe("repo slug + static commands", () => {
   })
 
   it("releasePageUrl points at the GitHub tag for a version", () => {
-    expect(releasePageUrl("0.1.2")).toBe("https://github.com/Sma1lboy/kobe/releases/tag/v0.1.2")
+    expect(releasePageUrl("0.1.2")).toBe("https://github.com/Sma1lboy/rove/releases/tag/v0.1.2")
   })
 })
 
@@ -150,7 +150,7 @@ describe("fetchReleaseNotes", () => {
 
   it("returns the release body + html_url for vX.Y.Z", async () => {
     const fetchMock = vi.fn(async (url: string) => {
-      expect(url).toBe("https://api.github.com/repos/Sma1lboy/kobe/releases/tags/v0.7.12")
+      expect(url).toBe("https://api.github.com/repos/Sma1lboy/rove/releases/tags/v0.7.12")
       return new Response(JSON.stringify({ body: "notes!", html_url: "https://gh/rel/v0.7.12" }), { status: 200 })
     })
     vi.stubGlobal("fetch", fetchMock)
@@ -202,9 +202,9 @@ describe("fetchReleaseSummaries", () => {
     const fetchMock = vi.fn(async () => {
       return new Response(
         JSON.stringify([
-          { tag_name: "v0.5.23", html_url: "https://github.com/Sma1lboy/kobe/releases/tag/v0.5.23" },
+          { tag_name: "v0.5.23", html_url: "https://github.com/Sma1lboy/rove/releases/tag/v0.5.23" },
           { tag_name: "not-a-version", html_url: "https://example.test/bad" },
-          { tag_name: "v0.5.22", html_url: "https://github.com/Sma1lboy/kobe/releases/tag/v0.5.22" },
+          { tag_name: "v0.5.22", html_url: "https://github.com/Sma1lboy/rove/releases/tag/v0.5.22" },
         ]),
         { status: 200, headers: { "content-type": "application/json" } },
       )
@@ -212,8 +212,8 @@ describe("fetchReleaseSummaries", () => {
     vi.stubGlobal("fetch", fetchMock)
 
     await expect(fetchReleaseSummaries()).resolves.toEqual([
-      { version: "0.5.23", url: "https://github.com/Sma1lboy/kobe/releases/tag/v0.5.23" },
-      { version: "0.5.22", url: "https://github.com/Sma1lboy/kobe/releases/tag/v0.5.22" },
+      { version: "0.5.23", url: "https://github.com/Sma1lboy/rove/releases/tag/v0.5.23" },
+      { version: "0.5.22", url: "https://github.com/Sma1lboy/rove/releases/tag/v0.5.22" },
     ])
   })
 
@@ -260,10 +260,10 @@ describe("fetchReleaseNotesRange", () => {
     const fetchMock = vi.fn(async () => {
       return new Response(
         JSON.stringify([
-          { tag_name: "v0.7.12", html_url: "https://github.com/Sma1lboy/kobe/releases/tag/v0.7.12", body: "latest" },
-          { tag_name: "v0.7.11", html_url: "https://github.com/Sma1lboy/kobe/releases/tag/v0.7.11", body: "middle" },
-          { tag_name: "v0.7.10", html_url: "https://github.com/Sma1lboy/kobe/releases/tag/v0.7.10", body: "current" },
-          { tag_name: "v0.7.9", html_url: "https://github.com/Sma1lboy/kobe/releases/tag/v0.7.9", body: "old" },
+          { tag_name: "v0.7.12", html_url: "https://github.com/Sma1lboy/rove/releases/tag/v0.7.12", body: "latest" },
+          { tag_name: "v0.7.11", html_url: "https://github.com/Sma1lboy/rove/releases/tag/v0.7.11", body: "middle" },
+          { tag_name: "v0.7.10", html_url: "https://github.com/Sma1lboy/rove/releases/tag/v0.7.10", body: "current" },
+          { tag_name: "v0.7.9", html_url: "https://github.com/Sma1lboy/rove/releases/tag/v0.7.9", body: "old" },
         ]),
         { status: 200, headers: { "content-type": "application/json" } },
       )
@@ -271,8 +271,8 @@ describe("fetchReleaseNotesRange", () => {
     vi.stubGlobal("fetch", fetchMock)
 
     await expect(fetchReleaseNotesRange({ current: "0.7.10", latest: "0.7.12" })).resolves.toEqual([
-      { version: "0.7.12", url: "https://github.com/Sma1lboy/kobe/releases/tag/v0.7.12", body: "latest" },
-      { version: "0.7.11", url: "https://github.com/Sma1lboy/kobe/releases/tag/v0.7.11", body: "middle" },
+      { version: "0.7.12", url: "https://github.com/Sma1lboy/rove/releases/tag/v0.7.12", body: "latest" },
+      { version: "0.7.11", url: "https://github.com/Sma1lboy/rove/releases/tag/v0.7.11", body: "middle" },
     ])
   })
 
