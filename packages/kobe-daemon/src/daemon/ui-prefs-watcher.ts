@@ -3,7 +3,7 @@
  * propagation).
  *
  * The theme / transparent-background / focus-accent prefs persist in the
- * shared KV blob (`~/.config/kobe/state.json`, written by the State Store
+ * shared KV blob (`~/.config/rove/state.json`, written by the State Store
  * in `packages/kobe/src/state/store.ts`). Every pane host used to read
  * them ONCE at boot (`readPersistedUiPrefs`), so switching the theme in
  * one session's Settings left the Tasks/Ops panes of every OTHER task
@@ -40,7 +40,7 @@
 import { readFileSync } from "node:fs"
 import { homedir } from "node:os"
 import { basename, join } from "node:path"
-import { COMPAT_CONFIG_DIR_BASENAME, readRoveEnv } from "../compat-env.ts"
+import { ROVE_CONFIG_DIR_BASENAME, readRoveEnv } from "../compat-env.ts"
 import { logDaemonError } from "./crash-log.ts"
 import type { DaemonEventBus } from "./event-bus.ts"
 import { startFileWatchTrigger } from "./file-watch-trigger.ts"
@@ -67,7 +67,7 @@ const FOCUS_ACCENT_SLOT_NAMES = ["primary", "success", "info"] as const
  * the server was started with so sandbox/test homes stay isolated.
  */
 export function defaultUiPrefsStatePath(homeDir = readRoveEnv("HOME_DIR") ?? homedir()): string {
-  return join(homeDir, ".config", COMPAT_CONFIG_DIR_BASENAME, "state.json")
+  return join(homeDir, ".config", ROVE_CONFIG_DIR_BASENAME, "state.json")
 }
 
 /**

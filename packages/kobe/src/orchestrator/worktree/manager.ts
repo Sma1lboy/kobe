@@ -18,7 +18,7 @@
  *     "I lost my changes because kobe deleted the worktree" must be
  *     impossible without explicit consent.
  *   - `list()` only returns worktrees inside kobe-managed roots
- *     (`~/.kobe/worktrees/<repo-key>/` plus repo-local compatibility roots).
+ *     (`~/.rove/worktrees/<repo-key>/` plus legacy global/repo-local roots).
  *     Worktrees the user created outside these roots are invisible to kobe.
  *
  * Reference (read, not ported): `refs/vibe-kanban/crates/worktree-manager/`
@@ -110,7 +110,7 @@ export class GitWorktreeManager implements WorktreeManager {
       throw new Error(`create(): ${worktreePath} exists but is not a registered git worktree`)
     }
 
-    // Make sure the parent dir exists (`~/.kobe/worktrees/...` may be the
+    // Make sure the parent dir exists (`~/.rove/worktrees/...` may be the
     // first time we write into the repo).
     await ctx.exec.mkdirp(path.dirname(worktreePath))
 
@@ -170,7 +170,7 @@ export class GitWorktreeManager implements WorktreeManager {
     baseRef?: string
   }): Promise<WorktreeInfo> {
     // A remote project's worktree lives on the remote under its basePath, not
-    // under the local `~/.kobe/worktrees` root.
+    // under the local `~/.rove/worktrees` root.
     const basePath = this.execDeps.remoteBasePath(args.repo)
     const target = basePath ? remoteWorktreePathFor(basePath, args.slug) : worktreePathFor(args.repo, args.slug)
     return this.create(args.repo, args.branch, target, args.baseRef)
@@ -407,7 +407,7 @@ export class GitWorktreeManager implements WorktreeManager {
   /**
    * Rename a branch in-place. Used by the orchestrator's lazy
    * branch-naming flow: a fresh worktree is allocated on a temp
-   * `kobe/tmp-<ulid>` branch, claude is asked to suggest a slug, and
+   * `rove/tmp-<ulid>` branch, the engine is asked to suggest a slug, and
    * we rename once the suggestion lands.
    *
    * git's `branch -m <old> <new>` updates HEAD on every worktree that
@@ -444,7 +444,7 @@ export class GitWorktreeManager implements WorktreeManager {
     if (!match || !match.path || !match.branch || match.detached) return null
     return {
       // Return the caller's requested path verbatim — they passed in
-      // `~/.kobe/worktrees/<repo-key>/<id>` (or a persisted legacy path) and may compare against that
+      // `~/.rove/worktrees/<repo-key>/<id>` (or a persisted legacy path) and may compare against that
       // exact string later. Returning git's macOS-resolved
       // `/private/...` form would surprise them.
       path: worktreePath,

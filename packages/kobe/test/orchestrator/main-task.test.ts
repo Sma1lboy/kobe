@@ -21,7 +21,7 @@ beforeEach(async () => {
   const r = spawnSync("bash", [REPO_INIT, repo], { encoding: "utf8" })
   if (r.status !== 0) throw new Error(`repo-init.sh failed: ${r.stderr}\n${r.stdout}`)
   // Isolate the shared state.json (savedRepos) that forgetProject mutates so
-  // tests never touch the developer's real ~/.config/kobe.
+  // tests never touch the developer's real ~/.config/rove.
   originalHome = process.env.KOBE_HOME_DIR
   process.env.KOBE_HOME_DIR = path.join(tmpRoot, "home")
   const store = new TaskIndexStore({ homeDir: path.join(tmpRoot, "home") })

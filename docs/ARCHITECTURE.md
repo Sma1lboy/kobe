@@ -113,10 +113,10 @@ from creating duplicate children.
 
 ## 6. State
 
-- Task index: `<KOBE_HOME>/.kobe/tasks.json`
+- Task index: `<ROVE_HOME>/.rove/tasks.json` (legacy `.kobe/tasks.json` is copied additively when the new daemon starts, after the old writer stops)
 - UI/settings state: platform config home, normally
-  `~/.config/kobe/state.json`
-- Daemon socket/pid/log: derived from `KOBE_HOME_DIR`
+  `~/.config/rove/state.json` (legacy `.config/kobe/state.json` is copied without overwrite)
+- Daemon socket/pid/log: derived from `ROVE_HOME_DIR` (`KOBE_HOME_DIR` fallback) and intentionally retain legacy `.kobe` runtime names
 - PTY Host socket/pid/log: derived independently from the same home
 - Engine conversation history: engine-owned locations such as
   `~/.claude/projects/**`

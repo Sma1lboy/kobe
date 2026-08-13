@@ -188,7 +188,7 @@ export const SIDEBAR_BINDINGS: readonly KobeBinding[] = [
   // consumes these ids via `bindByIds` (since the keybindings-customization
   // pass; they were raw `{ key: "…" }` literals before), so the rows are
   // LIVE bindings there and follow user overrides from
-  // `~/.kobe/settings/keybindings.yaml`. New-task (n), settings (s),
+  // `~/.rove/settings/keybindings.yaml`. New-task (n), settings (s),
   // rename (r), archive (a), delete (d), merge (M), views ([/]), sort (t)
   // are already covered by the Sidebar / Global rows above and aren't
   // duplicated here.

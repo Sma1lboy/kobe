@@ -2,7 +2,7 @@
  * Saved-repos persistence.
  *
  * The TUI's `KV` store (src/tui/context/kv.tsx) is a Solid-context wrapper
- * around `~/.config/kobe/state.json`. Outside that context — e.g. from the
+ * around `~/.config/rove/state.json`. Outside that context — e.g. from the
  * `kobe add` CLI subcommand — we can't use it. This module is the
  * non-reactive direct accessor for the same on-disk blob: load, mutate,
  * atomic-rename save.
@@ -229,7 +229,7 @@ export function normalizeSavedRepos(): void {
 /**
  * Per-user, per-repo init override stored under the `repoConfigs` key of
  * the shared state.json. This is the FALLBACK default for a repo that does
- * not ship its own `.kobe/init.sh` / `.kobe/init-prompt.md` — the in-repo
+ * not ship its own `.rove/init.sh` / `.rove/init-prompt.md` — the in-repo
  * files win (see {@link ../state/repo-init.ts resolveRepoInit}). Keyed by
  * git toplevel so every worktree of the repo resolves the same entry.
  */

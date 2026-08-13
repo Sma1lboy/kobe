@@ -5,7 +5,7 @@
  * born knowing what previous sessions on the repo already paid to learn.
  *
  * Sync on purpose: `buildEngineSessionLaunch` is synchronous, and this is the
- * same shape as `repo-init.ts` reading `.kobe/init-prompt.md` off disk at
+ * same shape as `repo-init.ts` reading `.rove/init-prompt.md` off disk at
  * launch. A missing/corrupt store is simply "no notes" — a knowledge feature
  * must never be able to block a session from starting.
  *

@@ -119,7 +119,7 @@ export interface ChannelPayloads {
   /**
    * "Re-read your keybindings" ping (KOB — live keybinding propagation).
    * The daemon's keybindings-file watcher bumps `rev` whenever
-   * `~/.kobe/settings/keybindings.yaml` changes; every pane re-reads +
+   * `~/.rove/settings/keybindings.yaml` changes; every pane re-reads +
    * re-applies the file onto its in-memory `KobeKeymap` (and re-renders the
    * chord legends), so an edit takes effect across EVERY session without a
    * rebuild. The daemon carries no keymap data — `rev` is an opaque change

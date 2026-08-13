@@ -160,7 +160,7 @@ describe("defaultDaemonLogPath", () => {
 })
 
 describe("ROVE_HOME_DIR compatibility state matrix", () => {
-  test("every daemon-owned path reuses the established .kobe and .config/kobe layout", () => {
+  test("product data is canonical while runtime and plugins retain compatibility paths", () => {
     process.env.KOBE_HOME_DIR = "/tmp/legacy-home"
     process.env.ROVE_HOME_DIR = "/tmp/rove-home"
 
@@ -183,15 +183,15 @@ describe("ROVE_HOME_DIR compatibility state matrix", () => {
       ptySocket: defaultPtyHostSocketPath(),
       uiPrefs: defaultUiPrefsStatePath(),
     }).toEqual({
-      attention: "/tmp/rove-home/.kobe/attention-inbox.json",
-      automations: "/tmp/rove-home/.kobe/automations.json",
+      attention: "/tmp/rove-home/.rove/attention-inbox.json",
+      automations: "/tmp/rove-home/.rove/automations.json",
       clientLog: "/tmp/rove-home/.kobe/client.log",
       daemonLog: "/tmp/rove-home/.kobe/daemon.log",
       daemonPid: "/tmp/rove-home/.kobe/daemon.pid",
       daemonSocket: "/tmp/rove-home/.kobe/daemon.sock",
-      issues: "/tmp/rove-home/.kobe/issues.json",
-      keybindings: "/tmp/rove-home/.kobe/settings/keybindings.yaml",
-      notes: "/tmp/rove-home/.kobe/notes.json",
+      issues: "/tmp/rove-home/.rove/issues.json",
+      keybindings: "/tmp/rove-home/.rove/settings/keybindings.yaml",
+      notes: "/tmp/rove-home/.rove/notes.json",
       pluginConfig: "/tmp/rove-home/.kobe/plugins/demo/config",
       pluginRegistry: "/tmp/rove-home/.kobe/plugins.json",
       pluginState: "/tmp/rove-home/.kobe/plugins/demo/state",
@@ -199,7 +199,7 @@ describe("ROVE_HOME_DIR compatibility state matrix", () => {
       ptyLog: "/tmp/rove-home/.kobe/pty.log",
       ptyPid: "/tmp/rove-home/.kobe/pty.pid",
       ptySocket: "/tmp/rove-home/.kobe/pty.sock",
-      uiPrefs: "/tmp/rove-home/.config/kobe/state.json",
+      uiPrefs: "/tmp/rove-home/.config/rove/state.json",
     })
   })
 })

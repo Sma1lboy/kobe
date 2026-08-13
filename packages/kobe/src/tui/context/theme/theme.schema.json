@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://raw.githubusercontent.com/sma1lboy/kobe/main/packages/kobe/src/tui/context/theme/theme.schema.json",
   "title": "kobe theme",
-  "description": "Color theme for the kobe TUI. Drop the file at ~/.kobe/themes/<name>.json (or run `kobe theme add <url>`). See packages/kobe/src/tui/context/theme/claude.json for a canonical example with defs + dark/light variants.",
+  "description": "Color theme for the Rove TUI. Drop the file at ~/.rove/themes/<name>.json (or run `rove theme add <url>`). See packages/kobe/src/tui/context/theme/claude.json for a canonical example with defs + dark/light variants.",
   "type": "object",
   "required": ["theme"],
   "additionalProperties": false,

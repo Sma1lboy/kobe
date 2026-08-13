@@ -12,7 +12,7 @@ import {
   defaultPtyHostPidPath,
   defaultPtyHostSocketPath,
 } from "@sma1lboy/kobe-daemon/daemon/paths"
-import { kobeStateDir, kvStatePath } from "../env.ts"
+import { kvStatePath, roveStateDir } from "../env.ts"
 import { stopLegacyTmux } from "./legacy-tmux.ts"
 import { activeCliName } from "./rename-compat.ts"
 import { stampResetGate } from "./reset-gate.ts"
@@ -82,7 +82,7 @@ export async function runResetSubcommand(argv: readonly string[]): Promise<void>
   const hard = argv.includes("--hard")
   const yes = argv.includes("--yes") || argv.includes("-y")
   const daemonSocket = defaultDaemonSocketPath()
-  const tasksPath = join(kobeStateDir(), "tasks.json")
+  const tasksPath = join(roveStateDir(), "tasks.json")
   const statePath = kvStatePath()
 
   console.log(`${CLI_NAME} reset will:`)
@@ -95,7 +95,7 @@ export async function runResetSubcommand(argv: readonly string[]): Promise<void>
     console.log(`  • DELETE the task index${count === null ? "" : ` (${count} task(s))`} — ${tasksPath}`)
     console.log(`  • DELETE the UI state — ${statePath}`)
   }
-  console.log("  • NOT touch your git worktrees under ~/.kobe/worktrees/ or legacy repo-local roots")
+  console.log("  • NOT touch your git worktrees under ~/.rove/worktrees/, ~/.kobe/worktrees/, or repo-local roots")
   if (!hard) console.log("  (your task list & worktrees are kept — add --hard to also wipe task and UI state)")
 
   if (!yes) {

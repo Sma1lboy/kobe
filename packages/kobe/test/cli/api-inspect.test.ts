@@ -38,9 +38,9 @@ afterEach(() => {
 })
 
 function seedHome(): void {
-  mkdirSync(join(home, ".config", "kobe"), { recursive: true })
+  mkdirSync(join(home, ".config", "rove"), { recursive: true })
   writeFileSync(
-    join(home, ".config", "kobe", "state.json"),
+    join(home, ".config", "rove", "state.json"),
     JSON.stringify({
       "terminalTabs.t1": {
         tabs: [{ kind: "engine", id: "tab-1", title: null, ordinal: 1, lastTitle: "crashed run" }],

@@ -208,7 +208,7 @@ the CLI unless you need push channels.
 - **ctrl+e picker**: every enabled plugin's panes are listed by title;
   picking one opens it with your declared placement.
 - **User keybindings**: users bind chords themselves in
-  `~/.kobe/settings/keybindings.yaml`:
+  `~/.rove/settings/keybindings.yaml`:
   `plugins: { ctrl+b: pane:you.example.board, f6: action:you.example.greet }`.
   Ship the suggestion in your README; Rove ships no default plugin chords.
 - **Files pane**: `[[file_handlers]]` claims opens by pattern.

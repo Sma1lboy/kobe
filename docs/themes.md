@@ -3,7 +3,7 @@
 rove bundles three themes — `claude`, `conductor`, `tokyonight` — and ten
 more are [one command away](#hosted-themes). You can also write your own.
 
-Any `~/.kobe/themes/*.json` file loads at boot and appears in the theme
+Any `~/.rove/themes/*.json` file loads at boot and appears in the theme
 picker (Settings → General → Theme, or `ctrl+a` then `,`). A user theme with
 the same name as a bundled one wins.
 
@@ -99,5 +99,5 @@ Preview all thirteen at <https://kobe.sma1lboy.me/themes>.
   `rove doctor` for a full environment report and check the recent
   output above where you ran `rove`.
 - **Want to override a built-in?** Drop a file with the same name
-  (e.g. `~/.kobe/themes/claude.json`). User files load after bundled
+  (e.g. `~/.rove/themes/claude.json`). User files load after bundled
   ones and win on collisions.

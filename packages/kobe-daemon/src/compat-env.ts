@@ -8,7 +8,10 @@
  *
  *   ROVE_* > KOBE_*
  *
- * The state layout deliberately does not change in this phase.
+ * Product data now uses the Rove layout. Runtime continuity surfaces (daemon
+ * and PTY sockets/pids/logs) and plugins deliberately keep the legacy layout
+ * until their own compatibility phases; callers choose the explicit constant
+ * that matches the surface they own.
  */
 
 export const ROVE_ENV_PREFIX = "ROVE_"
@@ -16,8 +19,14 @@ export const LEGACY_KOBE_ENV_PREFIX = "KOBE_"
 export const ROVE_PRODUCT_NAME = "rove" as const
 export const LEGACY_KOBE_PRODUCT_NAME = "kobe" as const
 
-/** Phase-one data layout: the executable changes, persisted paths do not. */
+export const ROVE_STATE_DIR_BASENAME = ".rove" as const
+export const ROVE_CONFIG_DIR_BASENAME = "rove" as const
+export const LEGACY_KOBE_STATE_DIR_BASENAME = ".kobe" as const
+export const LEGACY_KOBE_CONFIG_DIR_BASENAME = "kobe" as const
+
+/** @deprecated Legacy runtime/plugin layout; prefer an explicit canonical or legacy constant. */
 export const COMPAT_STATE_DIR_BASENAME = ".kobe" as const
+/** @deprecated Legacy config layout; canonical product data uses `rove`. */
 export const COMPAT_CONFIG_DIR_BASENAME = "kobe" as const
 
 export function legacyKobeEnvKey(roveKey: string): string | undefined {

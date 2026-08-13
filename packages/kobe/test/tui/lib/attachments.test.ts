@@ -120,7 +120,7 @@ describe("captureClipboardAttachment", () => {
     expect(await captureClipboardAttachment()).toBe(file)
   })
 
-  test("darwin: raw PNG bytes are saved under ~/.kobe/attachments and that path returned", async () => {
+  test("darwin: raw PNG bytes are saved under ~/.rove/attachments and that path returned", async () => {
     setPlatform("darwin")
     setSpawn((cmd) => {
       const joined = cmd.join(" ")
@@ -135,7 +135,7 @@ describe("captureClipboardAttachment", () => {
     })
 
     const saved = await captureClipboardAttachment()
-    expect(saved).toMatch(/\.kobe\/attachments\/paste-\d{8}-[0-9a-f]{8}\.png$/)
+    expect(saved).toMatch(/\.rove\/attachments\/paste-\d{8}-[0-9a-f]{8}\.png$/)
     expect(readFileSync(saved!, "utf8")).toBe("saved-png")
   })
 

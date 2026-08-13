@@ -186,7 +186,7 @@ describe("runWebSubcommand full launch", () => {
     await vi.waitFor(() => {
       expect(out()).toContain("kobe web → http://localhost:45174")
     })
-    expect(out()).toContain(".kobe (production)")
+    expect(out()).toContain(".rove (production)")
     // Nothing listening on the PTY port → no lsof scan, no kills.
     expect(spawnCalls.filter((c) => c.cmd[0] === "lsof")).toHaveLength(0)
     expect(killSpy).not.toHaveBeenCalled()

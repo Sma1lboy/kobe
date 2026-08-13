@@ -37,7 +37,7 @@ back to the dispatching chat tab: creation records the dispatcher
 stored report, no blocking wait. Silence is a checkpoint, never a verdict:
 
 ```bash
-rove api send --prompt "succeeded: auth flow simplified (branch kobe/auth-flow)"
+rove api send --prompt "succeeded: auth flow simplified (branch rove/auth-flow)"
 ```
 
 **Observe** — read the engine's own structured session, never scrape a TUI
@@ -232,7 +232,7 @@ GitHub's, and nothing is copied into Rove's own issue store. Mechanics:
   create a task for issue N and start its engine with the issue title, body,
   and URL as the first message. The task keeps a `linkedWorkItem` pointing
   back, and its branch derives from the issue title
-  (`kobe/307-memory-ce2e8j`).
+  (`rove/307-memory-ce2e8j`).
 
 Requires `gh` installed and authenticated; failures name which of those is
 missing (`gh-missing` / `auth` / `no-remote`) rather than a generic error.

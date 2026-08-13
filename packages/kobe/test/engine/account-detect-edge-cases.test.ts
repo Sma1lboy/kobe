@@ -216,7 +216,7 @@ describe("availableEngineIds", () => {
   })
 
   it("appends registered custom engine ids after the detected built-ins", async () => {
-    const stateDir = path.join(tmpHome, ".config", "kobe")
+    const stateDir = path.join(tmpHome, ".config", "rove")
     fs.mkdirSync(stateDir, { recursive: true })
     fs.writeFileSync(path.join(stateDir, "state.json"), JSON.stringify({ customEngineIds: ["my-custom-engine"] }))
     const ids = await availableEngineIds(deps({ findCopilotBinary: async () => "/bin/copilot" }))

@@ -45,7 +45,7 @@ A task resolves its `ExecHost` **once** from its project's remote config: `execH
 
 ### ControlMaster (load-bearing)
 
-The sidebar polls `git status` / branch every 2s **per row**, the file tree refreshes, diffs open — over SSH each would be a fresh ~100-300ms handshake. So `RemoteExecHost` MUST reuse **one multiplexed SSH connection** per remote project via `ControlMaster=auto` + a `ControlPath` socket under `<KOBE_HOME>/.kobe/ssh/<host-user-port>.sock` + `ControlPersist`. First call opens the master; every later call opens a sub-channel (sub-ms). The socket lives under KOBE_HOME (like the daemon socket) so `kobe reset` cleans it.
+The sidebar polls `git status` / branch every 2s **per row**, the file tree refreshes, diffs open — over SSH each would be a fresh ~100-300ms handshake. So `RemoteExecHost` MUST reuse **one multiplexed SSH connection** per remote project via `ControlMaster=auto` + a `ControlPath` socket under `<ROVE_HOME>/.rove/ssh/<host-user-port>.sock` + `ControlPersist`. First call opens the master; every later call opens a sub-channel (sub-ms).
 
 ## Data model
 
@@ -82,7 +82,7 @@ type RemoteRepoConfig = { host: string; user: string; port?: number; basePath: s
 2. **Keychain** ✅ — `exec/keychain.ts`: macOS `security` store/read/delete behind injected `KeychainDeps`, non-darwin degrades to no-op. Tests: `test/exec/keychain.test.ts`.
 3. **Data model** ✅ — `state/repos.ts`: `RemoteRepoConfig` + `remoteRepos` map, synthetic `ssh://user@host[:port]` savedRepos key, `resolveRepoRoot` passes ssh:// through. `remoteControlSocketPath` in `env.ts`. Tests: `test/exec/remote-repos.test.ts`.
 4. **CLI** ✅ — `cli/add-remote.ts`: `kobe add --remote --host --user --path [--port] [--key [path] | --password]`. Password prompted with echo off → keychain; best-effort connectivity probe. Tests: `test/cli/add-remote.test.ts`.
-5. **Remote worktree** ✅ — `GitWorktreeManager` routes git + fs through an injected `WorktreeExecDeps`; remote worktrees live under `<basePath>/.kobe/worktrees`; `paths.ts` `remoteWorktreePathFor` + remote-aware `listWorktreeDirNames`. Tests: `test/orchestrator/worktree-remote.test.ts` + all 60 existing worktree tests still pass.
+5. **Remote worktree** ✅ — `GitWorktreeManager` routes git + fs through an injected `WorktreeExecDeps`; new remote worktrees live under `<basePath>/.rove/worktrees`, with `.kobe/worktrees` recognized for existing tasks; `paths.ts` `remoteWorktreePathFor` + remote-aware `listWorktreeDirNames`. Tests: `test/orchestrator/worktree-remote.test.ts` + all existing worktree tests still pass.
 6. **Engine launch parity** ⚠️ — the retired tmux path used `wrapEngineLaunch` plus `localSpawnCwd` to keep the local child cwd valid while wrapping the remote engine in `ssh -tt`. The `ExecHost.wrapCommand`, `localSpawnCwd`, and remote-resolution helpers remain, but the current shared Hosted PTY session-launch path does not consume them. Reconnect this seam and cover initial launch, additional tabs, resume/reattach, and headless API delivery before marking parity complete.
 
 ### Remaining (not yet built)
@@ -96,4 +96,4 @@ type RemoteRepoConfig = { host: string; user: string; port?: number; basePath: s
 - **The PTY child's `cwd` is local.** A remote worktree path usually does not exist on the machine running the standalone PTY Host, so use `localSpawnCwd` locally while the SSH-wrapped command performs `cd <remoteWt>` on the remote host.
 - **fs reads, not just git** — `manager.ts` (`existsSync`/`mkdirSync`/`statSync`/`realpathSync`), `ops/host.tsx` (`Bun.file().text()`), the history readers. A `run(argv)`-only ExecHost is insufficient; it needs fs helpers.
 - **Sidebar polls are sync** (`spawnSync`, 2s) — cannot become a sync SSH call (freezes the TUI). Remote → async + cached.
-- **Once-per-worktree init marker** lives under local `<home>/.kobe` but the init script runs remote — the gate semantics must key on the remote worktree, or remote init re-runs each launch.
+- **Once-per-worktree init marker** lives under local `<home>/.rove` but the init script runs remote — the gate semantics must key on the remote worktree, or remote init re-runs each launch.

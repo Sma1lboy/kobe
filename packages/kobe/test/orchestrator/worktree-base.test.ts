@@ -1,7 +1,7 @@
 /**
  * Unit tests for the global worktree base-path override.
  *
- * The override relocates the `<home>/.kobe/worktrees` root wholesale
+ * The override relocates the `<home>/.rove/worktrees` root wholesale
  * while keeping the per-repo `<repo>-<hash>` subfolder. We assert both
  * the pure normalizer and its effect on the path helpers, plus that the
  * default root stays recognized (so worktrees created before the
@@ -26,7 +26,7 @@ let repo: string
 let prevHome: string | undefined
 
 function writeState(obj: Record<string, unknown>): void {
-  const p = path.join(home, ".config", "kobe", "state.json")
+  const p = path.join(home, ".config", "rove", "state.json")
   fs.mkdirSync(path.dirname(p), { recursive: true })
   fs.writeFileSync(p, JSON.stringify(obj), "utf8")
 }
@@ -104,14 +104,15 @@ describe("worktreeBaseKindOf", () => {
 })
 
 describe("worktree paths honor the override", () => {
-  test("unset override → default ~/.kobe/worktrees root", () => {
+  test("unset override → default ~/.rove/worktrees root", () => {
     expect(getWorktreeBaseOverride()).toBeNull()
     const root = worktreeRootFor(repo)
-    expect(root.startsWith(path.join(home, ".kobe", "worktrees"))).toBe(true)
-    // No override → only the default root (+ repo-local legacy roots).
+    expect(root.startsWith(path.join(home, ".rove", "worktrees"))).toBe(true)
+    // No override → canonical + legacy global and repo-local roots.
     const roots = managedWorktreeRootsFor(repo)
     expect(roots[0]).toBe(root)
-    // The default root is not duplicated as a separate fallback.
+    expect(roots).toContain(path.join(home, ".kobe", "worktrees", path.basename(root)))
+    // The canonical default root is not duplicated as a separate fallback.
     expect(roots.filter((r) => r === root)).toHaveLength(1)
   })
 
@@ -140,6 +141,7 @@ describe("worktree paths honor the override", () => {
     // The default root stays recognized so pre-override tasks keep listing.
     const roots = managedWorktreeRootsFor(repo)
     expect(roots[0]).toBe(root)
+    expect(roots).toContain(path.join(home, ".rove", "worktrees", path.basename(root)))
     expect(roots).toContain(path.join(home, ".kobe", "worktrees", path.basename(root)))
   })
 
@@ -149,7 +151,7 @@ describe("worktree paths honor the override", () => {
 
     const roots = managedWorktreeRootsFor(repo)
     const activeRoot = worktreeRootFor(repo)
-    const defaultRoot = path.join(home, ".kobe", "worktrees", path.basename(activeRoot))
+    const defaultRoot = path.join(home, ".rove", "worktrees", path.basename(activeRoot))
     expect(roots[0]).toBe(activeRoot)
     expect(roots).toContain(defaultRoot)
   })

@@ -37,9 +37,8 @@ export function resolveRepoInitTimeoutSeconds(raw?: string | number | null): num
 /** Run repo init without allowing a hung setup command to block engine entry. */
 function boundedInitGroup(script: string, timeoutSeconds: number): string {
   const seconds = String(timeoutSeconds)
-  const timeoutBanner =
-    "\\n  ⚠ Repo init (.kobe/init.sh) timed out after %ss and was killed; continuing to the engine.\\n\\n"
-  const failBanner = "\\n  ⚠ Repo init (.kobe/init.sh) failed (code %s); continuing to the engine.\\n\\n"
+  const timeoutBanner = "\\n  ⚠ Repo init script timed out after %ss and was killed; continuing to the engine.\\n\\n"
+  const failBanner = "\\n  ⚠ Repo init script failed (code %s); continuing to the engine.\\n\\n"
   return [
     `__kobe_init_env="\${TMPDIR:-/tmp}/kobe-init-env.$$"`,
     `__kobe_init_to="\${TMPDIR:-/tmp}/kobe-init-timeout.$$"`,
@@ -173,6 +172,8 @@ export function buildEngineSessionLaunch(input: EngineSessionLaunchInput): Engin
   // event came from — a task's tabs share one worktree, so cwd can't tell
   // them apart. The keepAlive fallback shell inherits it too, so a manual
   // `claude` run in that tab after an engine exit is still attributed.
-  const identity = `export KOBE_TASK_ID=${quoteShellArg(input.task.id)} KOBE_TAB_ID=${quoteShellArg(input.tabId ?? "tab-1")}\n`
+  const taskId = quoteShellArg(input.task.id)
+  const tabId = quoteShellArg(input.tabId ?? "tab-1")
+  const identity = `export ROVE_TASK_ID=${taskId} KOBE_TASK_ID=${taskId} ROVE_TAB_ID=${tabId} KOBE_TAB_ID=${tabId}\n`
   return { key: engineSessionKey(input.task.id, input.tabId), command: [input.shell, "-ilc", identity + script] }
 }

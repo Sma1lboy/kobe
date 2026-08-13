@@ -50,7 +50,7 @@ export interface UiPrefsTarget {
   hasTheme(name: string): boolean
   setTheme(name: string): boolean
   /**
-   * Re-scan `~/.kobe/themes/` into the registry. Called once when the
+   * Re-scan `~/.rove/themes/` into the registry. Called once when the
    * pushed theme name isn't registered in THIS process — e.g. the user
    * added a theme file and selected it from another session's Settings
    * after this pane booted.

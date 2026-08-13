@@ -30,10 +30,10 @@ import type { TabsState } from "../../src/tui/workspace/terminal-tabs-core.ts"
 let home: string
 let originalHome: string | undefined
 
-const statePath = (): string => join(home, ".config", "kobe", "state.json")
+const statePath = (): string => join(home, ".config", "rove", "state.json")
 
 function writeState(state: Record<string, unknown>): void {
-  mkdirSync(join(home, ".config", "kobe"), { recursive: true })
+  mkdirSync(join(home, ".config", "rove"), { recursive: true })
   writeFileSync(statePath(), JSON.stringify(state), "utf8")
 }
 

@@ -18,7 +18,7 @@ describe("TaskIndexStore.reorder", () => {
 
   beforeEach(async () => {
     home = await mkdtemp(join(tmpdir(), "kobe-reorder-"))
-    await mkdir(join(home, ".kobe"), { recursive: true })
+    await mkdir(join(home, ".rove"), { recursive: true })
   })
 
   afterEach(async () => {
@@ -42,7 +42,7 @@ describe("TaskIndexStore.reorder", () => {
   }
 
   async function writeTasks(tasks: unknown[]): Promise<TaskIndexStore> {
-    await writeFile(join(home, ".kobe", "tasks.json"), JSON.stringify({ version: 3, tasks }), "utf8")
+    await writeFile(join(home, ".rove", "tasks.json"), JSON.stringify({ version: 3, tasks }), "utf8")
     const store = new TaskIndexStore({ homeDir: home })
     await store.load()
     return store

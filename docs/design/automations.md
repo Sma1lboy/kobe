@@ -2,7 +2,7 @@
 
 > Called Routines in the UI and CLI. The code, RPC names and on-disk file
 > still say `automation` — renaming those buys nothing and would need a
-> migration of `~/.kobe/automations.json`.
+> migration of `~/.rove/automations.json`.
 
 > Daemon-owned cron. A schedule + a prompt + a repo; every firing creates a
 > fresh task and starts its engine with that prompt.
@@ -24,7 +24,7 @@ summarize risky changes."*
 
 ## Data model
 
-Two records, both in `<KOBE_HOME>/.kobe/automations.json` (daemon is the only
+Two records, both in `<ROVE_HOME>/.rove/automations.json` (daemon is the only
 writer). Types in [`contracts.ts`](../../packages/kobe-daemon/src/daemon/contracts.ts).
 
 - **`Automation`** — the rule. `schedule` (five-field cron), `prompt`, `repo`,

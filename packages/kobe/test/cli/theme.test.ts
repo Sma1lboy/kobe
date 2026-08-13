@@ -26,7 +26,7 @@ let errSpy: MockInstance<typeof process.stderr.write>
 let exitSpy: MockInstance<typeof process.exit>
 
 function themesDir(): string {
-  return join(home, ".kobe", "themes")
+  return join(home, ".rove", "themes")
 }
 
 beforeEach(() => {

@@ -1,5 +1,5 @@
 /**
- * Loader for user keybinding overrides — `~/.kobe/settings/keybindings.yaml`.
+ * Loader for user keybinding overrides — `~/.rove/settings/keybindings.yaml`.
  *
  * Thin wrapper around the shared file reader
  * (`src/state/keybindings-file.ts` — kobe's CLI always runs under Bun,
@@ -19,7 +19,7 @@
  *
  * Deliberately NOT applied at module import time: unit tests import
  * `KobeKeymap` and must see pristine defaults regardless of what the
- * developer's own `~/.kobe/settings/keybindings.yaml` says.
+ * developer's own `~/.rove/settings/keybindings.yaml` says.
  */
 
 import { readKeybindingsFile, resetKeybindingsFileCache } from "../../state/keybindings-file"
@@ -45,7 +45,7 @@ export type UserKeybindingsReport = {
 let cached: UserKeybindingsReport | null = null
 
 /**
- * Load `~/.kobe/settings/keybindings.yaml` and apply it onto `KobeKeymap`.
+ * Load `~/.rove/settings/keybindings.yaml` and apply it onto `KobeKeymap`.
  * Idempotent; returns the (cached) report. Warnings are also mirrored to
  * `console.warn` so they land in the pane's log even if nobody opens the
  * Settings → Keybindings section.

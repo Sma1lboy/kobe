@@ -20,7 +20,7 @@
  *     and the rejection reason and skip — same severity as a missing
  *     `claude` binary, which the diagnose path also reports rather than
  *     throws on.
- *   - **No directory creation.** If `~/.kobe/themes/` doesn't exist, we
+ *   - **No directory creation.** If `~/.rove/themes/` doesn't exist, we
  *     return `[]`. Creating it eagerly would litter the user's home dir
  *     even when they never wanted user themes; we only create it when
  *     `kobe theme add` writes the first file.

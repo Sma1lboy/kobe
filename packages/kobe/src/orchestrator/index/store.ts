@@ -1,7 +1,7 @@
 /**
  * The on-disk task index (v0.6).
  *
- * Persists the {@link TaskIndex} at `<homeDir>/.kobe/tasks.json`. Single
+ * Persists the {@link TaskIndex} at `<homeDir>/.rove/tasks.json`. Single
  * writer per machine — multi-process safety lives in `lockfile.ts`,
  * write atomicity lives here (write-tmp + fsync + rename).
  *
@@ -21,7 +21,7 @@
 import { mkdir, open, readFile, rename, unlink, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { dirname, join } from "node:path"
-import { COMPAT_STATE_DIR_BASENAME } from "../../product.ts"
+import { ROVE_STATE_DIR_BASENAME } from "../../product.ts"
 import type { Task, TaskId, TaskIndex, TaskStatus } from "../../types/task.ts"
 import { DEFAULT_TASK_VENDOR, toTaskId } from "../../types/task.ts"
 import { release } from "./lockfile.ts"
@@ -75,7 +75,7 @@ export class TaskIndexStore {
 
   constructor(options: TaskIndexStoreOptions = {}) {
     this.homeDir = options.homeDir ?? homedir()
-    this.kobeDir = join(this.homeDir, COMPAT_STATE_DIR_BASENAME)
+    this.kobeDir = join(this.homeDir, ROVE_STATE_DIR_BASENAME)
     this.path = join(this.kobeDir, "tasks.json")
     this.tmpPath = `${this.path}.tmp`
     this.lockPath = `${this.path}.lock`

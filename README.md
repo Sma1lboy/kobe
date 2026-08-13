@@ -56,8 +56,8 @@ bunx @sma1lboy/kobe
 ```
 
 The global package installs both `rove` and `kobe`. `rove` is the canonical
-entry point, while `kobe` remains a compatibility alias; both reuse the
-existing `~/.kobe` state without migration.
+entry point, while `kobe` remains a compatibility alias. Supported legacy
+state is copied additively into `~/.rove`; old files and worktrees stay put.
 
 ## First run
 
@@ -67,7 +67,7 @@ cd your-repo
 rove
 ```
 
-Press `n`, pick a repo, base branch, and engine, and prompt the embedded session. The worktree lands in `~/.kobe/worktrees/<repo-key>/<task-slug>/`. Press `F1` anytime for the live keybinding reference; `ctrl+q` focuses the sidebar, and from there quits — sessions keep running in the background.
+Press `n`, pick a repo, base branch, and engine, and prompt the embedded session. The worktree lands in `~/.rove/worktrees/<repo-key>/<task-slug>/`. Press `F1` anytime for the live keybinding reference; `ctrl+q` focuses the sidebar, and from there quits — sessions keep running in the background.
 
 Full documentation: **[docs.kobe.sma1lboy.me](https://docs.kobe.sma1lboy.me)** — quick start, concepts, CLI, agent API, configuration, keybindings, themes, engines, plugins, troubleshooting.
 
@@ -100,7 +100,7 @@ And the rest, briefly:
 ```bash
 rove api add --repo "$PWD" --prompt "Fix the flaky auth test."  # spawn a task
 rove api read-output --task-id <id>                             # its own session history, paged
-rove api send --prompt "succeeded: fixed, branch kobe/auth"     # report home to whoever spawned you
+rove api send --prompt "succeeded: fixed, branch rove/auth"     # report home to whoever spawned you
 rove api land --task-id <id>                                    # merge the winning branch
 ```
 

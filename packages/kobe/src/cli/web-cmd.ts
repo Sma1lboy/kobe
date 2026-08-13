@@ -27,12 +27,11 @@ const CLI_NAME = activeCliName()
 const DAEMON_WEB_HEALTH_MARKER = "kobe-web"
 const DAEMON_WEB_HEALTH_PATH = "/__kobe_web"
 
-/** Which daemon home this `kobe web` is wired to — production `~/.kobe` unless
- *  KOBE_HOME_DIR points it elsewhere (a sandbox). Surfaced in the startup line
- *  so it's never a mystery which task index the dashboard is showing. */
+/** Which product-data home this `rove web` is wired to. Runtime sockets retain
+ *  their `.kobe` compatibility path, but the task index lives under `.rove`. */
 function homeLabel(): string {
   const explicit = readRoveEnv("HOME_DIR")?.trim()
-  return explicit ? `sandbox: ${explicit}` : `${homedir()}/.kobe (production)`
+  return explicit ? `sandbox: ${explicit}` : `${homedir()}/.rove (production)`
 }
 
 type PtyProcess = ReturnType<typeof Bun.spawn>

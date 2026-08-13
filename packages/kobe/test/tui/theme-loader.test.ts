@@ -22,7 +22,7 @@ let prevHome: string | undefined
 beforeEach(() => {
   tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "kobe-theme-loader-"))
   prevHome = process.env.KOBE_HOME_DIR
-  // env.ts: kobeStateDir() = join(KOBE_HOME_DIR ?? homedir(), ".kobe").
+  // env.ts: kobeStateDir() = join(KOBE_HOME_DIR ?? homedir(), ".rove").
   // Point at the tmp root so the loader looks under tmpRoot/.kobe/themes/.
   process.env.KOBE_HOME_DIR = tmpRoot
 })
@@ -40,7 +40,7 @@ afterEach(() => {
 })
 
 function writeTheme(name: string, body: unknown): void {
-  const dir = path.join(tmpRoot, ".kobe", "themes")
+  const dir = path.join(tmpRoot, ".rove", "themes")
   fs.mkdirSync(dir, { recursive: true })
   fs.writeFileSync(path.join(dir, name), typeof body === "string" ? body : JSON.stringify(body))
 }
@@ -81,7 +81,7 @@ describe("loadUserThemes", () => {
   })
 
   test("ignores non-`.json` files in the themes dir", () => {
-    const dir = path.join(tmpRoot, ".kobe", "themes")
+    const dir = path.join(tmpRoot, ".rove", "themes")
     fs.mkdirSync(dir, { recursive: true })
     fs.writeFileSync(path.join(dir, "README.md"), "ignore me")
     fs.writeFileSync(path.join(dir, "ok.json"), JSON.stringify({ theme: { text: "#fff" } }))

@@ -183,7 +183,7 @@ your file manager:
   `images[N]: /path` attachment line sent along with the first prompt.
 
 `ctrl+v` in those dialogs does the same with the clipboard: a copied file
-attaches by path, a raw screenshot is saved under `~/.kobe/attachments/`
+attaches by path, a raw screenshot is saved under `~/.rove/attachments/`
 first. Rove only ever passes paths — the engine reads the file itself.
 
 ## Quota in the footer

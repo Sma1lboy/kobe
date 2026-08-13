@@ -228,19 +228,19 @@ After G0. All four can ship without seeing each other.
 - `manager.ts` — `class GitWorktreeManager implements WorktreeManager`
 - Methods: `create(repo, branch, path)`, `remove(path, { force })`, `list(repo)`, `isDirty(path)`, `currentBranch(path)`
 - Use `bun.spawn` or Node `execFile` for git calls; never shell-string-concatenate.
-- Per task convention from DESIGN.md §11.3 (current: `~/.kobe/worktrees/<repo-key>/<slug>/` for new tasks; repo-local `.kobe/worktrees` and legacy `.claude/worktrees` recognized)
+- Per task convention from DESIGN.md §11.3 (current: `~/.rove/worktrees/<repo-key>/<slug>/` for new tasks; global/repo-local `.kobe/worktrees` and legacy `.claude/worktrees` recognized)
 - Tests: in `test/fixtures/`, init a tiny repo, create + remove worktrees, assert state.
 
 **Done when**: All methods green in unit tests; round-trip create→remove leaves no orphan files or branches.
 
 **Agent prompt seed**:
-> Implement `GitWorktreeManager` per `src/types/worktree.ts`. Use `git worktree` subcommands via `bun.spawn` (no shell concat — pass args as array). Per DESIGN.md §11.3, default worktree root is `~/.kobe/worktrees/<repo-key>/<slug>/` for new tasks, with repo-local `<repo>/.kobe/worktrees/<slug>/` and legacy `<repo>/.claude/worktrees/<slug>/` recognized. Read `refs/vibe-kanban/crates/worktree-manager/` for invariants on cleanup and dirty-state detection. Tests must use a real fixture repo (`test/fixtures/repo-init.sh`); no mocking git. ~300 LoC.
+> Implement `GitWorktreeManager` per `src/types/worktree.ts`. Use `git worktree` subcommands via `bun.spawn` (no shell concat — pass args as array). The current default worktree root is `~/.rove/worktrees/<repo-key>/<slug>/` for new tasks, with global/repo-local `.kobe/worktrees` and legacy `<repo>/.claude/worktrees/<slug>/` recognized. Read `refs/vibe-kanban/crates/worktree-manager/` for invariants on cleanup and dirty-state detection. Tests must use a real fixture repo (`test/fixtures/repo-init.sh`); no mocking git. ~300 LoC.
 
 ---
 
 ### Stream C — Task index
 
-**Scope**: Persist the task list at `~/.kobe/tasks.json`.
+**Scope**: Persist the task list at `~/.rove/tasks.json` (legacy data is copied additively).
 
 **Inputs**: Stream 0.3 (`Task`, `TaskIndex`).
 
@@ -254,7 +254,7 @@ After G0. All four can ship without seeing each other.
 **Done when**: All CRUD ops covered by unit tests; concurrent-write test shows lock works.
 
 **Agent prompt seed**:
-> Implement `TaskIndexStore` for `~/.kobe/tasks.json` per `src/types/task.ts` and DESIGN.md §10. Atomic writes via tmp+rename. Use a lockfile to prevent corruption from a future second kobe instance. Include `version: 1` field. On corrupted JSON, log and start fresh (don't crash). Tests: `~200 LoC` of CRUD + concurrency tests. ~250 LoC impl.
+> Implement `TaskIndexStore` for `~/.rove/tasks.json` per `src/types/task.ts` and DESIGN.md §10. Atomic writes via tmp+rename. Use a lockfile to prevent corruption from a future second Rove instance. Include a version field. On corrupted JSON, log and start fresh (don't crash). Tests cover CRUD + concurrency.
 
 ---
 
@@ -523,7 +523,7 @@ Constraint: each stream agent gets one focus area. **No cross-stream commits.** 
 | # | Decision | Stream | Resolution |
 |---|---|---|---|
 | 1 | Default theme | D | **`tokyonight`** (matches agent-deck's Tokyo Night palette; already lifted from opencode) |
-| 2 | Worktree root | B | **Updated 2026-06-06: `~/.kobe/worktrees/<repo-key>/<slug>/` for new kobe-created tasks; repo-local `.kobe/worktrees` and legacy `.claude/worktrees` remain recognized.** Repo-local roots were retired so users do not need `.gitignore` entries for kobe runtime worktrees. |
-| 3 | Branch naming | E | **Auto** `kobe/<slug>-<ulid-suffix>`; user can override per-task |
+| 2 | Worktree root | B | **Updated 2026-08-13: `~/.rove/worktrees/<repo-key>/<slug>/` for new Rove-created tasks; global/repo-local `.kobe/worktrees` and legacy `.claude/worktrees` remain recognized.** Existing paths are never rewritten. |
+| 3 | Branch naming | E | **Auto** `rove/<slug>-<ulid-suffix>`; existing `kobe/` branches remain unchanged; user can override per-task |
 | 4 | Concurrency cap | E | **4** simultaneous running tasks; configurable via `~/.kobe/config.json` later |
 | 5 | Terminal pane | J | **One pty per task**, kept alive while task is `in_progress`, killed on archive |

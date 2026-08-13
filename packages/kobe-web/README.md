@@ -25,7 +25,7 @@ bun run dev:sandbox    # same, but pointed at a throwaway KOBE_HOME_DIR so the
                        # never touch production state
 ```
 
-`bun run dev` connects to your **production** `~/.kobe` daemon — the startup
+`bun run dev` connects to your production daemon and **production** `~/.rove` data — the startup
 banner says which home it's wired to. Use `dev:sandbox` when you don't want to
 mutate real tasks.
 

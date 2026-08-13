@@ -23,6 +23,7 @@ import { GitWorktreeManager } from "../../src/orchestrator/worktree/manager.ts"
 import {
   LEGACY_KOBE_WORKTREE_ROOT_SUBPATH,
   REPO_LOCAL_KOBE_WORKTREE_ROOT_SUBPATH,
+  managedWorktreeRootsFor,
   worktreePathFor,
   worktreeRootFor,
 } from "../../src/orchestrator/worktree/paths.ts"
@@ -69,7 +70,7 @@ describe("GitWorktreeManager.create", () => {
     expect(info.dirty).toBe(false)
     expect(fs.existsSync(target)).toBe(true)
     expect(fs.existsSync(path.join(target, "README.md"))).toBe(true)
-    expect(target.startsWith(path.join(tmpRoot, "home", ".kobe", "worktrees"))).toBe(true)
+    expect(target.startsWith(path.join(tmpRoot, "home", ".rove", "worktrees"))).toBe(true)
   })
 
   test("is idempotent: second call with the same args returns equivalent info", async () => {
@@ -132,6 +133,16 @@ describe("GitWorktreeManager.list", () => {
 
     const list = await mgr.list(repo)
     expect(list.find((w) => w.branch === "kobe/local")?.path).toBe(localTarget)
+  })
+
+  test("still lists legacy global ~/.kobe/worktrees tasks without rewriting their paths", async () => {
+    const mgr = new GitWorktreeManager()
+    const legacyRoot = managedWorktreeRootsFor(repo).find((root) => root.includes(`${path.sep}.kobe${path.sep}`))!
+    const legacyTarget = path.join(legacyRoot, "global-legacy")
+    await mgr.create(repo, "kobe/global-legacy", legacyTarget)
+
+    const list = await mgr.list(repo)
+    expect(list.find((w) => w.branch === "kobe/global-legacy")?.path).toBe(legacyTarget)
   })
 })
 
@@ -276,7 +287,7 @@ describe("createForTask helper", () => {
 describe("GitWorktreeManager.listAll (KOB-256)", () => {
   test("includes external worktrees + excludes main checkout, with kobeManaged flags", async () => {
     const mgr = new GitWorktreeManager()
-    // kobe-managed worktree under KOBE_HOME_DIR/.kobe/worktrees/
+    // Rove-managed worktree under KOBE_HOME_DIR/.rove/worktrees/
     const managed = await mgr.createForTask({ repo, slug: "managed-wt", branch: "kobe/managed" })
     // external worktree created by the user OUTSIDE the convention root
     const extPath = path.join(tmpRoot, "external-wt")

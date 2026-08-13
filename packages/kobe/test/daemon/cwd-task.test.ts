@@ -6,7 +6,12 @@ import {
   matchTaskByWorktreePath,
 } from "@sma1lboy/kobe-daemon/daemon/cwd-task"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
-import { REPO_LOCAL_KOBE_WORKTREE_ROOT_SUBPATH, worktreeRootFor } from "../../src/orchestrator/worktree/paths.ts"
+import {
+  REPO_LOCAL_KOBE_WORKTREE_ROOT_SUBPATH,
+  REPO_LOCAL_ROVE_WORKTREE_ROOT_SUBPATH,
+  managedWorktreeRootsFor,
+  worktreeRootFor,
+} from "../../src/orchestrator/worktree/paths.ts"
 
 let prevHome: string | undefined
 
@@ -41,7 +46,7 @@ describe("matchTaskByCwd", () => {
     expect(matchTaskByCwd(tasks, "/repo/.claude/worktrees/snipe/pkg")).toBe("sub")
   })
 
-  it("matches a global kobe-state worktree", () => {
+  it("matches a global Rove-state worktree", () => {
     const wt = path.join(worktreeRootFor("/repo"), "snipe")
     expect(matchTaskByCwd([{ id: "sub", worktreePath: wt }], wt)).toBe("sub")
     expect(matchTaskByCwd([{ id: "sub", worktreePath: wt }], path.join(wt, "pkg"))).toBe("sub")
@@ -143,12 +148,23 @@ describe("findAdoptableWorktree", () => {
     { id: "legacy", repo: "/repo", worktreePath: "/repo/.claude/worktrees/old" },
   ]
 
-  it("adopts an external worktree under the global kobe state worktree root", () => {
+  it("adopts an external worktree under the global Rove state worktree root", () => {
     const wt = path.join(worktreeRootFor("/repo"), "external")
     expect(findAdoptableWorktree(tasks(), wt)).toEqual({
       repo: "/repo",
       worktreePath: wt,
     })
+  })
+
+  it("still adopts worktrees under the legacy global ~/.kobe root", () => {
+    const legacyRoot = managedWorktreeRootsFor("/repo").find((root) => root.includes("/.kobe/worktrees/"))!
+    const wt = path.join(legacyRoot, "external")
+    expect(findAdoptableWorktree(tasks(), wt)).toEqual({ repo: "/repo", worktreePath: wt })
+  })
+
+  it("recognizes repo-local .rove/worktrees", () => {
+    const wt = `/repo/${REPO_LOCAL_ROVE_WORKTREE_ROOT_SUBPATH}/external`
+    expect(findAdoptableWorktree(tasks(), wt)).toEqual({ repo: "/repo", worktreePath: wt })
   })
 
   it("still adopts repo-local .kobe/worktrees from the brief-lived layout", () => {

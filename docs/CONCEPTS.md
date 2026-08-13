@@ -26,7 +26,7 @@ worktree on its own — not on archive, not on `done`.
 ## Worktree and branch
 
 Every Task gets its own git worktree at
-`~/.kobe/worktrees/<repo-key>/<task-slug>/`, checked out to the task's
+`~/.rove/worktrees/<repo-key>/<task-slug>/`, checked out to the task's
 branch. That's what makes running many tasks at once safe: N tasks means N
 working trees that can't overwrite each other or your main checkout. Edits
 cross over only when you merge.
@@ -94,7 +94,7 @@ Full lifetime rules, and exactly what survives a reboot:
 ## The issue store
 
 rove has no external issue tracker. Your backlog lives in a daemon-owned
-store at `~/.kobe/issues.json`, shared between a repo and all its worktrees.
+store at `~/.rove/issues.json`, shared between a repo and all its worktrees.
 
 It's deliberately simple — no type taxonomy, just a status
 (`open → doing → done`, plus `hold` for things parked on purpose):
@@ -109,15 +109,15 @@ Issues track *what to do*; the changelog records *what shipped*.
 
 | What | Where |
 |---|---|
-| Task index | `~/.kobe/tasks.json` |
-| Worktrees | `~/.kobe/worktrees/<repo-key>/<task-slug>/` |
-| Issue store | `~/.kobe/issues.json` |
+| Task index | `~/.rove/tasks.json` |
+| Worktrees | `~/.rove/worktrees/<repo-key>/<task-slug>/` |
+| Issue store | `~/.rove/issues.json` |
 | Daemon socket / log | `~/.kobe/daemon.sock`, `~/.kobe/daemon.log` |
-| Settings | `~/.config/kobe/state.json` (open with `rove config`) |
+| Settings | `~/.config/rove/state.json` (open with `rove config`) |
 | Conversation history | engine-owned, e.g. `~/.claude/projects/**` |
 
 Setting `KOBE_HOME_DIR` moves all of it — that's how the dev sandbox avoids
-touching your real `~/.kobe`.
+touching your real `~/.rove` product data or `.kobe` compatibility runtime.
 
 ## Three ways people use it
 

@@ -6,7 +6,7 @@
  *                         user-installed) with a short marker for which
  *                         is which.
  *   - `add <source>`    — fetch / read a theme JSON, validate, and write
- *                         it under `~/.kobe/themes/<name>.json`. Refuses
+ *                         it under `~/.rove/themes/<name>.json`. Refuses
  *                         to overwrite without `--force`.
  *   - `remove <name>`   — delete a user theme file. Refuses if `<name>`
  *                         matches a bundled theme (those are read-only).

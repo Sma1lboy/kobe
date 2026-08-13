@@ -116,8 +116,8 @@ kobe v0.5 把 `claude` 当 stream-json 子进程驱动 (`engine/claude-code-loca
 
 ## 8. 不变的契约
 
-- worktree 路径现在是 `~/.kobe/worktrees/<repo-key>/<slug>/`；repo-local `.kobe/worktrees` 和旧的 `<repo>/.claude/worktrees/<slug>/` 任务继续兼容。
-- 任务索引仍是 `~/.kobe/tasks.json` 单 JSON 文件
+- 新 worktree 路径是 `~/.rove/worktrees/<repo-key>/<slug>/`；全局/repo-local `.kobe/worktrees` 和旧的 `<repo>/.claude/worktrees/<slug>/` 任务继续兼容。
+- 任务索引是 `~/.rove/tasks.json` 单 JSON 文件；新 daemon 确认旧 writer 停止后从 `.kobe/tasks.json` 安全复制
 - claude history 仍读 `~/.claude/projects/<encoded-cwd>/<sessionId>.jsonl`
 - `tmux -L kobe` 独占 socket (KOB-225 拍的, 不污染用户自己的 tmux)
 - 全局 Ctrl+Q = "detach 当前接管 / 返回外层" (KOB-225 绑过, 0.6 沿用)

@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from "vitest"
 
-const ensureSessionMock = vi.hoisted(() => vi.fn(async () => true))
-const sessionExistsMock = vi.hoisted(() => vi.fn(async () => false))
+const hostedSession = vi.hoisted(() => ({
+  close: vi.fn(),
+  ensureEngine: vi.fn(async () => ({ alive: true, created: true })),
+  rpc: { request: vi.fn() },
+}))
 const resolveEngineLaunchInitMock = vi.hoisted(() =>
   vi.fn((_repo: string, _worktree: string, intent: { kind: string }) => ({
     initScript: `init:${intent.kind}`,
@@ -12,15 +15,18 @@ const resolveEngineLaunchInitMock = vi.hoisted(() =>
   })),
 )
 
-vi.mock("../../kobe/src/tui/panes/terminal/tmux.ts", () => ({
-  ensureSession: ensureSessionMock,
-  sessionExists: sessionExistsMock,
-  tmuxSessionName: (taskId: string) => `kobe-${taskId}`,
-}))
-
-vi.mock("../../kobe/src/tmux/client.ts", () => ({
-  killSession: vi.fn(),
-  switchClientBeforeKill: vi.fn(),
+vi.mock("../../kobe/src/engine/hosted-session.ts", () => ({
+  deliverToHostedKey: vi.fn(),
+  ensureHostedEngine: hostedSession.ensureEngine,
+  ensureHostedSessionHost: vi.fn(async () => ({
+    rpc: hostedSession.rpc,
+    close: hostedSession.close,
+  })),
+  findHostedEngineKey: vi.fn(),
+  hostedTaskKeys: vi.fn(),
+  killHostedSessions: vi.fn(),
+  listHostedSessions: vi.fn(),
+  openHostedSessionHost: vi.fn(),
 }))
 
 vi.mock("../../kobe/src/state/repo-init.ts", () => ({
@@ -50,10 +56,10 @@ function link(): DaemonRpcClient {
 }
 
 describe("web session launch init", () => {
-  it("lets canonical tmux sessions receive the repo init first prompt", async () => {
-    ensureSessionMock.mockClear()
+  it("lets hosted engine sessions receive the repo init first prompt", async () => {
+    hostedSession.close.mockClear()
+    hostedSession.ensureEngine.mockClear()
     resolveEngineLaunchInitMock.mockClear()
-    sessionExistsMock.mockResolvedValueOnce(false)
 
     await ensureTaskSessionAdapter(link(), "task-1")
 
@@ -61,15 +67,14 @@ describe("web session launch init", () => {
       "/repo/kobe",
       "/worktrees/story",
       { kind: "repo-init" },
+      "task-1",
     )
-    expect(ensureSessionMock).toHaveBeenCalledWith(
+    expect(hostedSession.ensureEngine).toHaveBeenCalledWith(
+      hostedSession.rpc,
+      "/worktrees/story",
       expect.objectContaining({
-        name: "kobe-task-1",
-        cwd: "/worktrees/story",
-        launchInit: {
-          initScript: "init:repo-init",
-          firstMessage: { source: "repo-init", text: "repo prompt" },
-        },
+        key: "task-1::tab-1",
+        command: expect.arrayContaining([expect.stringContaining("init:repo-init")]),
       }),
     )
   })
@@ -82,8 +87,9 @@ describe("web session launch init", () => {
     expect(resolveEngineLaunchInitMock).toHaveBeenCalledWith(
       "/repo/kobe",
       "/worktrees/story",
-      { kind: "none" },
+      { kind: "repo-init" },
+      "task-2",
     )
-    expect(spec.command.join(" ")).toContain("init:none")
+    expect(spec.command.join(" ")).toContain("init:repo-init")
   })
 })

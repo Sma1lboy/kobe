@@ -47,7 +47,7 @@ describe("keybindings channel (daemon → client round-trip)", () => {
     dir = mkdtempSync(join(tmpdir(), "kobe-kb-chan-"))
     socketPath = join(dir, "daemon.sock")
     pidPath = join(dir, "daemon.pid")
-    const settingsDir = join(dir, ".kobe", "settings")
+    const settingsDir = join(dir, ".rove", "settings")
     kbFile = join(settingsDir, "keybindings.yaml")
     mkdirSync(settingsDir, { recursive: true })
     savedHome = process.env.KOBE_HOME_DIR

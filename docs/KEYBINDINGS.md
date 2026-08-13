@@ -142,7 +142,7 @@ These four are fixed — they can't be rebound. The workflow:
 
 ## Customizing
 
-Edit `~/.kobe/settings/keybindings.yaml`. Changes reload live — no restart.
+Edit `~/.rove/settings/keybindings.yaml`. Changes reload live — no restart.
 
 ```yaml
 prefix:

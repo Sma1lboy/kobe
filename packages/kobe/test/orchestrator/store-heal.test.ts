@@ -17,7 +17,7 @@ describe("TaskIndexStore self-heal on load", () => {
 
   beforeEach(async () => {
     home = await mkdtemp(join(tmpdir(), "kobe-heal-"))
-    await mkdir(join(home, ".kobe"), { recursive: true })
+    await mkdir(join(home, ".rove"), { recursive: true })
   })
 
   afterEach(async () => {
@@ -25,7 +25,7 @@ describe("TaskIndexStore self-heal on load", () => {
   })
 
   async function writeTasks(tasks: unknown[]): Promise<void> {
-    await writeFile(join(home, ".kobe", "tasks.json"), JSON.stringify({ version: 3, tasks }), "utf8")
+    await writeFile(join(home, ".rove", "tasks.json"), JSON.stringify({ version: 3, tasks }), "utf8")
   }
 
   function baseRow(over: Record<string, unknown>): Record<string, unknown> {
@@ -84,7 +84,7 @@ describe("TaskIndexStore vendor coercion on load", () => {
 
   beforeEach(async () => {
     home = await mkdtemp(join(tmpdir(), "kobe-vendor-"))
-    await mkdir(join(home, ".kobe"), { recursive: true })
+    await mkdir(join(home, ".rove"), { recursive: true })
   })
 
   afterEach(async () => {
@@ -92,7 +92,7 @@ describe("TaskIndexStore vendor coercion on load", () => {
   })
 
   async function writeTasks(tasks: unknown[]): Promise<void> {
-    await writeFile(join(home, ".kobe", "tasks.json"), JSON.stringify({ version: 3, tasks }), "utf8")
+    await writeFile(join(home, ".rove", "tasks.json"), JSON.stringify({ version: 3, tasks }), "utf8")
   }
 
   function taskRow(over: Record<string, unknown>): Record<string, unknown> {

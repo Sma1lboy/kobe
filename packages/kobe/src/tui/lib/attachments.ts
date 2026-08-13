@@ -11,7 +11,7 @@
  *   2. A raw clipboard IMAGE (screenshot): no text arrives on paste, so
  *      the composer binds ctrl+v → {@link captureClipboardAttachment},
  *      which asks the OS clipboard. A copied FILE resolves to its own
- *      path; raw image bytes are saved under `~/.kobe/attachments/` and
+ *      path; raw image bytes are saved under `~/.rove/attachments/` and
  *      that saved path is attached.
  *
  * Attachments render as `images[0]` / `pdf[1]` chips in the composer and
@@ -116,7 +116,7 @@ async function capture(cmd: string[]): Promise<string | null> {
  *   1. A copied FILE (Finder cmd+c): resolve its path — attach directly,
  *      no copy made.
  *   2. Raw image bytes (screenshot): write a PNG under
- *      `~/.kobe/attachments/` and attach the saved path.
+ *      `~/.rove/attachments/` and attach the saved path.
  *
  * macOS via osascript; Linux via wl-paste/xclip. Returns null when the
  * clipboard has nothing attachable (or on an unsupported platform).
@@ -167,7 +167,7 @@ export async function captureClipboardAttachment(): Promise<string | null> {
   return null
 }
 
-/** Fresh collision-free save path under `~/.kobe/attachments/`. */
+/** Fresh collision-free save path under `~/.rove/attachments/`. */
 function newAttachmentPath(): string {
   const dir = promptAttachmentsDir()
   mkdirSync(dir, { recursive: true })

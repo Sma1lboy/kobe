@@ -56,7 +56,7 @@ vi.mock("../../src/engine/session-launch.ts", () => ({
 }))
 
 // Real join/liveness logic, mocked STATE READ: unit tests must never touch
-// the developer's actual ~/.config/kobe/state.json (also silences the
+// the developer's actual ~/.config/rove/state.json (also silences the
 // publishCliTabSnapshot write deliverPrompt would otherwise attempt).
 vi.mock("../../src/cli/api/tab-snapshot.ts", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../src/cli/api/tab-snapshot.ts")>()

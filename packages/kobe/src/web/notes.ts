@@ -3,8 +3,8 @@
  * entirely in the browser dashboard (the TUI has no notes feature).
  *
  * Notes persist server-side as one file per task under
- * `<KOBE_HOME>/.kobe/notes/<taskId>.md`, resolved via {@link kobeStateDir}
- * so they honour `KOBE_HOME_DIR` like every other kobe state path.
+ * `<ROVE_HOME>/.rove/notes/<taskId>.md`, resolved via {@link kobeStateDir}
+ * so they honour `ROVE_HOME_DIR` and its `KOBE_HOME_DIR` fallback.
  *
  * Routes (composed into the web server's `fetch` before the static/404
  * fallthrough):

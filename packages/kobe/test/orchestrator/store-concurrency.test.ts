@@ -6,7 +6,7 @@ import { type TaskCreateInput, TaskIndexStore } from "../../src/orchestrator/ind
 
 /**
  * Multi-process consistency for the task index (fix B). Two kobe instances
- * (TUI + daemon + CLI) write the SAME `~/.kobe/tasks.json`. Before the lock +
+ * (TUI + daemon + CLI) write the SAME `~/.rove/tasks.json`. Before the lock +
  * read-merge-write, a save serialized the writer's WHOLE in-memory snapshot,
  * so process B silently clobbered the task process A had just created (lost
  * update). These tests pin the two guarantees the fix adds: interleaved writes
@@ -18,7 +18,7 @@ describe("TaskIndexStore multi-process consistency", () => {
 
   beforeEach(async () => {
     home = await mkdtemp(join(tmpdir(), "kobe-store-concurrency-"))
-    await mkdir(join(home, ".kobe"), { recursive: true })
+    await mkdir(join(home, ".rove"), { recursive: true })
   })
 
   afterEach(async () => {
@@ -38,7 +38,7 @@ describe("TaskIndexStore multi-process consistency", () => {
 
   /** Read the on-disk manifest directly — the source of truth, not a cache. */
   async function readDisk(): Promise<{ tasks: Array<{ id: string; title: string }> }> {
-    const raw = await readFile(join(home, ".kobe", "tasks.json"), "utf8")
+    const raw = await readFile(join(home, ".rove", "tasks.json"), "utf8")
     return JSON.parse(raw)
   }
 
@@ -87,7 +87,7 @@ describe("TaskIndexStore multi-process consistency", () => {
     // Seed disk with one task, load it, delete it. The merge reads the still-
     // present on-disk row but must honor the in-flight removal.
     await writeFile(
-      join(home, ".kobe", "tasks.json"),
+      join(home, ".rove", "tasks.json"),
       JSON.stringify({
         version: 3,
         tasks: [
@@ -117,7 +117,7 @@ describe("TaskIndexStore multi-process consistency", () => {
     // Externally hold the index lock with a LIVE holder (our own pid). A save
     // must spin on `acquire` and not complete while the lock is held — this is
     // what proves the lock guards the write path rather than being dead code.
-    const lockPath = join(home, ".kobe", "tasks.json.lock")
+    const lockPath = join(home, ".rove", "tasks.json.lock")
     await writeFile(lockPath, String(process.pid), "utf8")
 
     let settled = false

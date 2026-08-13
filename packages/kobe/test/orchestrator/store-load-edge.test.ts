@@ -66,9 +66,9 @@ describe("load() recovery", () => {
     expect(index.tasks).toEqual([])
     expect(warn).toHaveBeenCalledWith(expect.stringContaining("corrupted"))
 
-    const backups = (await readdir(join(home, ".kobe"))).filter((name) => name.startsWith("tasks.json.corrupt-"))
+    const backups = (await readdir(join(home, ".rove"))).filter((name) => name.startsWith("tasks.json.corrupt-"))
     expect(backups.length).toBeGreaterThanOrEqual(1)
-    expect(await readFile(join(home, ".kobe", backups[0] ?? ""), "utf8")).toBe("{ not json !!!")
+    expect(await readFile(join(home, ".rove", backups[0] ?? ""), "utf8")).toBe("{ not json !!!")
 
     // The save that would have destroyed the bytes leaves the backup intact
     // (the save path may add its own backup — count only grows, bytes stay).
@@ -81,7 +81,7 @@ describe("load() recovery", () => {
       kind: "task",
       vendor: "claude",
     })
-    expect(await readFile(join(home, ".kobe", backups[0] ?? ""), "utf8")).toBe("{ not json !!!")
+    expect(await readFile(join(home, ".rove", backups[0] ?? ""), "utf8")).toBe("{ not json !!!")
     warn.mockRestore()
   })
 

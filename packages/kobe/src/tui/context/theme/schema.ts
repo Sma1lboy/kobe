@@ -1,7 +1,7 @@
 /**
  * Hand-rolled runtime validator for `ThemeJson` — the on-disk shape kobe
  * expects from both bundled themes (under `src/tui/context/theme/*.json`)
- * and user-installed themes (`~/.kobe/themes/*.json`).
+ * and user-installed themes (`~/.rove/themes/*.json`).
  *
  * Why hand-rolled and not zod / valibot / etc.: nothing in
  * `src/tui/context/` currently pulls in a runtime validator, and the

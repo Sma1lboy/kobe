@@ -39,6 +39,8 @@ describe("hosted engine session launch", () => {
     expect(launch.key).toBe("task-1::tab-1")
     expect(launch.command.slice(0, 2)).toEqual(["/bin/zsh", "-ilc"])
     expect(launch.command[2]).toContain("claude 'fix it'")
+    expect(launch.command[2]).toContain("ROVE_TASK_ID='task-1' KOBE_TASK_ID='task-1'")
+    expect(launch.command[2]).toContain("ROVE_TAB_ID='tab-1' KOBE_TAB_ID='tab-1'")
     expect(launch.command[2]).toContain('exec "${SHELL:-/bin/sh}"')
   })
 
@@ -62,8 +64,8 @@ describe("hosted engine session launch", () => {
 
   test("runs marker-gated repo init before the repo first message", () => {
     const worktree = makeWorktree({
-      ".kobe/init.sh": "export READY=1",
-      ".kobe/init-prompt.md": "read the repo docs",
+      ".rove/init.sh": "export READY=1",
+      ".rove/init-prompt.md": "read the repo docs",
     })
     const launch = buildEngineSessionLaunch({
       task: { id: "task-1", kind: "task", vendor: "claude", repo: worktree },
@@ -76,10 +78,10 @@ describe("hosted engine session launch", () => {
     })
     const script = launch.command[2]
 
-    expect(script).toContain("sh .kobe/init.sh")
+    expect(script).toContain("sh .rove/init.sh")
     expect(script).toContain("sleep 7;")
     expect(script).toContain("worktree-init")
-    expect(script.indexOf("sh .kobe/init.sh")).toBeLessThan(script.indexOf("claude 'read the repo docs'"))
+    expect(script.indexOf("sh .rove/init.sh")).toBeLessThan(script.indexOf("claude 'read the repo docs'"))
   })
 
   test("writes the init marker in the form the shell reads, not the OS's", () => {

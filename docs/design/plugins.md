@@ -147,7 +147,7 @@ Launch composition is shared with the CLI (`plugins/pane-command.ts`).
 ## Keybindings
 
 Users bind their own chords to plugin panes/actions via the `plugins:`
-section of `~/.kobe/settings/keybindings.yaml`
+section of `~/.rove/settings/keybindings.yaml`
 (`ctrl+g: pane:examples.lazygit.git`) — kobe ships no default plugin chords.
 Mechanics + resolution record: docs/KEYBINDINGS.md §Plugin chords.
 
