@@ -20,10 +20,10 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Sma1lboy/kobe.git",
+    "url": "git+https://github.com/Sma1lboy/rove.git",
     "directory": "packages/kobe-plugin-sdk"
   },
-  "homepage": "https://github.com/Sma1lboy/kobe/blob/main/docs/PLUGIN-AUTHORING.md",
+  "homepage": "https://github.com/Sma1lboy/rove/blob/main/docs/PLUGIN-AUTHORING.md",
   "engines": {
     "node": ">=18"
   },

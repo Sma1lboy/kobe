@@ -234,6 +234,35 @@ jobs:
         working-directory: packages/kobe
         run: npm publish --access public --provenance --tag "${{ steps.channel.outputs.dist_tag }}"
 
+      - name: Publish the same build as @sma1lboy/rove
+        # The product is Rove; `@sma1lboy/kobe` is the compatibility name
+        # ~10k installs/month already point at. So every release ships BOTH
+        # names from ONE build: same tarball, same version, same `kobe` +
+        # `rove` bins — only the `name` field differs. New users get
+        # `npm i -g @sma1lboy/rove`, existing ones keep updating in place.
+        #
+        # Publishing from a rewritten package.json rather than a second
+        # package dir keeps them impossible to skew: there is one source of
+        # version, files, and deps. `--ignore-scripts` skips the
+        # `prepublishOnly` typecheck+build that already ran for the publish
+        # above — dist/ is the artifact both names share.
+        working-directory: packages/kobe
+        run: |
+          V=$(node -p "require('./package.json').version")
+          if npm view "@sma1lboy/rove@$V" version >/dev/null 2>&1; then
+            echo "@sma1lboy/rove@$V already on npm — skipping"
+            exit 0
+          fi
+          cp package.json package.json.bak
+          node -e "
+            const fs = require('fs')
+            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'))
+            pkg.name = '@sma1lboy/rove'
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n')
+          "
+          npm publish --access public --provenance --ignore-scripts --tag "${{ steps.channel.outputs.dist_tag }}"
+          mv package.json.bak package.json
+
       - name: Publish plugin SDK (piggyback, idempotent)
         # The SDK versions independently via changesets but has no tag of
         # its own: every kobe release checks whether the SDK's current

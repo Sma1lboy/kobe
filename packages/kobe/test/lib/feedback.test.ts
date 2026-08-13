@@ -33,7 +33,7 @@ describe("submitFeedback", () => {
             createDiscussion: {
               discussion: {
                 number: 42,
-                url: "https://github.com/Sma1lboy/kobe/discussions/42",
+                url: "https://github.com/Sma1lboy/rove/discussions/42",
               },
             },
           },
@@ -42,12 +42,12 @@ describe("submitFeedback", () => {
 
     const result = submitFeedback(
       { title: "A small idea", body: "Please add the thing." },
-      { spawn, repoSlug: () => "Sma1lboy/kobe" },
+      { spawn, repoSlug: () => "Sma1lboy/rove" },
     )
 
     expect(result).toEqual({
       number: 42,
-      url: "https://github.com/Sma1lboy/kobe/discussions/42",
+      url: "https://github.com/Sma1lboy/rove/discussions/42",
     })
     expect(spawn).toHaveBeenCalledTimes(2)
     const secondArgs = (spawn as ReturnType<typeof vi.fn>).mock.calls[1]?.[1] as string[]
@@ -74,7 +74,7 @@ describe("submitFeedback", () => {
     expect(() =>
       submitFeedback(
         { title: "Bug", body: "Something happened.", categorySlug: "feedback" },
-        { spawn, repoSlug: () => "Sma1lboy/kobe" },
+        { spawn, repoSlug: () => "Sma1lboy/rove" },
       ),
     ).toThrow("GitHub Discussion category not found: feedback")
   })
