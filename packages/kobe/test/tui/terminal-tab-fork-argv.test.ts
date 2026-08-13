@@ -81,10 +81,12 @@ describe("planChatContinuation", () => {
   })
 
   it("reports no readable transcript when the source engine keeps none", async () => {
-    // Kimi has no history reader, so there is no file to hand the next engine.
-    expect(await planChatContinuation({ ...engineTab, vendor: "kimi" }, "kimi", "codex", "/wt")).toEqual({
+    // A user-registered engine gets EMPTY_HISTORY — kobe can't know its
+    // store, so there is no file to hand the next engine. (The built-ins
+    // all resolve a transcript path now; only custom ids land here.)
+    expect(await planChatContinuation({ ...engineTab, vendor: "my-engine" }, "my-engine", "codex", "/wt")).toEqual({
       kind: "no-transcript",
-      engine: "Kimi",
+      engine: "my-engine",
     })
   })
 

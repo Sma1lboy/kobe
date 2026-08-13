@@ -41,14 +41,18 @@ import {
   detectKimiAccount,
 } from "./account-detect.ts"
 import { claudeCapabilities, claudeIdentity } from "./claude-code-local/capabilities.ts"
-import * as claudeHistory from "./claude-code-local/history.ts"
 import { ClaudeHookAdapter } from "./claude-code-local/hook-adapter.ts"
 import { fetchClaudeQuotaUsage } from "./claude-code-local/quota.ts"
 import { codexCapabilities, codexIdentity } from "./codex-local/capabilities.ts"
-import * as codexHistory from "./codex-local/history.ts"
 import { CodexHookAdapter } from "./codex-local/hook-adapter.ts"
 import { fetchCodexQuotaUsage } from "./codex-local/quota.ts"
-import * as copilotHistory from "./copilot-local/history.ts"
+import {
+  EMPTY_HISTORY,
+  claudeHistoryReader,
+  codexHistoryReader,
+  copilotHistoryReader,
+  kimiHistoryReader,
+} from "./history-readers.ts"
 import { type EngineHookAdapter, NoopHookAdapter } from "./hook-adapter.ts"
 import { CLAUDE_SPINNER_FRAMES } from "./spinner-frames.ts"
 import { ClaudeTurnDetector, CodexTurnDetector, type EngineTurnDetector, UnknownTurnDetector } from "./turn-detector.ts"
@@ -180,64 +184,10 @@ export interface EngineRegistryEntry {
   readonly quotaUsage?: () => Promise<EngineQuotaUsage | null>
 }
 
-/**
- * The documented empty history reader for engines with no on-disk
- * transcript store (custom engines). Auto-title then keeps the placeholder
- * title rather than mis-reading claude's transcripts (the old
- * `else → claude` default would do exactly that for any unknown id).
- */
-export const EMPTY_HISTORY: EngineHistoryReader = {
-  async listSessionIdsForWorktree() {
-    return []
-  },
-  async readHistory() {
-    return []
-  },
-  async transcriptPath() {
-    return null
-  },
-  // No transcript store → no activity signal (the Ops badge stays dark
-  // rather than mis-watching another vendor's files).
-  async latestTranscriptMtimeForWorktree() {
-    return 0
-  },
-}
-
-/**
- * Claude's reader. `listSessionFilesForWorktree` sorts NEWEST-first (the
- * activity callers want that); the registry contract is oldest-first,
- * so re-sort ascending by mtime here — exactly what auto-title did inline.
- */
-const claudeHistoryReader: EngineHistoryReader = {
-  async listSessionIdsForWorktree(worktree) {
-    const files = await claudeHistory.listSessionFilesForWorktree(worktree)
-    return [...files].sort((a, b) => a.mtimeMs - b.mtimeMs).map((f) => f.sessionId)
-  },
-  readHistory: (sessionId) => claudeHistory.readHistory(sessionId),
-  async transcriptPath(sessionId, worktree) {
-    const files = await claudeHistory.listSessionFilesForWorktree(worktree)
-    return files.find((f) => f.sessionId === sessionId)?.path ?? null
-  },
-  latestTranscriptMtimeForWorktree: (worktree) => claudeHistory.latestTranscriptMtimeForWorktree(worktree),
-}
-
-/** Codex's reader — `listSessionIdsForWorktree` is already oldest-first. */
-const codexHistoryReader: EngineHistoryReader = {
-  listSessionIdsForWorktree: (worktree) => codexHistory.listSessionIdsForWorktree(worktree),
-  readHistory: (sessionId) => codexHistory.readHistory(sessionId),
-  // The rollout filename embeds the UUID; the store is date-keyed, not
-  // worktree-keyed, so the worktree argument is unused here.
-  transcriptPath: async (sessionId) => (await codexHistory.findRolloutFile(sessionId)) ?? null,
-  latestTranscriptMtimeForWorktree: (worktree) => codexHistory.latestTranscriptMtimeForWorktree(worktree),
-}
-
-const copilotHistoryReader: EngineHistoryReader = {
-  listSessionIdsForWorktree: (worktree) => copilotHistory.listSessionIdsForWorktree(worktree),
-  readHistory: (sessionId) => copilotHistory.readHistory(sessionId),
-  // Copilot's store layout isn't mapped to a per-session file kobe can name.
-  transcriptPath: async () => null,
-  latestTranscriptMtimeForWorktree: (worktree) => copilotHistory.latestTranscriptMtimeForWorktree(worktree),
-}
+// The per-vendor readers live in `history-readers.ts` (file-size cap);
+// EMPTY_HISTORY is re-exported so `@/engine/registry` stays the one
+// import site for the whole registry surface.
+export { EMPTY_HISTORY }
 
 /** The first-party entries — registered here and nowhere else. */
 const BUILTIN_ENGINES: Record<"claude" | "codex" | "copilot" | "kimi", EngineRegistryEntry> = {
@@ -309,11 +259,7 @@ const BUILTIN_ENGINES: Record<"claude" | "codex" | "copilot" | "kimi", EngineReg
     builtin: true,
     displayName: "Kimi",
     defaultCommand: ["kimi"],
-    // Kimi persists sessions under ~/.kimi-code/sessions/wd_*/session_*/
-    // (wire.jsonl protocol stream) but the message-record shape is
-    // unverified against a real conversation, so no history reader yet —
-    // EMPTY_HISTORY keeps auto-title/recap honest instead of mis-parsing.
-    history: EMPTY_HISTORY,
+    history: kimiHistoryReader,
     detectAccount: (deps) => detectKimiAccount(deps),
     createHookAdapter: () => new NoopHookAdapter("kimi"),
     createTurnDetector: () => new UnknownTurnDetector("kimi"),
@@ -349,15 +295,17 @@ export function engineEntry(vendor: VendorId): EngineRegistryEntry {
 }
 
 /**
- * True when `vendor`'s adapter ships a REAL transcript-store reader —
- * i.e. its `history` is not the documented {@link EMPTY_HISTORY} sentinel.
- * Neutral layers (e.g. `kobe api read-output`) use this to label an
- * `engine_unsupported` fallback honestly instead of confusing "engine has
- * no reader" with "reader found no sessions". Lives here so the sentinel
- * comparison stays inside the engine-owned module.
+ * True when `vendor`'s adapter can turn a session into neutral MESSAGES —
+ * i.e. its `readHistory` is not {@link EMPTY_HISTORY}'s. Neutral layers
+ * (e.g. `kobe api read-output`) use this to label an `engine_unsupported`
+ * fallback honestly instead of confusing "engine has no reader" with
+ * "reader found no sessions". Compares that one method rather than the
+ * whole object because kimi's reader is a partial: it resolves session
+ * ids and transcript PATHS (enough for a cross-engine handoff) while
+ * still shipping no message parser.
  */
 export function supportsStructuredHistory(vendor: VendorId): boolean {
-  return engineEntry(vendor).history !== EMPTY_HISTORY
+  return engineEntry(vendor).history.readHistory !== EMPTY_HISTORY.readHistory
 }
 
 /*
