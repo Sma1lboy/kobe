@@ -1,6 +1,7 @@
 import { execFileSync } from "node:child_process"
 import { chmod, mkdir, readFile, rm, writeFile } from "node:fs/promises"
 import { basename, join, relative, resolve, sep } from "node:path"
+import { setRoveEnv } from "@sma1lboy/kobe-daemon/compat-env"
 
 const REPO_ROOT = resolve(import.meta.dirname, "../../..")
 export const KOBE_DIR: string = join(REPO_ROOT, "packages", "kobe")
@@ -33,7 +34,31 @@ const VISUAL_TODAY = "2026-07-15"
 // reach the owning daemon — which means an agent running this suite from
 // inside a kobe task would otherwise hand the fixture TUI a socket pointing
 // at the OWNER'S live daemon, and the "isolated" journey renders real tasks.
-export const VISUAL_PTY_COMMAND = `HOME=${VISUAL_HOME} KOBE_SANDBOX_HOME_DIR=${VISUAL_HOME} KOBE_HOME_DIR=${VISUAL_HOME} XDG_CONFIG_HOME=${VISUAL_HOME}/.config KOBE_DAEMON_WEB_PORT=${VISUAL_DAEMON_PORT} KOBE_ISSUES_TODAY=${VISUAL_TODAY} KOBE_DAEMON_SOCKET_PATH= KOBE_DAEMON_PID_PATH= KOBE_PTY_SOCKET_PATH= KOBE_PTY_PID_PATH= KOBE_TASK_ID= KOBE_TAB_ID= bun run dev:sandbox`
+const VISUAL_PTY_ENV = [
+  `HOME=${VISUAL_HOME}`,
+  `XDG_CONFIG_HOME=${VISUAL_HOME}/.config`,
+  `ROVE_SANDBOX_HOME_DIR=${VISUAL_HOME}`,
+  `KOBE_SANDBOX_HOME_DIR=${VISUAL_HOME}`,
+  `ROVE_HOME_DIR=${VISUAL_HOME}`,
+  `KOBE_HOME_DIR=${VISUAL_HOME}`,
+  `ROVE_DAEMON_WEB_PORT=${VISUAL_DAEMON_PORT}`,
+  `KOBE_DAEMON_WEB_PORT=${VISUAL_DAEMON_PORT}`,
+  `ROVE_ISSUES_TODAY=${VISUAL_TODAY}`,
+  `KOBE_ISSUES_TODAY=${VISUAL_TODAY}`,
+  "ROVE_DAEMON_SOCKET_PATH=",
+  "KOBE_DAEMON_SOCKET_PATH=",
+  "ROVE_DAEMON_PID_PATH=",
+  "KOBE_DAEMON_PID_PATH=",
+  "ROVE_PTY_SOCKET_PATH=",
+  "KOBE_PTY_SOCKET_PATH=",
+  "ROVE_PTY_PID_PATH=",
+  "KOBE_PTY_PID_PATH=",
+  "ROVE_TASK_ID=",
+  "KOBE_TASK_ID=",
+  "ROVE_TAB_ID=",
+  "KOBE_TAB_ID=",
+].join(" ")
+export const VISUAL_PTY_COMMAND = `${VISUAL_PTY_ENV} bun run dev:sandbox`
 
 const XDG_CONFIG_HOME = join(VISUAL_HOME, ".config")
 const XDG_DATA_HOME = join(VISUAL_HOME, ".local", "share")
@@ -46,6 +71,7 @@ const inherited = Object.fromEntries(
     ([key, value]) =>
       value !== undefined &&
       !key.startsWith("KOBE_") &&
+      !key.startsWith("ROVE_") &&
       key !== "HOME" &&
       key !== "USERPROFILE" &&
       !key.startsWith("XDG_") &&
@@ -56,7 +82,7 @@ const inherited = Object.fromEntries(
   ),
 ) as Record<string, string>
 
-export const VISUAL_ENV: Record<string, string> = {
+const visualEnv: NodeJS.ProcessEnv = {
   ...inherited,
   HOME: VISUAL_HOME,
   USERPROFILE: VISUAL_HOME,
@@ -72,6 +98,11 @@ export const VISUAL_ENV: Record<string, string> = {
   KOBE_DAEMON_WEB_PORT: String(VISUAL_DAEMON_PORT),
   KOBE_ISSUES_TODAY: VISUAL_TODAY,
 }
+setRoveEnv("HOME_DIR", VISUAL_HOME, visualEnv)
+setRoveEnv("SANDBOX_HOME_DIR", VISUAL_HOME, visualEnv)
+setRoveEnv("DAEMON_WEB_PORT", String(VISUAL_DAEMON_PORT), visualEnv)
+setRoveEnv("ISSUES_TODAY", VISUAL_TODAY, visualEnv)
+export const VISUAL_ENV = visualEnv as Record<string, string>
 
 function assertSafeVisualRoot(): void {
   const scratch = join(REPO_ROOT, ".scratch")

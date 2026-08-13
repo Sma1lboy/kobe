@@ -21,20 +21,23 @@ import { mkdirSync } from "node:fs"
 import { homedir } from "node:os"
 import { resolve } from "node:path"
 import { ensureDaemonReachable } from "@sma1lboy/kobe-daemon/client/daemon-process"
+import { readRoveEnv, setRoveEnv } from "@sma1lboy/kobe-daemon/compat-env"
 
-const DAEMON_WEB_PORT = process.env.KOBE_DAEMON_WEB_PORT ?? "45174"
-const WEB_PORT = process.env.KOBE_WEB_PORT ?? "5173"
-const PTY_PORT = process.env.KOBE_PTY_PORT ?? "5175"
+const DAEMON_WEB_PORT = readRoveEnv("DAEMON_WEB_PORT") ?? "45174"
+const WEB_PORT = readRoveEnv("WEB_PORT") ?? "5173"
+const PTY_PORT = readRoveEnv("PTY_PORT") ?? "5175"
 
 // Resolve KOBE_HOME_DIR to an absolute path so every child agrees on the same
 // home regardless of its cwd, and ensure it exists (the sandbox home may not
 // yet). Unset → production `~/.kobe`.
-const rawHome = process.env.KOBE_HOME_DIR
+const rawHome = readRoveEnv("HOME_DIR")
 const homeDir = rawHome ? resolve(rawHome) : null
 if (homeDir) mkdirSync(homeDir, { recursive: true })
-if (homeDir) process.env.KOBE_HOME_DIR = homeDir
-process.env.KOBE_DAEMON_WEB_PORT = DAEMON_WEB_PORT
-const childEnv = { ...process.env, ...(homeDir ? { KOBE_HOME_DIR: homeDir } : {}) }
+if (homeDir) setRoveEnv("HOME_DIR", homeDir)
+setRoveEnv("DAEMON_WEB_PORT", DAEMON_WEB_PORT)
+setRoveEnv("WEB_PORT", WEB_PORT)
+setRoveEnv("PTY_PORT", PTY_PORT)
+const childEnv = { ...process.env }
 
 const sandboxed = homeDir !== null
 console.log(

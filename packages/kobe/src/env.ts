@@ -1,8 +1,8 @@
 /**
  * Centralised environment / runtime flag access.
  *
- * Convention: any new `KOBE_*` env var that the production code path
- * reads goes through here. Test-only env vars (`KOBE_TEST_ENGINE`,
+ * Convention: renamed controls accept `ROVE_*` first and fall back to their
+ * `KOBE_*` aliases. Any new production read goes through here. Test-only env vars (`KOBE_TEST_ENGINE`,
  * `KOBE_TEST_FAKE_PORT`, the per-pane `KOBE_*_HOST` fixtures, etc.)
  * stay where they are — they're internal plumbing for the harness,
  * not part of kobe's user-facing surface.
@@ -29,7 +29,7 @@ import { readRoveEnv } from "@sma1lboy/kobe-daemon/compat-env"
 import { COMPAT_CONFIG_DIR_BASENAME, COMPAT_STATE_DIR_BASENAME } from "./product.ts"
 
 /**
- * `KOBE_DEV=1` — declares the binary is running from a developer
+ * `ROVE_DEV=1` (or compatible `KOBE_DEV=1`) — declares the binary is running from a developer
  * checkout rather than an installed package. Suppresses the npm
  * version-check chip so contributors don't see "↑ vX.Y.Z available"
  * every time they `bun run dev` against an older `package.json` than
@@ -42,7 +42,7 @@ export function isDev(): boolean {
 }
 
 /**
- * `KOBE_HOME_DIR` — overrides `os.homedir()` for everything kobe
+ * `ROVE_HOME_DIR` (or compatible `KOBE_HOME_DIR`) — overrides `os.homedir()` for everything kobe
  * persists (state file, task index). Tests point this at a temp dir
  * so they don't trample the real `~/.kobe/`.
  */
@@ -52,7 +52,7 @@ export function homeDir(): string {
 
 /**
  * Root directory for kobe's persistent state — `~/.kobe/` by default
- * (or `$KOBE_HOME_DIR/.kobe/` when overridden). Callers join their
+ * (or `$ROVE_HOME_DIR/.kobe/` / `$KOBE_HOME_DIR/.kobe/` when overridden). Callers join their
  * own filename onto this; we don't `mkdir` here, that's the writer's
  * job at the actual write site.
  */

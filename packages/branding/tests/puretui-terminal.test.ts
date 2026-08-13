@@ -203,7 +203,13 @@ describe("PureTUI PTY sidecar", () => {
       onExit: () => ({ dispose() {} }),
     }
     const controller = createSidecarController({
-      baseEnv: { PATH: process.env.PATH ?? "", HOME: "/native-home", USERPROFILE: "/native-profile" },
+      baseEnv: {
+        PATH: process.env.PATH ?? "",
+        HOME: "/native-home",
+        USERPROFILE: "/native-profile",
+        ROVE_HOME_DIR: "/ambient-real-home",
+        ROVE_TASK_ID: "ambient-task",
+      },
       runSetup: async (file: string, args: string[], options: { cwd: string }) => {
         calls.push({ file, args, cwd: options.cwd })
       },
@@ -255,8 +261,10 @@ describe("PureTUI PTY sidecar", () => {
     expect(launchEnv).toMatchObject({
       HOME: "/native-home",
       USERPROFILE: "/native-profile",
+      ROVE_HOME_DIR: "/demo/home",
       KOBE_HOME_DIR: "/demo/home",
     })
+    expect(launchEnv).not.toHaveProperty("ROVE_TASK_ID")
   })
 
   test("serializes active xterm cells with ANSI foreground and background styles", () => {

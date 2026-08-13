@@ -12,6 +12,7 @@
 import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { readRoveEnv, setRoveEnv } from "@sma1lboy/kobe-daemon/compat-env"
 import type { TaskPty } from "../src/tui/panes/terminal/pty.ts"
 
 function option(name: string, fallback: number, max: number): number {
@@ -25,7 +26,7 @@ function option(name: string, fallback: number, max: number): number {
 }
 
 if (process.env.CI) throw new Error("pty:soak is intentionally non-CI; run it on a development machine")
-if (process.env.KOBE_TERMINAL_BACKEND && process.env.KOBE_TERMINAL_BACKEND !== "hosted") {
+if (readRoveEnv("TERMINAL_BACKEND") && readRoveEnv("TERMINAL_BACKEND") !== "hosted") {
   throw new Error("pty:soak requires the default hosted terminal backend")
 }
 
@@ -33,11 +34,11 @@ const tabs = option("tabs", 50, 100)
 const cycles = option("cycles", 3, 20)
 const lines = option("lines", 1200, 5000)
 const home = mkdtempSync(join(tmpdir(), "kobe-pty-soak-"))
-process.env.KOBE_HOME_DIR = home
-process.env.KOBE_SANDBOX_HOME_DIR = home
+setRoveEnv("HOME_DIR", home)
+setRoveEnv("SANDBOX_HOME_DIR", home)
 process.env.HOME = home
 process.env.XDG_CONFIG_HOME = join(home, ".config")
-process.env.KOBE_PTY_IDLE_EXIT_MS = "500"
+setRoveEnv("PTY_IDLE_EXIT_MS", "500")
 
 const { KobeDaemonClient } = await import("@sma1lboy/kobe-daemon/client")
 const { defaultPtyHostSocketPath } = await import("@sma1lboy/kobe-daemon/daemon/paths")

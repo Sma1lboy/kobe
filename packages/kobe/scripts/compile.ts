@@ -26,6 +26,8 @@
  * After the kobed → kobe bin merge (KOB-136), the single `kobe` binary
  * also hosts the daemon (`kobe daemon start|stop|status|restart`), so
  * there is no separate `kobed` binary to compile.
+ * Phase one exposes `rove` through the npm package; the standalone artifact
+ * intentionally keeps the compatibility `kobe` filename until a later phase.
  */
 
 import { mkdirSync } from "node:fs"

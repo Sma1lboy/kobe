@@ -26,6 +26,7 @@ describe("autospawnDaemonEnv", () => {
       ROVE_TUI: "1",
       ROVE_TERMINAL_PTY: "1",
       ROVE_DAEMON_AUTOSPAWNED: "0",
+      ROVE_INVOKED_AS: "rove",
       KOBE_HOME_DIR: "/tmp/sandbox-home",
       KOBE_DAEMON_SOCKET_PATH: "/tmp/sandbox.sock",
       PATH: "/usr/bin",
@@ -38,6 +39,7 @@ describe("autospawnDaemonEnv", () => {
     expect(env.ROVE_TAB_ID).toBeUndefined()
     expect(env.ROVE_TUI).toBeUndefined()
     expect(env.ROVE_TERMINAL_PTY).toBeUndefined()
+    expect(env.ROVE_INVOKED_AS).toBe("rove")
     // Explicit isolation overrides (dev:sandbox, captures) must survive.
     expect(env.KOBE_HOME_DIR).toBe("/tmp/sandbox-home")
     expect(env.KOBE_DAEMON_SOCKET_PATH).toBe("/tmp/sandbox.sock")

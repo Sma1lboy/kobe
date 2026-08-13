@@ -1,4 +1,9 @@
-import { installRoveEnvCompatibility, legacyKobeEnvKey, readRoveEnv } from "@sma1lboy/kobe-daemon/compat-env"
+import {
+  installRoveEnvCompatibility,
+  legacyKobeEnvKey,
+  readRoveEnv,
+  setRoveEnv,
+} from "@sma1lboy/kobe-daemon/compat-env"
 import { describe, expect, test } from "vitest"
 import { kobeCliInvocation, roveCliInvocation } from "../../src/cli/invocation.ts"
 import {
@@ -28,6 +33,17 @@ describe("rove environment compatibility", () => {
     installRoveEnvCompatibility(env)
     expect(env.KOBE_HOME_DIR).toBe("/legacy-home")
     expect(readRoveEnv("HOME_DIR", env)).toBe("/legacy-home")
+  })
+
+  test("an explicit internal override stamps both names over ambient values", () => {
+    const env: NodeJS.ProcessEnv = {
+      ROVE_HOME_DIR: "/ambient-rove-home",
+      KOBE_HOME_DIR: "/ambient-kobe-home",
+    }
+    setRoveEnv("HOME_DIR", "/isolated-home", env)
+    expect(readRoveEnv("HOME_DIR", env)).toBe("/isolated-home")
+    expect(env.ROVE_HOME_DIR).toBe("/isolated-home")
+    expect(env.KOBE_HOME_DIR).toBe("/isolated-home")
   })
 
   test("the internal invoked-as marker is not exposed as a KOBE_* control", () => {

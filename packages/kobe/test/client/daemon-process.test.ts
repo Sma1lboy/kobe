@@ -4,6 +4,7 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import {
   ensureDaemonReachable,
+  resolveKobeSpawn,
   testDaemonResponds,
   tryAcquireSpawnLock,
 } from "@sma1lboy/kobe-daemon/client/daemon-process"
@@ -15,6 +16,23 @@ const SOCK_DIR = process.platform === "darwin" ? "/tmp" : tmpdir()
 const servers: Server[] = []
 const openSockets = new Set<import("node:net").Socket>()
 type EventedServer = Server & { once(event: "error", listener: (err: Error) => void): void }
+
+describe("resolveKobeSpawn", () => {
+  it("re-enters through the active public wrapper in source mode", () => {
+    expect(resolveKobeSpawn(["daemon", "start"], { ROVE_INVOKED_AS: "rove" })).toEqual([
+      process.execPath,
+      expect.stringMatching(/\/cli\/rove\.ts$/),
+      "daemon",
+      "start",
+    ])
+    expect(resolveKobeSpawn(["daemon", "start"], { ROVE_INVOKED_AS: "kobe" })).toEqual([
+      process.execPath,
+      expect.stringMatching(/\/cli\/kobe\.ts$/),
+      "daemon",
+      "start",
+    ])
+  })
+})
 
 function listenAt(path: string, handler?: (sock: import("node:net").Socket) => void): Promise<string> {
   try {

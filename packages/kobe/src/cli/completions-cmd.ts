@@ -1,7 +1,5 @@
-import type { ProductCliName } from "../product.ts"
-import { activeCliName } from "./rename-compat.ts"
 /**
- * `kobe completions` — generate shell completion scripts.
+ * `<cli> completions` — generate shell completion scripts.
  *
  * Usage:
  *   source <(kobe completions zsh)                 # zsh, one-off or in ~/.zshrc
@@ -16,6 +14,8 @@ import { activeCliName } from "./rename-compat.ts"
  * The generated scripts complete subcommands (and only subcommands — flags
  * are omitted because most kobe subcommands define their own flags).
  */
+import type { ProductCliName } from "../product.ts"
+import { activeCliName } from "./rename-compat.ts"
 import { TOP_LEVEL_SUBCOMMANDS } from "./subcommands.ts"
 
 function completionUsage(cliName: ProductCliName): string {

@@ -18,6 +18,7 @@
 import { mkdtempSync, statSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { setRoveEnv } from "@sma1lboy/kobe-daemon/compat-env"
 
 const JSON_MODE = process.argv.includes("--json")
 const FAST = process.argv.includes("--fast")
@@ -40,8 +41,8 @@ const GOLDEN = {
   "binary-compile-ms": 240_000, // scripts/compile.ts wall time (skipped by --fast)
 }
 
-process.env.KOBE_HOME_DIR = mkdtempSync(join(tmpdir(), "kobe-perf-golden-"))
-process.env.KOBE_PTY_IDLE_EXIT_MS = "2000"
+setRoveEnv("HOME_DIR", mkdtempSync(join(tmpdir(), "kobe-perf-golden-")))
+setRoveEnv("PTY_IDLE_EXIT_MS", "2000")
 
 const { PtyRegistry } = await import("../src/tui/panes/terminal/registry.ts")
 const { XtermTaskPty } = await import("../src/tui/panes/terminal/pty-xterm-base.ts")

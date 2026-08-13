@@ -23,6 +23,7 @@ const inheritedEnvironment = (environment) =>
       ([key, value]) =>
         value !== undefined &&
         !key.startsWith("KOBE_") &&
+        !key.startsWith("ROVE_") &&
         !isEngineSessionMarker(key) &&
         key !== "HOME" &&
         key !== "USERPROFILE" &&
@@ -37,6 +38,9 @@ const inheritedEnvironment = (environment) =>
 const isolatedEnvironment = (baseEnv, demoRoot) => {
   const kobeHome = join(demoRoot, "home")
   const nativeHome = baseEnv.HOME ?? kobeHome
+  const daemonWebPort = baseEnv.ROVE_DAEMON_WEB_PORT ?? baseEnv.KOBE_DAEMON_WEB_PORT ?? "5274"
+  const hostLabel = baseEnv.ROVE_CAPTURE_HOST_LABEL ?? baseEnv.KOBE_CAPTURE_HOST_LABEL ?? "puretui-replay"
+  const sessionLabel = baseEnv.ROVE_CAPTURE_SESSION_LABEL ?? baseEnv.KOBE_CAPTURE_SESSION_LABEL ?? basename(demoRoot)
   return {
     ...inheritedEnvironment(baseEnv),
     HOME: nativeHome,
@@ -49,12 +53,18 @@ const isolatedEnvironment = (baseEnv, demoRoot) => {
     TERM: "xterm-256color",
     COLORTERM: "truecolor",
     TERM_PROGRAM: "kobe-capture",
+    ROVE_DEV: "1",
     KOBE_DEV: "1",
+    ROVE_HOME_DIR: kobeHome,
     KOBE_HOME_DIR: kobeHome,
+    ROVE_SANDBOX_HOME_DIR: kobeHome,
     KOBE_SANDBOX_HOME_DIR: kobeHome,
-    KOBE_DAEMON_WEB_PORT: baseEnv.KOBE_DAEMON_WEB_PORT ?? "5274",
-    KOBE_CAPTURE_HOST_LABEL: baseEnv.KOBE_CAPTURE_HOST_LABEL ?? "puretui-replay",
-    KOBE_CAPTURE_SESSION_LABEL: baseEnv.KOBE_CAPTURE_SESSION_LABEL ?? basename(demoRoot),
+    ROVE_DAEMON_WEB_PORT: daemonWebPort,
+    KOBE_DAEMON_WEB_PORT: daemonWebPort,
+    ROVE_CAPTURE_HOST_LABEL: hostLabel,
+    KOBE_CAPTURE_HOST_LABEL: hostLabel,
+    ROVE_CAPTURE_SESSION_LABEL: sessionLabel,
+    KOBE_CAPTURE_SESSION_LABEL: sessionLabel,
   }
 }
 

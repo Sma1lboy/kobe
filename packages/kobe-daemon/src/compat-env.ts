@@ -31,6 +31,19 @@ export function readRoveEnv(suffix: string, env: NodeJS.ProcessEnv = process.env
 }
 
 /**
+ * Set an explicit control in both namespaces.
+ *
+ * Internal launchers use this when an isolation or command-line override must
+ * beat every inherited value. Writing only KOBE_* is insufficient because a
+ * child wrapper will correctly reapply ROVE_* precedence when it starts.
+ */
+export function setRoveEnv(suffix: string, value: string, env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  env[`${ROVE_ENV_PREFIX}${suffix}`] = value
+  env[`${LEGACY_KOBE_ENV_PREFIX}${suffix}`] = value
+  return env
+}
+
+/**
  * Mirror every public ROVE_* control into the legacy internal namespace.
  * Existing KOBE_* values remain when no new-name value was supplied.
  */

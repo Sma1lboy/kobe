@@ -1,12 +1,12 @@
 /**
- * How to re-invoke the kobe CLI as a subprocess.
+ * How to re-invoke the active public CLI as a subprocess.
  *
- * Some features spawn a kobe subcommand in a child process. In a packaged
- * install that's just `kobe` on PATH;
- * in dev (`bun run dev`) there's no `kobe` bin, so we reconstruct the
+ * Some features spawn a CLI subcommand in a child process. In a packaged
+ * install that is the active `rove` or `kobe` name on PATH; in dev there is
+ * no installed bin, so we reconstruct the
  * exact runtime the dev script uses.
  *
- * Lives in `cli/` because it is about locating the kobe binary.
+ * Lives in `cli/` because it is about locating the public wrapper.
  */
 
 import { fileURLToPath } from "node:url"
@@ -14,11 +14,11 @@ import { LEGACY_KOBE_PRODUCT_NAME, ROVE_PRODUCT_NAME } from "../product.ts"
 import { activeCliName } from "./rename-compat.ts"
 
 /**
- * argv prefix that runs the kobe CLI. Append the subcommand + flags:
+ * argv prefix that runs the active CLI. Append the subcommand + flags:
  *
  *   [...kobeCliInvocation(), "ops", "--worktree", wt]
  *
- * Packaged build → `["kobe"]` (npm bin shim on PATH). Dev → `[<bun>,
+ * Packaged build → `[<active-name>]` (npm bin shim on PATH). Dev → `[<bun>,
  * "--conditions=browser", <cli entry>]`.
  *
  * The `browser` export condition is required — opentui resolves a
@@ -48,6 +48,8 @@ export const kobeCliInvocation = roveCliInvocation
  * bin exists.
  */
 export function kobeHookInvocation(): string[] {
+  // Persist the compatibility alias: hook files outlive the wrapper that
+  // installed them, and `kobe` remains guaranteed throughout rename phase 1.
   if (import.meta.url.endsWith(".js")) return [LEGACY_KOBE_PRODUCT_NAME]
   if (Bun.which(LEGACY_KOBE_PRODUCT_NAME)) return [LEGACY_KOBE_PRODUCT_NAME]
   return roveCliInvocation()
