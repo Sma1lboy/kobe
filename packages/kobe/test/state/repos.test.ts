@@ -2,9 +2,9 @@
  * Unit tests for `src/state/repos.ts`.
  *
  * The module reads/writes the same on-disk KV blob the TUI uses
- * (`~/.config/kobe/state.json`), so the tests redirect HOME via
+ * (`~/.config/rove/state.json`), so the tests redirect HOME via
  * `KOBE_HOME_DIR` to a per-test tmpdir. Every state mutation is
- * scoped to that tmpdir; the real `~/.config/kobe/` is untouched.
+ * scoped to that tmpdir; the real `~/.config/rove/` is untouched.
  *
  * What we pin:
  *   - `getSavedRepos()` returns `[]` when the file doesn't exist.
@@ -53,7 +53,7 @@ afterEach(() => {
 
 describe("statePath", () => {
   test("resolves under KOBE_HOME_DIR", () => {
-    expect(statePath()).toBe(path.join(tmpHome, ".config", "kobe", "state.json"))
+    expect(statePath()).toBe(path.join(tmpHome, ".config", "rove", "state.json"))
   })
 })
 

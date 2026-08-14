@@ -44,7 +44,7 @@ export { act }
 export interface ProviderFlags {
   /** `<ThemeProvider theme="claude">`. Default true — nearly every component reads `useTheme()`. */
   theme?: boolean
-  /** `<KVProvider>` — persisted UI state. Reads/writes `$KOBE_HOME_DIR/.config/kobe/state.json`; set that env var in a test that enables this. Default false. */
+  /** `<KVProvider>` — persisted UI state. Reads/writes `$KOBE_HOME_DIR/.config/rove/state.json`; set that env var in a test that enables this. Default false. */
   kv?: boolean
   /** `<FocusProvider>` — pane focus context. Default false. */
   focus?: boolean

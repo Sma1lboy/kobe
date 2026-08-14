@@ -46,7 +46,7 @@ export async function ensureTaskSessionAdapter(link: DaemonRpcClient, taskId: st
 
 /**
  * {@link ensureTaskSessionAdapter} with an explicit first message instead of
- * the repo's `.kobe/init-prompt.md`. Used by the daemon's automation runner,
+ * the repo's `.rove/init-prompt.md` (or legacy `.kobe` fallback). Used by the daemon's automation runner,
  * whose whole job is starting a session that says something specific.
  *
  * `promptIntent: {kind:"new-task"}` makes `buildEngineSessionLaunch` append the

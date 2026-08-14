@@ -40,7 +40,7 @@ maintained on main and already accurate.
 | 2. Keychain | Done | `packages/kobe/src/exec/keychain.ts` — macOS `security` store/read/delete behind injected deps; non-darwin no-op. Tests pass. |
 | 3. Data model | Done | `packages/kobe/src/state/repos.ts` — `RemoteRepoConfig`, `remoteRepos` map, synthetic `ssh://user@host[:port]` savedRepos keys, `resolveRepoRoot` ssh:// passthrough, `isRemoteProjectsEnabled()` experimental gate. `remoteControlSocketPath` in `env.ts`. Tests pass. |
 | 4. CLI | Done | `packages/kobe/src/cli/add-remote.ts` — `kobe add --remote --host --user --path [--port] [--key|--password]`; refuses when the experimental flag is off. Tests pass. |
-| 5. Remote worktree | Done | `GitWorktreeManager` routes git+fs through `orchestrator/worktree/exec-deps.ts`; `paths.ts` `remoteWorktreePathFor`; remote worktrees under `<basePath>/.kobe/worktrees`. Tests pass. |
+| 5. Remote worktree | Done | `GitWorktreeManager` routes git+fs through `orchestrator/worktree/exec-deps.ts`; `paths.ts` `remoteWorktreePathFor`; new remote worktrees use `<basePath>/.rove/worktrees` and legacy `.kobe/worktrees` remains recognized. Tests pass. |
 | 6. Engine launch over SSH | **REGRESSED / disconnected** | The original phase-6 launch was wired through the tmux runtime, which was retired in the embedded-terminal pivot. `ExecHost.wrapCommand` (the `ssh -tt … 'cd <wt> && <engine>'` builder) still exists but has **zero consumers** outside `exec-host.ts`. The current shared launch builder `packages/kobe/src/engine/session-launch.ts` has no remote/ssh/ExecHost awareness — a task under a remote project would get its worktree created remotely but its engine launched locally (against a cwd that doesn't exist locally). |
 
 Feature gate: `experimental.remoteProjects`, off by default, toggled at
@@ -70,7 +70,7 @@ None of the above is live-host validation. Everything below is untested
 against a real remote and cannot be claimed working:
 
 1. `kobe add --remote` end-to-end: connectivity probe, ControlMaster socket
-   creation under `<KOBE_HOME>/.kobe/ssh/`, key and password (keychain +
+   creation under `<ROVE_HOME>/.rove/ssh/`, key and password (keychain +
    `sshpass -e`) auth paths, `StrictHostKeyChecking=accept-new` TOFU flow.
 2. Remote worktree creation: `git worktree add` over SSH against a real repo
    at `basePath`, path quoting on hosts with unusual shells, latency behavior

@@ -3,7 +3,8 @@
  * override (the `initScript` / `initPrompt` stored in state.json).
  *
  * This override is the FALLBACK default for a repo that doesn't ship its
- * own `.kobe/init.sh` / `.kobe/init-prompt.md`; the in-repo files win when
+ * own `.rove/init.sh` / `.rove/init-prompt.md`; legacy `.kobe/` files remain
+ * fallbacks and in-repo files win when
  * present (see `state/repo-init.ts`). The path defaults to the current
  * directory and is normalized to its git toplevel, so every worktree of
  * the repo resolves the same entry.
@@ -21,10 +22,10 @@ const REPO_USAGE = [
   `Usage: ${CLI_NAME} repo <show|set|unset> [path] [options]`,
   "",
   "Manage a repo's per-user init override (state.json fallback for repos",
-  "that don't ship .kobe/init.sh / .kobe/init-prompt.md).",
+  "that don't ship .rove/init.sh / .rove/init-prompt.md).",
   "",
   "Commands:",
-  "  show [path]                 Print the override + whether the repo ships .kobe/ files",
+  "  show [path]                 Print the override + repo convention files",
   "  set [path] <options>        Set the init script and/or first prompt",
   "  unset [path] [--init-script] [--init-prompt]   Clear one or both (default: both)",
   "",
@@ -113,11 +114,15 @@ export async function runRepoSubcommand(args: readonly string[]): Promise<void> 
     const [pathArg] = rest.filter((a) => !a.startsWith("-"))
     const repo = resolveRepoRoot(resolve(process.cwd(), expandTilde(pathArg ?? ".")))
     const override = getRepoInitOverride(repo)
-    const hasFileScript = existsSync(join(repo, ".kobe", "init.sh"))
-    const hasFilePrompt = existsSync(join(repo, ".kobe", "init-prompt.md"))
+    const hasRoveScript = existsSync(join(repo, ".rove", "init.sh"))
+    const hasRovePrompt = existsSync(join(repo, ".rove", "init-prompt.md"))
+    const hasKobeScript = existsSync(join(repo, ".kobe", "init.sh"))
+    const hasKobePrompt = existsSync(join(repo, ".kobe", "init-prompt.md"))
     console.log(`repo: ${repo}`)
-    console.log(`  .kobe/init.sh:        ${hasFileScript ? "present (wins)" : "absent"}`)
-    console.log(`  .kobe/init-prompt.md: ${hasFilePrompt ? "present (wins)" : "absent"}`)
+    console.log(`  .rove/init.sh:        ${hasRoveScript ? "present (wins)" : "absent"}`)
+    console.log(`  .rove/init-prompt.md: ${hasRovePrompt ? "present (wins)" : "absent"}`)
+    console.log(`  .kobe/init.sh:        ${hasKobeScript ? "present (legacy fallback)" : "absent"}`)
+    console.log(`  .kobe/init-prompt.md: ${hasKobePrompt ? "present (legacy fallback)" : "absent"}`)
     console.log(`  override initScript:  ${override.initScript ? quotePreview(override.initScript) : "(unset)"}`)
     console.log(`  override initPrompt:  ${override.initPrompt ? quotePreview(override.initPrompt) : "(unset)"}`)
     return

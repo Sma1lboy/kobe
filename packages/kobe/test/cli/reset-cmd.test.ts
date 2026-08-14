@@ -36,6 +36,7 @@ beforeEach(() => {
   home = mkdtempSync(join(tmpdir(), "kobe-reset-"))
   process.env.KOBE_HOME_DIR = home
   mkdirSync(join(home, ".kobe"), { recursive: true })
+  mkdirSync(join(home, ".rove"), { recursive: true })
   mocks.stopDaemonProcess.mockReset().mockResolvedValue({ pid: null, method: "absent" })
   mocks.stopLegacyTmux.mockReset().mockResolvedValue({ status: "absent", sessions: 0, signalledGroups: 0 })
   mocks.stampResetGate.mockReset()
@@ -76,24 +77,31 @@ describe("runResetSubcommand", () => {
   })
 
   it("hard reset removes task and UI state while preserving worktrees", async () => {
-    const tasksPath = join(home, ".kobe", "tasks.json")
-    const statePath = join(home, ".config", "kobe", "state.json")
+    const tasksPath = join(home, ".rove", "tasks.json")
+    const legacyTasksPath = join(home, ".kobe", "tasks.json")
+    const statePath = join(home, ".config", "rove", "state.json")
+    const legacyStatePath = join(home, ".config", "kobe", "state.json")
+    mkdirSync(join(home, ".config", "rove"), { recursive: true })
     mkdirSync(join(home, ".config", "kobe"), { recursive: true })
     writeFileSync(tasksPath, JSON.stringify({ tasks: [{ id: "a" }] }))
+    writeFileSync(legacyTasksPath, JSON.stringify({ tasks: [{ id: "legacy" }] }))
     writeFileSync(statePath, "{}")
+    writeFileSync(legacyStatePath, "{}")
 
     await runResetSubcommand(["--hard", "--yes"])
 
     expect(existsSync(tasksPath)).toBe(false)
+    expect(existsSync(legacyTasksPath)).toBe(false)
     expect(existsSync(statePath)).toBe(false)
+    expect(existsSync(legacyStatePath)).toBe(false)
     expect(output()).toContain("NOT touch your git worktrees")
     expect(mocks.stampResetGate).not.toHaveBeenCalled()
   })
 
   it("does not wipe state or stamp reset complete when legacy cleanup fails", async () => {
-    const tasksPath = join(home, ".kobe", "tasks.json")
-    const statePath = join(home, ".config", "kobe", "state.json")
-    mkdirSync(join(home, ".config", "kobe"), { recursive: true })
+    const tasksPath = join(home, ".rove", "tasks.json")
+    const statePath = join(home, ".config", "rove", "state.json")
+    mkdirSync(join(home, ".config", "rove"), { recursive: true })
     writeFileSync(tasksPath, JSON.stringify({ tasks: [{ id: "a" }] }))
     writeFileSync(statePath, "{}")
     mocks.stopLegacyTmux.mockResolvedValue({
@@ -113,7 +121,7 @@ describe("runResetSubcommand", () => {
   })
 
   it("does not report success when a hard-reset state path cannot be removed", async () => {
-    const tasksPath = join(home, ".kobe", "tasks.json")
+    const tasksPath = join(home, ".rove", "tasks.json")
     mkdirSync(tasksPath)
 
     await expect(runResetSubcommand(["--hard", "--yes"])).rejects.toThrow("failed to remove task index")

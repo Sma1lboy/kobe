@@ -18,7 +18,7 @@ import { mkdir, readFile, realpath, rename, stat, writeFile } from "node:fs/prom
 import { homedir } from "node:os"
 import { dirname, isAbsolute, join, resolve } from "node:path"
 import { promisify } from "node:util"
-import { COMPAT_STATE_DIR_BASENAME, readRoveEnv } from "../compat-env.ts"
+import { ROVE_STATE_DIR_BASENAME, readRoveEnv } from "../compat-env.ts"
 
 const execFileAsync = promisify(execFile)
 
@@ -47,7 +47,7 @@ interface NotesStoreFile {
 }
 
 export function defaultNotesStorePath(homeDir = readRoveEnv("HOME_DIR") ?? homedir()): string {
-  return join(homeDir, COMPAT_STATE_DIR_BASENAME, "notes.json")
+  return join(homeDir, ROVE_STATE_DIR_BASENAME, "notes.json")
 }
 
 function normalizeNote(entry: unknown): FieldNote | null {

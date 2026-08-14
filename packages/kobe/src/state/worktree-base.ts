@@ -1,10 +1,10 @@
 /**
  * Global worktree base-path override.
  *
- * By default kobe stores every LOCAL task worktree under
- * `<home>/.kobe/worktrees/<repo-key>/<slug>` (see
+ * By default Rove stores every LOCAL task worktree under
+ * `<home>/.rove/worktrees/<repo-key>/<slug>` (see
  * `orchestrator/worktree/paths.ts`). This module owns the one optional
- * knob that relocates that `<home>/.kobe/worktrees` root to a
+ * knob that relocates that `<home>/.rove/worktrees` root to a
  * user-chosen directory — e.g. a faster disk, or a folder the user
  * already keeps their scratch checkouts in. The per-repo `<repo-key>`
  * namespacing below it is preserved, so worktrees from different repos
@@ -71,7 +71,7 @@ export function hasProjectDirToken(raw: string): boolean {
 
 /**
  * Normalize a raw user-entered base path to an absolute directory, or
- * `null` when it's unset/blank (meaning "use kobe's default root").
+ * `null` when it's unset/blank (meaning "use Rove's default root").
  *
  * A leading `~` / `~/` expands to the OS home; relative paths resolve
  * against it too, so a user who types `code/worktrees` gets a stable

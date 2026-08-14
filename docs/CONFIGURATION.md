@@ -7,15 +7,17 @@ then `,`. This page is for when you want to edit them by hand.
 
 | Path | What | Written by |
 |---|---|---|
-| `~/.config/kobe/state.json` | All your preferences, as flat JSON | Rove (Settings, CLI); yours to hand-edit |
-| `~/.kobe/themes/*.json` | Installed themes | `rove theme add`, or drop files in |
-| `~/.kobe/settings/keybindings.yaml` | Keybinding overrides | You only |
-| `<repo>/.kobe/init.sh` + `init-prompt.md` | Per-repo worktree setup | You (committed to the repo) |
+| `~/.config/rove/state.json` | All your preferences, as flat JSON | Rove (Settings, CLI); yours to hand-edit |
+| `~/.rove/themes/*.json` | Installed themes | `rove theme add`, or drop files in |
+| `~/.rove/settings/keybindings.yaml` | Keybinding overrides | You only |
+| `<repo>/.rove/init.sh` + `init-prompt.md` | Per-repo worktree setup | You (committed to the repo) |
 
-Setting `ROVE_HOME_DIR` moves all of it somewhere else. `KOBE_HOME_DIR` remains
-a supported fallback; when both are set, `ROVE_HOME_DIR` wins. The directory
-names themselves deliberately stay `.kobe` and `.config/kobe`, so existing
-state is reused without migration.
+Setting `ROVE_HOME_DIR` changes the home beneath these paths. `KOBE_HOME_DIR`
+remains a supported fallback; when both are set, `ROVE_HOME_DIR` wins. On first
+launch, Rove copies missing client-owned data from `.kobe` and `.config/kobe`;
+daemon-owned stores are copied when the new daemon starts, after the old writer
+has stopped. Neither phase overwrites or deletes old files. Existing worktrees
+stay where they are; daemon/PTY runtime files and plugins retain their compatibility paths.
 
 ## Editing settings
 
@@ -123,11 +125,11 @@ Toggle with `ctrl+a` `z`.
 
 ### Worktree location
 
-By default worktrees land under `~/.kobe/worktrees/<repo-key>/<slug>`.
+By default new worktrees land under `~/.rove/worktrees/<repo-key>/<slug>`.
 
 | Key | Type | Default | What it does |
 |---|---|---|---|
-| `worktree.basePath` | string | `~/.kobe/worktrees` | Where new worktrees go |
+| `worktree.basePath` | string | `~/.rove/worktrees` | Where new worktrees go |
 | `worktree.basePath.custom` | string | unset | Remembers your last custom path in the TUI |
 
 `worktree.basePath` takes an absolute path, or one starting with the
@@ -136,7 +138,9 @@ that gives you a per-project layout. `$project_dir/..` puts worktrees next to
 each repo. The token only counts as the **first** segment.
 
 **Only new tasks move.** Existing tasks keep the path they were created with,
-and remote (SSH) projects are unaffected. No restart needed.
+including legacy global and repo-local roots. New remote (SSH) worktrees use
+`<basePath>/.rove/worktrees`; their existing `.kobe/worktrees` remain
+discoverable. No restart needed.
 
 ### Sidebar
 
@@ -172,7 +176,7 @@ Available hosted: `catppuccin`, `dracula`, `everforest`, `gruvbox`,
 `kanagawa`, `nord`, `opencode`, `osaka-jade`, `rose-pine`, `solarized`.
 Preview them at <https://kobe.sma1lboy.me/themes>.
 
-You can also drop your own `<name>.json` into `~/.kobe/themes/` — no
+You can also drop your own `<name>.json` into `~/.rove/themes/` — no
 recompile, loaded at boot, and a user theme wins over a bundled one with the
 same name. Writing one: [Themes](./themes.md).
 
@@ -180,7 +184,7 @@ same name. Writing one: [Themes](./themes.md).
 
 Full vocabulary: [Keybindings](./KEYBINDINGS.md). The configuration surface:
 
-- Edit `~/.kobe/settings/keybindings.yaml` by hand. Rove never writes it.
+- Edit `~/.rove/settings/keybindings.yaml` by hand. Rove never writes it.
 - Changes **reload live** — no restart. Problems show up as warnings in
   Settings → Keybindings.
 - A direct override replaces that binding's whole chord list; `null` or `[]`
@@ -230,11 +234,12 @@ activity hooks, no session resume. More in [Engines](./ENGINES.md).
 
 ## Per-repo init
 
-A repo can ship two files in its own `.kobe/` directory:
+A repo can ship two files in its own `.rove/` directory:
 
-- **`.kobe/init.sh`** — runs in each new task worktree before the engine
+- **`.rove/init.sh`** — runs in each new task worktree before the engine
   starts, once per worktree. Use it for `bun install`, direnv, codegen.
-- **`.kobe/init-prompt.md`** — sent as the engine's first message.
+- **`.rove/init-prompt.md`** — sent as the engine's first message.
 
 Files committed in the repo win over any per-user override you set with
-`rove repo set`.
+`rove repo set`. Legacy `.kobe/init.sh` and `.kobe/init-prompt.md` remain
+field-by-field fallbacks; a `.rove` file wins when both spellings exist.

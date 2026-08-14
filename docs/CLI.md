@@ -19,8 +19,9 @@ bunx @sma1lboy/kobe             # try without installing
 The installed package exposes both `rove` and `kobe`. `rove` is the canonical
 entry point; `kobe` remains a fully supported compatibility alias. They run the
 same commands against the same daemon, worktrees, and persisted state. This
-rename intentionally does not move `~/.kobe` or
-`~/.config/kobe/state.json`.
+rename uses `~/.rove` and `~/.config/rove/state.json` for canonical product
+data. First launch copies supported legacy data without overwriting or removing
+the old files; runtime and plugin paths retain their compatibility names.
 
 ```bash
 rove update            # latest
@@ -139,7 +140,7 @@ table` aligns it for humans.
 rove config [--path]
 ```
 
-Opens `~/.config/kobe/state.json` in your editor. See
+Opens `~/.config/rove/state.json` in your editor. See
 [Configuration](./CONFIGURATION.md).
 
 ## theme
@@ -150,7 +151,7 @@ rove theme add <url|path> [--name <name>] [--force]
 rove theme remove <name>
 ```
 
-User themes land in `~/.kobe/themes/` and can shadow a bundled name. Bundled
+User themes land in `~/.rove/themes/` and can shadow a bundled name. Bundled
 themes can't be removed. See [Themes](./themes.md).
 
 ## repo
@@ -163,8 +164,9 @@ rove repo unset [path] [--init-script] [--init-prompt]
 ```
 
 Sets a per-user init override for a repo. If the repo commits its own
-`.kobe/init.sh` / `.kobe/init-prompt.md`, those win. Path defaults to the
-current directory. `unset` with no flag clears both.
+`.rove/init.sh` / `.rove/init-prompt.md`, those win. Legacy `.kobe` files are
+field-by-field fallbacks. Path defaults to the current directory. `unset` with
+no flag clears both.
 
 ## skill
 
@@ -297,20 +299,25 @@ for compatibility; for example, `ROVE_HOME_DIR` takes precedence over
 | `KOBE_DAEMON_WEB_PORT` | Web dashboard port (default 45174; `0`/`off` disables) |
 | `KOBE_DEV=1` | Mark a developer checkout — hides the update chip |
 | `KOBE_DEBUG=1` | Print full startup errors instead of one line |
-| `KOBE_TASK_ID` / `KOBE_TAB_ID` | Set inside engine tabs; how `rove api` verbs resolve the calling task |
+| `ROVE_TASK_ID` / `ROVE_TAB_ID` | Set inside engine tabs; how `rove api` verbs resolve the calling task |
+| `KOBE_TASK_ID` / `KOBE_TAB_ID` | Compatibility aliases exported beside the Rove names |
 
 `KOBE_OPEN_EDITOR` wins over Rove's auto-detection, and it's separate from the
 `editor.*` settings, which pick your TTY editor.
 
 ## Where state lives
 
-Under `~/.kobe/` (or `ROVE_HOME_DIR`, with `KOBE_HOME_DIR` as fallback):
+Canonical product data under `~/.rove/` (or `ROVE_HOME_DIR`, with
+`KOBE_HOME_DIR` as fallback):
 
 - `tasks.json` — the task index
 - `worktrees/<repo-key>/<task-slug>/` — per-task worktrees
-- `daemon.log`, `pty-host.log` and their sockets
-- `plugins.json` + `plugins/<id>/`, `themes/`, `settings/keybindings.yaml`
+- `themes/`, `settings/keybindings.yaml`, issues, notes, and automations
 
-Plus `~/.config/kobe/state.json`, the settings file `rove config` or
-`kobe config` opens. These compatibility path names are deliberately unchanged,
-so no migration or duplicate state tree is created.
+Plus `~/.config/rove/state.json`, the settings file `rove config` or
+`kobe config` opens. Existing `~/.kobe/worktrees` paths remain recognized and
+are never copied or rewritten. Daemon/PTY runtime files and `plugins.json` +
+`plugins/<id>/` deliberately remain under `~/.kobe` for continuity. The first
+launch copies other supported legacy data additively and never deletes the
+source or overwrites canonical files. Daemon-owned stores are copied at
+new-daemon startup, only after the legacy writer has stopped.

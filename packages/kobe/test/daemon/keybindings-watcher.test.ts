@@ -59,7 +59,7 @@ afterEach(() => {
 
 describe("defaultKeybindingsPath", () => {
   test("resolves under the given home (mirror of keybindingsConfigPath in env.ts)", () => {
-    expect(defaultKeybindingsPath("/some/home")).toBe(path.join("/some/home", ".kobe", "settings", "keybindings.yaml"))
+    expect(defaultKeybindingsPath("/some/home")).toBe(path.join("/some/home", ".rove", "settings", "keybindings.yaml"))
   })
 })
 

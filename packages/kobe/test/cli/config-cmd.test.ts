@@ -27,7 +27,7 @@ let logSpy: ReturnType<typeof vi.spyOn>
 let errSpy: MockInstance<typeof process.stderr.write>
 let exitSpy: MockInstance<typeof process.exit>
 
-const configPath = (): string => join(home, ".config", "kobe", "state.json")
+const configPath = (): string => join(home, ".config", "rove", "state.json")
 
 beforeEach(() => {
   originalHome = process.env.KOBE_HOME_DIR

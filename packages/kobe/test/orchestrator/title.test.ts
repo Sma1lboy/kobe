@@ -1,9 +1,14 @@
 import { describe, expect, it } from "vitest"
-import { TITLE_CHAR_CAP, autoBranch, deriveTitleFromPrompt } from "../../src/orchestrator/title.ts"
+import {
+  TITLE_CHAR_CAP,
+  autoBranch,
+  deriveTitleFromPrompt,
+  isPlaceholderDerivedBranch,
+} from "../../src/orchestrator/title.ts"
 
 describe("autoBranch", () => {
-  it("builds kobe/<slug>-<id6> from title + task id", () => {
-    expect(autoBranch("(new task)", "01HXABCDEF")).toBe("kobe/new-task-abcdef")
+  it("builds rove/<slug>-<id6> from title + task id", () => {
+    expect(autoBranch("(new task)", "01HXABCDEF")).toBe("rove/new-task-abcdef")
   })
 
   it("gives placeholder-titled tasks DISTINCT branches via the id suffix", () => {
@@ -12,29 +17,36 @@ describe("autoBranch", () => {
     const a = autoBranch("(new task)", "01HXAAAAAA")
     const b = autoBranch("(new task)", "01HXBBBBBB")
     expect(a).not.toBe(b)
-    expect(a).toBe("kobe/new-task-aaaaaa")
-    expect(b).toBe("kobe/new-task-bbbbbb")
+    expect(a).toBe("rove/new-task-aaaaaa")
+    expect(b).toBe("rove/new-task-bbbbbb")
   })
 
   it("falls back to 'task' when the title has no slug-able chars", () => {
-    expect(autoBranch("!!!", "01HXZZZZZZ")).toBe("kobe/task-zzzzzz")
-    expect(autoBranch("", "01HXZZZZZZ")).toBe("kobe/task-zzzzzz")
+    expect(autoBranch("!!!", "01HXZZZZZZ")).toBe("rove/task-zzzzzz")
+    expect(autoBranch("", "01HXZZZZZZ")).toBe("rove/task-zzzzzz")
   })
 
   it("lowercases + dash-collapses + caps the slug at 32 chars", () => {
     const branch = autoBranch("Fix The Very Long Feature Name That Exceeds The Cap!!", "01HXQQQQQQ")
-    const slug = branch.slice("kobe/".length, -"-qqqqqq".length)
+    const slug = branch.slice("rove/".length, -"-qqqqqq".length)
     expect(slug.length).toBeLessThanOrEqual(32)
     expect(slug).toBe("fix-the-very-long-feature-name-t")
   })
 
   it("never emits a double hyphen when the 32-char cap lands on a word boundary", () => {
     // The trailing-hyphen trim runs BEFORE the .slice(0, 32) cap, so a slice
-    // that ends on a `-` used to survive into the template as `kobe/<slug>--<id>`.
+    // that ends on a `-` used to survive into the template as `rove/<slug>--<id>`.
     // Reachable whenever char 33 is a word boundary: 31 slug chars + a space + a word.
     const branch = autoBranch(`${"a".repeat(31)} bar`, "01HXQQQQQQ")
-    expect(branch).toBe(`kobe/${"a".repeat(31)}-qqqqqq`)
+    expect(branch).toBe(`rove/${"a".repeat(31)}-qqqqqq`)
     expect(branch).not.toContain("--")
+  })
+
+  it("recognizes canonical and pre-Rove placeholder branches only", () => {
+    const id = "01HXABCDEF"
+    expect(isPlaceholderDerivedBranch("rove/new-task-abcdef", id)).toBe(true)
+    expect(isPlaceholderDerivedBranch("kobe/new-task-abcdef", id)).toBe(true)
+    expect(isPlaceholderDerivedBranch("kobe/real-work-abcdef", id)).toBe(false)
   })
 })
 

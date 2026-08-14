@@ -1,6 +1,6 @@
 /**
  * Daemon-side watcher for the user keybindings file
- * (`~/.kobe/settings/keybindings.yaml`) — the second live-prefs fan-out,
+ * (`~/.rove/settings/keybindings.yaml`) — the second live-prefs fan-out,
  * sibling to `ui-prefs-watcher.ts`.
  *
  * The TUI applies keybinding overrides ONCE at boot (`applyUserKeybindings`
@@ -23,7 +23,7 @@
 
 import { homedir } from "node:os"
 import { basename, join } from "node:path"
-import { COMPAT_STATE_DIR_BASENAME, readRoveEnv } from "../compat-env.ts"
+import { ROVE_STATE_DIR_BASENAME, readRoveEnv } from "../compat-env.ts"
 import { logDaemonError } from "./crash-log.ts"
 import type { DaemonEventBus } from "./event-bus.ts"
 import { startFileWatchTrigger } from "./file-watch-trigger.ts"
@@ -34,11 +34,11 @@ export const DEFAULT_KEYBINDINGS_DEBOUNCE_MS = 200
 /**
  * Path of the user keybindings file for a kobe home. Mirrors
  * `keybindingsConfigPath()` in `packages/kobe/src/env.ts` (keep in sync):
- * `<home>/.kobe/settings/keybindings.yaml`. The `.yml` spelling is also
+ * `<home>/.rove/settings/keybindings.yaml`. The `.yml` spelling is also
  * honoured — the watch is on the directory, so both filenames match.
  */
 export function defaultKeybindingsPath(homeDir = readRoveEnv("HOME_DIR") ?? homedir()): string {
-  return join(homeDir, COMPAT_STATE_DIR_BASENAME, "settings", "keybindings.yaml")
+  return join(homeDir, ROVE_STATE_DIR_BASENAME, "settings", "keybindings.yaml")
 }
 
 export interface KeybindingsWatcherOptions {

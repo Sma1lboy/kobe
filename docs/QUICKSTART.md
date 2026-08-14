@@ -24,7 +24,7 @@ rove
 
 Press `n`, pick a repo, a base branch, and an engine. Then just talk to the
 session — it's the real engine CLI, running in a fresh worktree under
-`~/.kobe/worktrees/`.
+`~/.rove/worktrees/` (existing `~/.kobe/worktrees/` tasks remain usable).
 
 ![Rove's three panes: tasks on the left, the engine session in the middle, changed files on the right](assets/workspace.png)
 

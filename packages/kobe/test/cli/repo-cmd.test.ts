@@ -50,7 +50,7 @@ function output(): string {
 }
 
 function stateJson(): Record<string, unknown> {
-  return JSON.parse(readFileSync(join(home, ".config", "kobe", "state.json"), "utf8"))
+  return JSON.parse(readFileSync(join(home, ".config", "rove", "state.json"), "utf8"))
 }
 
 describe("runRepoSubcommand usage", () => {
@@ -81,18 +81,22 @@ describe("kobe repo set / show / unset round-trip", () => {
     expect(configs[repo]).toEqual({ initScript: "echo hi", initPrompt: "start here" })
   })
 
-  it("show reports the override and whether .kobe/ files are present", async () => {
+  it("show reports canonical and legacy repo convention files", async () => {
     await runRepoSubcommand(["set", repo, "--init-script", "echo hi"])
     logSpy.mockClear()
 
+    mkdirSync(join(repo, ".rove"), { recursive: true })
     mkdirSync(join(repo, ".kobe"), { recursive: true })
-    writeFileSync(join(repo, ".kobe", "init.sh"), "echo repo-file", "utf8")
+    writeFileSync(join(repo, ".rove", "init.sh"), "echo repo-file", "utf8")
+    writeFileSync(join(repo, ".kobe", "init-prompt.md"), "legacy prompt", "utf8")
 
     await runRepoSubcommand(["show", repo])
     const out = output()
     expect(out).toContain(`repo: ${repo}`)
-    expect(out).toContain(".kobe/init.sh:        present (wins)")
-    expect(out).toContain(".kobe/init-prompt.md: absent")
+    expect(out).toContain(".rove/init.sh:        present (wins)")
+    expect(out).toContain(".rove/init-prompt.md: absent")
+    expect(out).toContain(".kobe/init.sh:        absent")
+    expect(out).toContain(".kobe/init-prompt.md: present (legacy fallback)")
     expect(out).toContain('override initScript:  "echo hi"')
     expect(out).toContain("override initPrompt:  (unset)")
   })

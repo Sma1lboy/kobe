@@ -3,7 +3,7 @@
  *
  * Loads notes when `taskId` changes, edits in a full-height <textarea>,
  * and autosaves on a debounce (~600ms after typing stops). The TUI has no
- * equivalent; notes live server-side under <KOBE_HOME>/.kobe/notes/.
+ * equivalent; notes live server-side under <ROVE_HOME>/.rove/notes/.
  *
  * Mount this anywhere a task is in focus. The center workspace uses `full`
  * so notes fill the whole tab instead of behaving like a side-panel card.

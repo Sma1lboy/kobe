@@ -1,5 +1,5 @@
 /**
- * Register the user's `plugins:` chords (~/.kobe/settings/keybindings.yaml)
+ * Register the user's `plugins:` chords (~/.rove/settings/keybindings.yaml)
  * — each chord fires a plugin pane or action via a detached `kobe plugin`
  * CLI invocation, so the TUI process never blocks and the CLI keeps sole
  * ownership of plugin resolution (registry lookup, env contract, daemon

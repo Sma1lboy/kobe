@@ -1,27 +1,18 @@
 /**
  * The on-disk task index (v0.6).
  *
- * Persists the {@link TaskIndex} at `<homeDir>/.kobe/tasks.json`. Single
+ * Persists the {@link TaskIndex} at `<homeDir>/.rove/tasks.json`. Single
  * writer per machine — multi-process safety lives in `lockfile.ts`,
  * write atomicity lives here (write-tmp + fsync + rename).
  *
- * Design notes:
- *   - **Atomic write.** We never overwrite `tasks.json` directly. Write
- *     to `tasks.json.tmp`, fsync, then `rename()` — POSIX rename is
- *     atomic on the same filesystem.
- *   - **Corruption recovery.** `load()` never throws on bad JSON / a
- *     missing file. Returns an empty v3 index with a stderr warning.
- *   - **Migration v1/v2 → v3.** Older manifests had `tabs` /
- *     `sessionId` / `model` / `vendor` / `permissionMode` fields. v3
- *     drops them; we silently strip on load. The first save after
- *     load rewrites the file as v3 so the migration is permanent.
- *   - **Change notification.** Listeners fire after every mutation.
+ * Writes are atomic, malformed JSON is backed up before recovery, v1/v2
+ * manifests normalize on load, and listeners fire after every mutation.
  */
 
 import { mkdir, open, readFile, rename, unlink, writeFile } from "node:fs/promises"
 import { homedir } from "node:os"
 import { dirname, join } from "node:path"
-import { COMPAT_STATE_DIR_BASENAME } from "../../product.ts"
+import { LEGACY_KOBE_STATE_DIR_BASENAME, ROVE_STATE_DIR_BASENAME } from "../../product.ts"
 import type { Task, TaskId, TaskIndex, TaskStatus } from "../../types/task.ts"
 import { DEFAULT_TASK_VENDOR, toTaskId } from "../../types/task.ts"
 import { release } from "./lockfile.ts"
@@ -47,36 +38,31 @@ export type TaskIndexListener = (snapshot: readonly Task[]) => void
 export type TaskIndexUnsubscribe = () => void
 
 /**
- * Persistent store for the kobe task manifest.
+ * Persistent store for the Rove task manifest.
  *
- * Lifecycle: callers `await store.load()` once at startup, then
- * operate synchronously against the in-memory copy. Each mutating
- * method (`create`, `update`, `remove`) persists
- * immediately.
+ * Callers load once, then operate synchronously against the in-memory copy;
+ * each mutating method persists immediately.
  */
 export class TaskIndexStore {
   private readonly homeDir: string
-  private readonly kobeDir: string
+  private readonly roveDir: string
   private readonly path: string
+  private readonly legacyPath: string
   private readonly tmpPath: string
   private readonly lockPath: string
   private cache: { version: typeof CURRENT_VERSION; tasks: Task[] } = { version: CURRENT_VERSION, tasks: [] }
   private loaded = false
   private listeners = new Set<TaskIndexListener>()
   private saveChain: Promise<void> = Promise.resolve()
-  /**
-   * Ids this process created/updated/moved since the last successful save, and
-   * ids it removed. They drive the read-merge-write in {@link doSave}: a fresh
-   * on-disk read is the base, OUR changes win for these ids, and concurrent
-   * creates by peer processes survive. Cleared per-id once flushed.
-   */
+  /** Pending changed/removed ids used by the read-merge-write in {@link doSave}. */
   private readonly dirtyIds = new Set<string>()
   private readonly removedIds = new Set<string>()
 
   constructor(options: TaskIndexStoreOptions = {}) {
     this.homeDir = options.homeDir ?? homedir()
-    this.kobeDir = join(this.homeDir, COMPAT_STATE_DIR_BASENAME)
-    this.path = join(this.kobeDir, "tasks.json")
+    this.roveDir = join(this.homeDir, ROVE_STATE_DIR_BASENAME)
+    this.path = join(this.roveDir, "tasks.json")
+    this.legacyPath = join(this.homeDir, LEGACY_KOBE_STATE_DIR_BASENAME, "tasks.json")
     this.tmpPath = `${this.path}.tmp`
     this.lockPath = `${this.path}.lock`
   }
@@ -100,9 +86,9 @@ export class TaskIndexStore {
     return this.path
   }
 
-  /** Absolute path to the kobe state dir. Lockfile lives here too. */
+  /** Absolute path to the Rove state dir. Lockfile lives here too. */
   get stateDir(): string {
-    return this.kobeDir
+    return this.roveDir
   }
 
   async load(): Promise<TaskIndex> {
@@ -111,17 +97,25 @@ export class TaskIndexStore {
     this.dirtyIds.clear()
     this.removedIds.clear()
     let raw: string
+    let sourcePath = this.path
     try {
       raw = await readFile(this.path, "utf8")
     } catch (err) {
       const code = (err as NodeJS.ErrnoException).code
       if (code === "ENOENT") {
-        this.cache = { version: CURRENT_VERSION, tasks: [] }
-        this.loaded = true
-        this.notifyListeners()
-        return this.snapshot()
+        sourcePath = this.legacyPath
+        try {
+          raw = await readFile(sourcePath, "utf8")
+        } catch (legacyErr) {
+          if ((legacyErr as NodeJS.ErrnoException).code !== "ENOENT") throw legacyErr
+          this.cache = { version: CURRENT_VERSION, tasks: [] }
+          this.loaded = true
+          this.notifyListeners()
+          return this.snapshot()
+        }
+      } else {
+        throw err
       }
-      throw err
     }
 
     let parsed: unknown
@@ -131,9 +125,9 @@ export class TaskIndexStore {
       // Back the original bytes up FIRST: the next save read-merge-writes
       // from this empty recovery base and replaces the corrupt file, so
       // without a copy the user's tasks are gone for good (PR #276).
-      const backup = await backupCorruptManifest(this.path)
+      const backup = await backupCorruptManifest(sourcePath)
       console.warn(
-        `[rove] tasks.json at ${this.path} is corrupted (${(err as Error).message}); recovering with empty index.${
+        `[rove] tasks.json at ${sourcePath} is corrupted (${(err as Error).message}); recovering with empty index.${
           backup ? ` Original bytes backed up to ${backup}.` : " Backup copy failed; the stale file is left in place."
         }`,
       )
@@ -143,7 +137,7 @@ export class TaskIndexStore {
       return this.snapshot()
     }
 
-    this.cache = normalizeIndex(parsed, this.path)
+    this.cache = normalizeIndex(parsed, sourcePath)
     this.loaded = true
     this.notifyListeners()
     return this.snapshot()
@@ -167,7 +161,7 @@ export class TaskIndexStore {
     const removed = new Set(this.removedIds)
 
     // Cross-process mutual exclusion: serialize the read-merge-write so two
-    // kobe instances (TUI + daemon + CLI) can't interleave and lose updates.
+    // Rove instances (TUI + daemon + CLI) can't interleave and lose updates.
     // The lock is held only for this critical section, never across saves.
     await acquireWithRetry(this.lockPath)
     try {
@@ -206,30 +200,34 @@ export class TaskIndexStore {
 
   /**
    * Read + parse the manifest fresh from disk, returning just the tasks.
-   * Mirrors {@link load}'s tolerance — a missing or corrupt file reads as an
-   * empty list — but never touches `this.cache` / listeners. Used as the merge
-   * base so a save reflects a peer process's writes since we loaded.
+   * Mirrors {@link load}: a missing canonical file falls back to legacy, while
+   * both absent or a corrupt source read as empty. Never touches the cache or
+   * listeners; used so a save reflects peer writes since this process loaded.
    */
   private async readDiskTasks(): Promise<Task[]> {
     let raw: string
+    let sourcePath = this.path
     try {
-      raw = await readFile(this.path, "utf8")
+      raw = await readFile(sourcePath, "utf8")
     } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === "ENOENT") return []
-      throw err
+      if ((err as NodeJS.ErrnoException).code !== "ENOENT") throw err
+      sourcePath = this.legacyPath
+      try {
+        raw = await readFile(sourcePath, "utf8")
+      } catch (legacyErr) {
+        if ((legacyErr as NodeJS.ErrnoException).code === "ENOENT") return []
+        throw legacyErr
+      }
     }
     let parsed: unknown
     try {
       parsed = JSON.parse(raw)
     } catch {
-      // A corrupt on-disk file is recovered as empty by load(); don't let it
-      // block a save here either — but our merged write is about to REPLACE
-      // the corrupt bytes, so copy them aside first (covers a file that
-      // corrupted after load, which the load-time backup never saw).
-      await backupCorruptManifest(this.path)
+      // Preserve bytes before the merged write replaces a corrupt source.
+      await backupCorruptManifest(sourcePath)
       return []
     }
-    return normalizeIndex(parsed, this.path).tasks
+    return normalizeIndex(parsed, sourcePath).tasks
   }
 
   /**

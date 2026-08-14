@@ -1,7 +1,7 @@
 /**
  * PID-based lockfile for the task index.
  *
- * Goal: prevent two kobe instances from racing to write `~/.kobe/tasks.json`
+ * Goal: prevent two Rove instances from racing to write `~/.rove/tasks.json`
  * and corrupting it. We use the simplest mechanism that does the job:
  * an `O_EXCL` lockfile containing the holder's PID.
  *

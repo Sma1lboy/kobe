@@ -1,5 +1,15 @@
 import { afterEach, describe, expect, test } from "vitest"
-import { homeDir, isDev, kobeStateDir, kvStatePath, roveStateDir } from "../src/env.ts"
+import {
+  homeDir,
+  isDev,
+  kobeSettingsDir,
+  kobeStateDir,
+  kvStatePath,
+  legacyKobeKvStatePath,
+  legacyKobeStateDir,
+  roveSettingsDir,
+  roveStateDir,
+} from "../src/env.ts"
 
 const ORIGINAL = {
   ROVE_DEV: process.env.ROVE_DEV,
@@ -19,14 +29,18 @@ afterEach(() => {
 })
 
 describe("rename-compatible environment access", () => {
-  test("ROVE_HOME_DIR wins while the phase-one state layout stays .kobe", () => {
+  test("ROVE_HOME_DIR wins and product data uses the canonical Rove layout", () => {
     process.env.KOBE_HOME_DIR = "/legacy-home"
     process.env.ROVE_HOME_DIR = "/rove-home"
 
     expect(homeDir()).toBe("/rove-home")
-    expect(roveStateDir()).toBe("/rove-home/.kobe")
+    expect(roveStateDir()).toBe("/rove-home/.rove")
     expect(kobeStateDir()).toBe(roveStateDir())
-    expect(kvStatePath()).toBe("/rove-home/.config/kobe/state.json")
+    expect(roveSettingsDir()).toBe("/rove-home/.rove/settings")
+    expect(kobeSettingsDir()).toBe(roveSettingsDir())
+    expect(kvStatePath()).toBe("/rove-home/.config/rove/state.json")
+    expect(legacyKobeStateDir()).toBe("/rove-home/.kobe")
+    expect(legacyKobeKvStatePath()).toBe("/rove-home/.config/kobe/state.json")
   })
 
   test("KOBE_HOME_DIR remains a supported fallback", () => {

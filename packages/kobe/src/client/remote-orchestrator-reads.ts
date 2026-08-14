@@ -195,7 +195,7 @@ export function uiPrefsStoreOp(s: ReadSignals): ExternalStore<UiPrefsPayload | n
 
 /**
  * The keybindings-file revision, bumped on the daemon's `keybindings`
- * channel whenever `~/.kobe/settings/keybindings.yaml` changes. An opaque
+ * channel whenever `~/.rove/settings/keybindings.yaml` changes. An opaque
  * token — a consumer re-reads + re-applies the file on each transition.
  * `null` until the first payload. Consumed by host-boot's `UiPrefsSync`
  * to live-reload keys across every pane.

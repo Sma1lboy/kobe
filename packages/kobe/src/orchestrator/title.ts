@@ -2,7 +2,7 @@
  * Title and branch derivation (v0.6).
  *
  * Used by the orchestrator's `createTask` when the user gives a title
- * but no explicit branch — we derive a `kobe/<slug>-<id>` name.
+ * but no explicit branch — we derive a `rove/<slug>-<id>` name.
  * `deriveTitleFromPrompt` is kept for the rare case where we still
  * accept a free-form prompt as a title source (e.g. external callers
  * via the daemon RPC); v0.6 itself doesn't surface that path.
@@ -38,7 +38,7 @@ export function deriveTitleFromPrompt(prompt: string): string {
 }
 
 /**
- * Build `kobe/<slug>-<ulid-suffix-6>` from a user-supplied title and a
+ * Build `rove/<slug>-<ulid-suffix-6>` from a user-supplied title and a
  * freshly-minted ulid. The 6-char suffix comes from the ulid's random
  * tail, so two tasks created from the same placeholder title still get
  * distinct branches (branch collisions failed `git worktree
@@ -52,23 +52,22 @@ export function autoBranch(title: string, taskId: string): string {
     .slice(0, 32)
     // Re-trim after the cap: the 32-char slice can land on a `-` and
     // re-introduce a trailing hyphen that the template below would then
-    // double into `kobe/<slug>--<suffix>`. Only trailing can reappear —
+    // double into `rove/<slug>--<suffix>`. Only trailing can reappear —
     // the slice keeps the already-leading-trimmed prefix.
     .replace(/-+$/, "")
   const suffix = taskId.slice(-6).toLowerCase()
   const base = slug || "task"
-  return `kobe/${base}-${suffix}`
+  return `rove/${base}-${suffix}`
 }
 
 /**
  * Whether `branch` is still the untouched placeholder-derived default for
- * `taskId` — i.e. nobody has renamed the branch since it was auto-allocated
- * from the `(new task)` placeholder. This is the discriminator
+ * `taskId`, including the pre-Rove `kobe/` spelling. This is the discriminator
  * `TaskEditor.followBranchToTitle` uses to fire the first-rename branch
- * follow at most once; keeping it beside {@link autoBranch} and
- * {@link PLACEHOLDER_TASK_TITLE} means the derivation and the equality check
- * can never drift apart into two files.
+ * follow at most once; keeping both accepted spellings beside
+ * {@link autoBranch} and {@link PLACEHOLDER_TASK_TITLE} prevents drift.
  */
 export function isPlaceholderDerivedBranch(branch: string, taskId: string): boolean {
-  return branch === autoBranch(PLACEHOLDER_TASK_TITLE, taskId)
+  const canonical = autoBranch(PLACEHOLDER_TASK_TITLE, taskId)
+  return branch === canonical || branch === canonical.replace(/^rove\//, "kobe/")
 }

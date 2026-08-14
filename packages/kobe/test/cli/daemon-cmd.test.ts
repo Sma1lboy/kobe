@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   daemonRequest: vi.fn(),
   daemonClose: vi.fn(),
   connectOrStartDaemon: vi.fn(),
+  probeDaemonSocket: vi.fn(),
   stopDaemonProcess: vi.fn(),
   installDaemonCrashHandlers: vi.fn(),
   startDaemonServer: vi.fn(),
@@ -29,6 +30,7 @@ vi.mock("@sma1lboy/kobe-daemon/client", () => ({
 
 vi.mock("@sma1lboy/kobe-daemon/client/daemon-process", () => ({
   connectOrStartDaemon: mocks.connectOrStartDaemon,
+  probeDaemonSocket: mocks.probeDaemonSocket,
 }))
 
 vi.mock("@sma1lboy/kobe-daemon/daemon/crash-log", () => ({
@@ -73,6 +75,7 @@ beforeEach(() => {
   mocks.daemonRequest.mockReset()
   mocks.daemonClose.mockReset()
   mocks.connectOrStartDaemon.mockReset()
+  mocks.probeDaemonSocket.mockReset().mockResolvedValue("absent")
   mocks.stopDaemonProcess.mockReset().mockResolvedValue({ pid: null, method: "absent" })
   mocks.installDaemonCrashHandlers.mockReset()
   mocks.startDaemonServer.mockReset()
@@ -214,6 +217,12 @@ describe("kobe daemon start", () => {
     mocks.startDaemonServer.mockResolvedValue({ socketPath: "/tmp/x.sock", webPort: 6100, close: vi.fn() })
     await runDaemonSubcommand(["start"])
     expect(mocks.startDaemonServer).toHaveBeenCalledWith({}, expect.objectContaining({ webPort: 6100 }))
+  })
+
+  it("refuses to migrate stores while another daemon still owns the socket", async () => {
+    mocks.probeDaemonSocket.mockResolvedValue("alive")
+    await expect(runDaemonSubcommand(["start"])).rejects.toThrow("daemon still owns")
+    expect(mocks.createKobeCore).not.toHaveBeenCalled()
   })
 })
 

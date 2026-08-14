@@ -1,6 +1,6 @@
 /**
  * User chords → plugin invocations, the `plugins:` section of
- * `~/.kobe/settings/keybindings.yaml`:
+ * `~/.rove/settings/keybindings.yaml`:
  *
  * ```yaml
  * plugins:                       # applies on every platform

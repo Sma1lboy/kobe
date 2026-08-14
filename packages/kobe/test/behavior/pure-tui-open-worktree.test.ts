@@ -65,7 +65,7 @@ describe.skipIf(!nodePty)("Pure TUI open-worktree keys (behavior)", () => {
     env = await makeBehaviorEnv()
     repo = await makeScratchRepo(env)
     marker = join(env.home, "editor-opens.log")
-    const stateDir = join(env.home, ".config", "kobe")
+    const stateDir = join(env.home, ".config", "rove")
     await mkdir(stateDir, { recursive: true })
     await writeFile(join(stateDir, "state.json"), JSON.stringify({ onboarded: true }))
     const codeShim = join(env.bin, "code")

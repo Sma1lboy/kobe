@@ -55,9 +55,9 @@ export class TaskEditor {
 
   /**
    * Keep a materialised task's branch in lockstep with its title WHILE the
-   * branch is still the placeholder-derived default (`kobe/new-task-<id>`).
+   * branch is still the placeholder-derived default (`rove/new-task-<id>`).
    * This is what lets a task auto-named from its first prompt also pick up a
-   * meaningful branch instead of staying `kobe/new-task-…`. It fires at most
+   * meaningful branch instead of staying `rove/new-task-…`. It fires at most
    * once: after the first rename the branch no longer matches the placeholder
    * derivation, so a later title change (or a manual `setBranch`) is never
    * clobbered. Skipped for `main` (no branch) and for not-yet-materialised

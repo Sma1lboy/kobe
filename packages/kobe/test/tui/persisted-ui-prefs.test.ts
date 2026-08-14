@@ -24,7 +24,7 @@ let home: string
 let prevHome: string | undefined
 
 function writeState(content: string): void {
-  const dir = join(home, ".config", "kobe")
+  const dir = join(home, ".config", "rove")
   mkdirSync(dir, { recursive: true })
   writeFileSync(join(dir, "state.json"), content)
 }

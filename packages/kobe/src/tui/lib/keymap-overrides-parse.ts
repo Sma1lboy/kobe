@@ -1,6 +1,6 @@
 /**
  * Chord grammar + YAML-document extraction for user keybinding
- * overrides (~/.kobe/settings/keybindings.yaml).
+ * overrides (~/.rove/settings/keybindings.yaml).
  *
  * Split out of `keymap-overrides.ts` (which keeps the apply/validation
  * policy and re-exports everything here) so the parsing half — chord

@@ -235,7 +235,7 @@ export function DevSettingsSection(
 
 /**
  * Keybindings section — read-only view of the user keybinding overrides
- * loaded at boot from `~/.kobe/settings/keybindings.yaml`. Editing happens
+ * loaded at boot from `~/.rove/settings/keybindings.yaml`. Editing happens
  * in the YAML file, not here; the section's job is to make the config
  * discoverable, show which overrides actually landed, and surface every
  * load warning that otherwise only reaches the pane's console log.

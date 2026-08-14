@@ -9,7 +9,9 @@ rove
 ```
 
 The package also keeps `kobe` as a compatibility alias. Both executable names
-use the existing `~/.kobe` and `~/.config/kobe` state paths.
+copy supported legacy state into `~/.rove` and `~/.config/rove` without deleting
+or overwriting the old files; daemon-owned stores wait until the legacy writer
+has stopped.
 
 Plain `rove` launches one React/opentui Workspace Host. Interactive engine and
 shell processes are owned by the standalone PTY Host, so they survive TUI exits
@@ -40,7 +42,7 @@ rove api pty-list --pretty
 ```
 
 Press `F1` in the TUI for live help. Direct and prefix bindings are configured
-in `~/.kobe/settings/keybindings.yaml`.
+in `~/.rove/settings/keybindings.yaml`.
 
 ## Development
 

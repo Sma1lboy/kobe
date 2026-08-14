@@ -1,5 +1,5 @@
 /**
- * Apply policy for user keybinding overrides (~/.kobe/settings/keybindings.yaml).
+ * Apply policy for user keybinding overrides (~/.rove/settings/keybindings.yaml).
  *
  * Split out of the loader (`src/tui/context/keybindings-user.ts`) for the
  * same reason `keymap-dispatch.ts` is split out of `keymap.tsx`: vitest

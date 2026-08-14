@@ -68,7 +68,7 @@ export const en = {
     worktreeHint:
       "Where new task worktrees are created. `next to project` keeps them beside each repo; custom takes any path (`~`, relative, or a leading `$project_dir`). New tasks only.",
     worktreeBase: "location: < {kind} >  (enter switches)",
-    worktreeKindDefault: "default ~/.kobe/worktrees",
+    worktreeKindDefault: "default ~/.rove/worktrees",
     worktreeKindNext: "next to project",
     worktreeKindCustom: "custom",
     worktreeCustom: "custom: {path}",
@@ -160,7 +160,7 @@ export const en = {
   dev: {
     reset: "Reset UI state",
     resetHint:
-      "Clears ~/.config/kobe/state.json and ~/.kobe/tasks.json, then quits Rove — relaunch to start fresh. Working session / Archive lists, pane sizes, theme, model picks all reset. Worktrees on disk and Claude Code session history are not touched.",
+      "Clears ~/.config/rove/state.json and ~/.rove/tasks.json, then quits Rove — relaunch to start fresh. Working session / Archive lists, pane sizes, theme, model picks all reset. Worktrees on disk and Claude Code session history are not touched.",
     resetButton: "[enter] Reset",
     restart: "Restart backend",
     restartHint:
@@ -248,7 +248,7 @@ export const zh: typeof en = {
     worktreeHint:
       "新任务工作树的创建位置。「项目旁边」= 紧挨各自仓库存放；自定义可填任意路径（`~`、相对路径或以 `$project_dir` 开头）。仅对新任务生效。",
     worktreeBase: "位置: < {kind} >  (enter 切换)",
-    worktreeKindDefault: "默认 ~/.kobe/worktrees",
+    worktreeKindDefault: "默认 ~/.rove/worktrees",
     worktreeKindNext: "项目旁边",
     worktreeKindCustom: "自定义",
     worktreeCustom: "自定义: {path}",
@@ -335,7 +335,7 @@ export const zh: typeof en = {
   dev: {
     reset: "重置 UI 状态",
     resetHint:
-      "清空 ~/.config/kobe/state.json 和 ~/.kobe/tasks.json，然后退出 Rove——重新启动即可从头开始。工作会话 / 归档列表、面板尺寸、主题、模型选择都会重置。磁盘上的 worktree 和 Claude Code 会话历史不受影响。",
+      "清空 ~/.config/rove/state.json 和 ~/.rove/tasks.json，然后退出 Rove——重新启动即可从头开始。工作会话 / 归档列表、面板尺寸、主题、模型选择都会重置。磁盘上的 worktree 和 Claude Code 会话历史不受影响。",
     resetButton: "[enter] 重置",
     restart: "重启后端",
     restartHint:

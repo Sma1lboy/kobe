@@ -41,11 +41,11 @@ function isolatedHome(initial?: Record<string, unknown>): string {
 }
 
 function statePath(home: string): string {
-  return join(home, ".config", "kobe", "state.json")
+  return join(home, ".config", "rove", "state.json")
 }
 
 function writeState(home: string, state: Record<string, unknown>): void {
-  mkdirSync(join(home, ".config", "kobe"), { recursive: true })
+  mkdirSync(join(home, ".config", "rove"), { recursive: true })
   writeFileSync(statePath(home), JSON.stringify(state, null, 2), "utf8")
 }
 

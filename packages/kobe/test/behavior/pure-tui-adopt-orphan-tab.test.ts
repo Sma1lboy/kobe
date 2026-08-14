@@ -30,7 +30,7 @@ describe.skipIf(!nodePty)("Pure TUI adopts unregistered live sessions (behavior)
   beforeAll(async () => {
     env = await makeBehaviorEnv()
     repo = await makeScratchRepo(env)
-    const stateDir = join(env.home, ".config", "kobe")
+    const stateDir = join(env.home, ".config", "rove")
     await mkdir(stateDir, { recursive: true })
     statePath = join(stateDir, "state.json")
     await writeFile(statePath, JSON.stringify({ onboarded: true }))

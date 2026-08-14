@@ -3,8 +3,8 @@
  * entirely in the browser dashboard (the TUI has no notes feature).
  *
  * Notes persist server-side as one file per task under
- * `<KOBE_HOME>/.kobe/notes/<taskId>.md`, resolved via {@link kobeStateDir}
- * so they honour `KOBE_HOME_DIR` like every other kobe state path.
+ * `<ROVE_HOME>/.rove/notes/<taskId>.md`, resolved via {@link roveStateDir}
+ * so they honour `ROVE_HOME_DIR` and its `KOBE_HOME_DIR` fallback.
  *
  * Routes (composed into the web server's `fetch` before the static/404
  * fallthrough):
@@ -19,13 +19,13 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { errorMessage } from "@/lib/error-message"
-import { kobeStateDir } from "../env.ts"
+import { roveStateDir } from "../env.ts"
 
 const NOTES_ROUTE = "/api/notes"
 
 /** Directory all per-task note files live under. */
 function notesDir(): string {
-  return join(kobeStateDir(), "notes")
+  return join(roveStateDir(), "notes")
 }
 
 /**

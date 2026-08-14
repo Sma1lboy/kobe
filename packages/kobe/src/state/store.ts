@@ -1,5 +1,5 @@
 /**
- * Single owner of `~/.config/kobe/state.json` I/O.
+ * Single owner of `~/.config/rove/state.json` I/O.
  *
  * This file exists to kill a dual-writer hazard: with several kobe
  * processes alive at once, any writer that flushes a whole in-memory

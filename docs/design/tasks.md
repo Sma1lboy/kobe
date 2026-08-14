@@ -12,12 +12,12 @@
 
 ## 1. Three nouns
 
-kobe has exactly three nouns in the orchestration layer. Get these
+Rove has exactly three nouns in the orchestration layer. Get these
 straight and the rest of the codebase reads itself.
 
 | Noun         | What it is                                                                 | Cardinality        |
 |--------------|----------------------------------------------------------------------------|--------------------|
-| **Task**     | One unit of work the user is tracking. Lives in `~/.kobe/tasks.json`.      | N per repo         |
+| **Task**     | One unit of work the user is tracking. Lives in `~/.rove/tasks.json`.      | N per repo         |
 | **Worktree** | One git worktree on disk, checked out to one branch.                       | **1 per Task**     |
 | **ChatTab**  | One Claude Code session, with its own conversation transcript.             | **N per Task**     |
 
@@ -70,18 +70,18 @@ guarantee comes from giving each Task its own git worktree.
 
 Concretely:
 
-- Task `panda` lives at `~/.kobe/worktrees/<repo-key>/panda/` checked
+- Task `panda` lives at `~/.rove/worktrees/<repo-key>/panda/` checked
   out to whatever branch the task owns.
 - Edits made in one task's worktree do not appear in another's until
   the user merges branches.
 - Killing a Claude Code session does not destroy the worktree. The
-  worktree persists across kobe restarts; it persists across the task
+  worktree persists across Rove restarts; it persists across the task
   going to `done`; it persists across archiving. The user removes
   worktrees explicitly, never as a side effect.
-- kobe owns its worktree root under its state dir (`~/.kobe/worktrees/`,
-  or `$KOBE_HOME_DIR/.kobe/worktrees/` in isolated dev/test homes). Older
-  tasks created under repo-local `.kobe/worktrees/` or `.claude/worktrees/`
-  stay valid and are still listed/adopted, but new kobe-created worktrees
+- Rove owns its worktree root under its state dir (`~/.rove/worktrees/`,
+  or `$ROVE_HOME_DIR/.rove/worktrees/` in isolated dev/test homes). Older
+  tasks created under global/repo-local `.kobe/worktrees/` or `.claude/worktrees/`
+  stay valid and are still listed/adopted, but new Rove-created worktrees
   no longer require a repo-level `.gitignore` entry.
 
 The single source of truth for the path is
@@ -217,8 +217,8 @@ setting describes "this particular conversation," it's tab-level.
 
 | What                          | Where                                                  | Format                       |
 |-------------------------------|--------------------------------------------------------|------------------------------|
-| Task index                    | `~/.kobe/tasks.json`                                   | `TaskIndex` (versioned)      |
-| Per-task worktree             | `~/.kobe/worktrees/<repo-key>/<slug>/`                 | git worktree                 |
+| Task index                    | `~/.rove/tasks.json`                                   | `TaskIndex` (versioned)      |
+| Per-task worktree             | `~/.rove/worktrees/<repo-key>/<slug>/`                 | git worktree                 |
 | Per-tab conversation          | Claude Code's JSONL store (read via `AIEngine`)        | JSONL                        |
 | Engine cwd                    | the Hosted PTY session is launched with `task.worktreePath` as its cwd | string |
 
@@ -266,11 +266,11 @@ When the schema changes again:
   conversation title, transcript).
 - **Sharing one worktree across tasks.** Defeats the entire model.
   Every task gets its own worktree.
-- **Hardcoding the worktree path.** Use `worktreePathFor`. New kobe
-  worktrees use `~/.kobe/worktrees/<repo-key>/`, while path recognition
-  also supports repo-local `.kobe/worktrees/` and legacy `.claude/worktrees/`.
+- **Hardcoding the worktree path.** Use `worktreePathFor`. New Rove
+  worktrees use `~/.rove/worktrees/<repo-key>/`, while path recognition
+  also supports global/repo-local `.kobe/worktrees/` and legacy `.claude/worktrees/`.
 - **Storing conversation history in `tasks.json`.** It's a manifest,
   not a database. JSONL via the engine is the source of truth.
-- **Auto-deleting worktrees on archive / done / cancel.** kobe never
+- **Auto-deleting worktrees on archive / done / cancel.** Rove never
   deletes worktrees implicitly. The user removes them explicitly or
   not at all.

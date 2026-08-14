@@ -1,6 +1,6 @@
 /**
  * Unit tests for `src/state/store.ts` — the single owner of
- * `~/.config/kobe/state.json` I/O.
+ * `~/.config/rove/state.json` I/O.
  *
  * The module exists to fix a multi-process lost-update bug: the TUI's
  * KVProvider used to debounce-write its ENTIRE in-memory snapshot, so a
@@ -11,7 +11,7 @@
  * writers.
  *
  * Same isolation pattern as test/state/repos.test.ts: redirect HOME via
- * `KOBE_HOME_DIR` to a per-test tmpdir so the real `~/.config/kobe/` is
+ * `KOBE_HOME_DIR` to a per-test tmpdir so the real `~/.config/rove/` is
  * never touched.
  */
 import fs from "node:fs"
@@ -32,7 +32,7 @@ let tmpHome: string
 let originalHome: string | undefined
 
 function statePath(): string {
-  return path.join(tmpHome, ".config", "kobe", "state.json")
+  return path.join(tmpHome, ".config", "rove", "state.json")
 }
 
 function readDisk(): Record<string, unknown> {
@@ -141,7 +141,7 @@ describe("patchStateFile — the lost-update fix", () => {
     expect(readDisk()).toEqual({ kept: "y" })
   })
 
-  // Why: first-ever write on a fresh machine — the .config/kobe dir
+  // Why: first-ever write on a fresh machine — the .config/rove dir
   // doesn't exist yet and the writer is responsible for creating it.
   test("creates the directory and file on first write", () => {
     expect(fs.existsSync(statePath())).toBe(false)

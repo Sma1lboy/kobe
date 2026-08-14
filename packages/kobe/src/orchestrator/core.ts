@@ -199,10 +199,10 @@ export class Orchestrator {
     const title = (input.title ?? PLACEHOLDER_TASK_TITLE).trim() || PLACEHOLDER_TASK_TITLE
     // Leave the branch EMPTY for a lazily-allocated task (unless the caller
     // gave an explicit one): {@link ensureWorktree} derives a unique
-    // `kobe/<slug>-<id>` from the task's OWN id when the worktree
+    // `rove/<slug>-<id>` from the task's OWN id when the worktree
     // materialises. We must NOT pre-derive a branch here — at create time
     // there is no task id yet, so every placeholder-titled task would get
-    // the SAME name (`kobe/new-task-…`) and the second `git worktree add
+    // the SAME name (`rove/new-task-…`) and the second `git worktree add
     // -b` would fail on a duplicate branch. Deferring also lets
     // the branch follow a rename made before first enter.
     const task = await this.store.create({

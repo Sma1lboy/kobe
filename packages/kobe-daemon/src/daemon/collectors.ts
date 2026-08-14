@@ -78,7 +78,7 @@ export interface AutomationCollectorDeps {
  *     the same homeDir the server was started with, so sandbox/test homes
  *     isolate.
  *   - keybindings watcher (KOB — cross-session keybinding propagation):
- *     watch `~/.kobe/settings/keybindings.yaml` and ping the `keybindings`
+ *     watch `~/.rove/settings/keybindings.yaml` and ping the `keybindings`
  *     channel on change, so every pane re-reads + re-applies the file live.
  *   - worktree-changes collector (issue #6): the daemon runs the guarded
  *     `git status` polls for every non-archived local worktree and publishes

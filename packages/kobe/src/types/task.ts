@@ -118,7 +118,7 @@ export interface TaskDispatcher {
 }
 
 /**
- * One task. Stored in `~/.kobe/tasks.json` as part of {@link TaskIndex}.
+ * One task. Stored in `~/.rove/tasks.json` as part of {@link TaskIndex}.
  *
  * Field invariants:
  * - `id` is a ULID (lexicographically sortable, time-prefixed).
@@ -140,9 +140,9 @@ export interface Task {
    * `"main"` tasks are pinned to a saved repo's root checkout (no
    * `git worktree add`); they set `worktreePath === repo` and
    * `branch === ""`. Regular `"task"` tasks live in a per-task
-   * worktree under `~/.kobe/worktrees/<repo-key>/<slug>/` (or repo-local
+   * worktree under `~/.rove/worktrees/<repo-key>/<slug>/` (or global/repo-local
    * `.kobe/worktrees` / legacy `.claude/worktrees` for older records).
-   * `"dir"` tasks (`kobe .`) pin an arbitrary existing directory the
+   * `"dir"` tasks (`rove .`) pin an arbitrary existing directory the
    * user opened directly: `worktreePath === repo`, `branch === ""`, no
    * project association, and deletion only drops the index entry — the
    * directory itself is never removed.
@@ -217,7 +217,7 @@ export interface TaskLinkedWorkItem {
 }
 
 /**
- * On-disk manifest at `~/.kobe/tasks.json`.
+ * On-disk manifest at `~/.rove/tasks.json`.
  *
  * Version 3 = the v0.6 reshape. v1 (`sessionId`-only) and v2 (`tabs`)
  * manifests are migrated on load by dropping the chat-tab / model /

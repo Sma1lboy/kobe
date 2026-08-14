@@ -1,7 +1,7 @@
 /**
  * `kobe theme <list|add|remove>` (`runThemeSubcommand`). Real filesystem
  * under a per-test KOBE_HOME_DIR tempdir — `userThemesDir()` resolves off
- * that env var (kobeStateDir() honours it), so list/add/remove exercise
+ * that env var (roveStateDir() honours it), so list/add/remove exercise
  * real reads/writes. `fetch` is stubbed for the URL-source branch.
  */
 
@@ -26,7 +26,7 @@ let errSpy: MockInstance<typeof process.stderr.write>
 let exitSpy: MockInstance<typeof process.exit>
 
 function themesDir(): string {
-  return join(home, ".kobe", "themes")
+  return join(home, ".rove", "themes")
 }
 
 beforeEach(() => {

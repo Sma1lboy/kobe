@@ -32,7 +32,7 @@
  *     registered chords stay in `keys` and remain individually testable.
  *
  * Re-binding a chord = mutate `keys` for the relevant id. Users do this
- * via `~/.kobe/settings/keybindings.yaml`, applied once at TUI boot by
+ * via `~/.rove/settings/keybindings.yaml`, applied once at TUI boot by
  * `applyUserKeybindings()` (context/keybindings-user.ts), which mutates
  * this table in place. No pane code has to change because pane
  * registration goes through `bindByIds` and the help dialog / footer

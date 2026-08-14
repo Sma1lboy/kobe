@@ -2,7 +2,7 @@
  * `kobe export [--json|--csv|--format=<json|csv|table>]` — dump the task
  * list to stdout in a machine- or human-readable shape.
  *
- * Read-only and DAEMON-FREE: it loads `~/.kobe/tasks.json` in-process via
+ * Read-only and DAEMON-FREE: it loads `~/.rove/tasks.json` in-process via
  * {@link TaskIndexStore} (the canonical manifest owner — no re-parsing of
  * the file here) and prints. This complements `kobe api list`, which is
  * JSON-only and needs a running daemon; `export` works with the daemon
@@ -28,7 +28,7 @@ type ExportFormat = "json" | "csv" | "table"
 const EXPORT_USAGE = [
   `Usage: ${CLI_NAME} export [--json | --csv | --format <json|csv|table>]`,
   "",
-  "Print the task list (from ~/.kobe/tasks.json) to stdout. Read-only and",
+  "Print the task list (from ~/.rove/tasks.json) to stdout. Read-only and",
   "daemon-free — works with the Rove daemon down.",
   "",
   "Options:",

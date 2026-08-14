@@ -451,7 +451,9 @@ describe("terminal tabs state", () => {
       task: { id: "01TASK", kind: "task" },
       worktreePath: "/wt",
     })
-    expect(spawn.command[2]).toContain("export KOBE_TASK_ID='01TASK' KOBE_TAB_ID='tab-2'\n")
+    expect(spawn.command[2]).toContain(
+      "export ROVE_TASK_ID='01TASK' KOBE_TASK_ID='01TASK' ROVE_TAB_ID='tab-2' KOBE_TAB_ID='tab-2'\n",
+    )
   })
 
   // Why: collapse decides persistence (null = unsplit fast path) AND the

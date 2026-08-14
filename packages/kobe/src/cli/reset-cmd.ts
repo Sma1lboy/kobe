@@ -12,7 +12,7 @@ import {
   defaultPtyHostPidPath,
   defaultPtyHostSocketPath,
 } from "@sma1lboy/kobe-daemon/daemon/paths"
-import { kobeStateDir, kvStatePath } from "../env.ts"
+import { kvStatePath, legacyKobeKvStatePath, legacyKobeStateDir, roveStateDir } from "../env.ts"
 import { stopLegacyTmux } from "./legacy-tmux.ts"
 import { activeCliName } from "./rename-compat.ts"
 import { stampResetGate } from "./reset-gate.ts"
@@ -82,8 +82,10 @@ export async function runResetSubcommand(argv: readonly string[]): Promise<void>
   const hard = argv.includes("--hard")
   const yes = argv.includes("--yes") || argv.includes("-y")
   const daemonSocket = defaultDaemonSocketPath()
-  const tasksPath = join(kobeStateDir(), "tasks.json")
+  const tasksPath = join(roveStateDir(), "tasks.json")
+  const legacyTasksPath = join(legacyKobeStateDir(), "tasks.json")
   const statePath = kvStatePath()
+  const legacyStatePath = legacyKobeKvStatePath()
 
   console.log(`${CLI_NAME} reset will:`)
   console.log("  • stop the Rove daemon (graceful → SIGTERM → SIGKILL)")
@@ -91,11 +93,12 @@ export async function runResetSubcommand(argv: readonly string[]): Promise<void>
   console.log("  • stop the standalone Hosted PTY host and all background terminal/engine sessions")
   console.log("  • stop any pre-v0.8 tmux sessions after SIGTERM-ing their pane process groups")
   if (hard) {
-    const count = taskCount(tasksPath)
+    const count = taskCount(tasksPath) ?? taskCount(legacyTasksPath)
     console.log(`  • DELETE the task index${count === null ? "" : ` (${count} task(s))`} — ${tasksPath}`)
     console.log(`  • DELETE the UI state — ${statePath}`)
+    console.log("  • DELETE the pre-Rove task/UI indexes too, so migration cannot restore reset state")
   }
-  console.log("  • NOT touch your git worktrees under ~/.kobe/worktrees/ or legacy repo-local roots")
+  console.log("  • NOT touch your git worktrees under ~/.rove/worktrees/, ~/.kobe/worktrees/, or repo-local roots")
   if (!hard) console.log("  (your task list & worktrees are kept — add --hard to also wipe task and UI state)")
 
   if (!yes) {
@@ -141,7 +144,9 @@ export async function runResetSubcommand(argv: readonly string[]): Promise<void>
 
   if (hard) {
     await removeStateFile(tasksPath, "task index")
+    await removeStateFile(legacyTasksPath, "legacy task index")
     await removeStateFile(statePath, "UI state")
+    await removeStateFile(legacyStatePath, "legacy UI state")
   } else stampResetGate()
 
   console.log(`\n${CLI_NAME}: reset complete. Relaunch Rove to start fresh.`)

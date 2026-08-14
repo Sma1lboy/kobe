@@ -23,7 +23,7 @@ let tmpHome: string
 let originalHome: string | undefined
 
 function settingsDir(): string {
-  return path.join(tmpHome, ".kobe", "settings")
+  return path.join(tmpHome, ".rove", "settings")
 }
 
 beforeEach(() => {

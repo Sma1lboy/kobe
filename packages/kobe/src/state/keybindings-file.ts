@@ -1,5 +1,5 @@
 /**
- * Shared reader for `~/.kobe/settings/keybindings.yaml`.
+ * Shared reader for `~/.rove/settings/keybindings.yaml`.
  *
  * The framework-free reader lives here so config IO remains separate from
  * the keymap mutation performed by `tui/context/keybindings-user.ts`.

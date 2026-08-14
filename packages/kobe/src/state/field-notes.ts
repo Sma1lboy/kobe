@@ -5,7 +5,7 @@
  * born knowing what previous sessions on the repo already paid to learn.
  *
  * Sync on purpose: `buildEngineSessionLaunch` is synchronous, and this is the
- * same shape as `repo-init.ts` reading `.kobe/init-prompt.md` off disk at
+ * same shape as `repo-init.ts` reading `.rove/init-prompt.md` off disk at
  * launch. A missing/corrupt store is simply "no notes" — a knowledge feature
  * must never be able to block a session from starting.
  *
@@ -16,7 +16,7 @@
 
 import { readFileSync, realpathSync } from "node:fs"
 import { join } from "node:path"
-import { kobeStateDir } from "../env.ts"
+import { roveStateDir } from "../env.ts"
 
 /** How many of the newest notes a fresh session is seeded with. */
 export const NOTE_INJECTION_CAP = 15
@@ -29,7 +29,7 @@ export interface StoredFieldNote {
 }
 
 export function fieldNotesPath(): string {
-  return join(kobeStateDir(), "notes.json")
+  return join(roveStateDir(), "notes.json")
 }
 
 /** Resolve symlinks so `/var` vs `/private/var` can't split one repo in two. */

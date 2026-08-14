@@ -1,8 +1,8 @@
 /**
- * Canonical filesystem layout for kobe-managed worktrees.
+ * Canonical filesystem layout for Rove-managed worktrees.
  *
- * The worktree root is per-repo and lives in kobe's state dir at
- * `~/.kobe/worktrees/<repo-key>/<slug>/` (or under `$KOBE_HOME_DIR`
+ * The worktree root is per-repo and lives in Rove's state dir at
+ * `~/.rove/worktrees/<repo-key>/<slug>/` (or under `$ROVE_HOME_DIR`
  * when overridden). `<slug>` is an animal-name slug for tasks
  * created after the switch, or the task's ULID for older records whose
  * path is already persisted.
@@ -10,8 +10,8 @@
  * Backwards compatibility: older checkouts hold worktrees under
  * repo-local `<repo>/.kobe/worktrees/<slug>/` or
  * `<repo>/.claude/worktrees/<slug>/`. Existing tasks in both roots
- * remain managed and discoverable, but new kobe-created tasks use the
- * global kobe state dir so no repo-level `.gitignore` entry is needed.
+ * remain managed and discoverable, but new Rove-created tasks use the
+ * global Rove state dir so no repo-level `.gitignore` entry is needed.
  *
  * Keeping this in one place means the orchestrator, the worktree
  * manager, the task index, and any future "list all kobe worktrees"
@@ -24,7 +24,7 @@
 import { createHash } from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
-import { kobeStateDir } from "../../env.ts"
+import { legacyKobeStateDir, roveStateDir } from "../../env.ts"
 import { execHostForRepo } from "../../exec/resolve.ts"
 import { getRemoteRepoConfig, isRemoteRepoKey } from "../../state/repos.ts"
 import { getWorktreeBaseOverride } from "../../state/worktree-base.ts"
@@ -37,6 +37,7 @@ import { getWorktreeBaseOverride } from "../../state/worktree-base.ts"
  * module's private constant.
  */
 export const KOBE_WORKTREE_ROOT_DIR = "worktrees"
+export const REPO_LOCAL_ROVE_WORKTREE_ROOT_SUBPATH = ".rove/worktrees"
 export const REPO_LOCAL_KOBE_WORKTREE_ROOT_SUBPATH = ".kobe/worktrees"
 export const LEGACY_KOBE_WORKTREE_ROOT_SUBPATH = ".claude/worktrees"
 
@@ -45,13 +46,14 @@ export const LEGACY_KOBE_WORKTREE_ROOT_SUBPATH = ".claude/worktrees"
  * listing keep old task records working.
  */
 export const REPO_LOCAL_KOBE_MANAGED_WORKTREE_ROOT_SUBPATHS = [
+  REPO_LOCAL_ROVE_WORKTREE_ROOT_SUBPATH,
   REPO_LOCAL_KOBE_WORKTREE_ROOT_SUBPATH,
   LEGACY_KOBE_WORKTREE_ROOT_SUBPATH,
 ] as const
 
 /**
  * The `worktrees` root that new LOCAL tasks are created under. Defaults
- * to `<home>/.kobe/worktrees`; a user-configured global override
+ * to `<home>/.rove/worktrees`; a user-configured global override
  * (Settings → General → Worktree location) relocates it wholesale. The
  * override IS the worktrees root — the per-repo `<repo-key>` subdir is
  * still appended below it by {@link worktreeRootFor}. An override with
@@ -60,19 +62,24 @@ export const REPO_LOCAL_KOBE_MANAGED_WORKTREE_ROOT_SUBPATHS = [
  * so a settings change needs no daemon restart.
  */
 function localWorktreesRoot(repo: string): string {
-  return getWorktreeBaseOverride(repo) ?? path.join(kobeStateDir(), KOBE_WORKTREE_ROOT_DIR)
+  return getWorktreeBaseOverride(repo) ?? path.join(roveStateDir(), KOBE_WORKTREE_ROOT_DIR)
 }
 
 /** The built-in default worktrees root, ignoring any override. */
 function defaultLocalWorktreesRoot(): string {
-  return path.join(kobeStateDir(), KOBE_WORKTREE_ROOT_DIR)
+  return path.join(roveStateDir(), KOBE_WORKTREE_ROOT_DIR)
+}
+
+/** Pre-rename global root. Existing worktree records and discovery keep it live. */
+function legacyLocalWorktreesRoot(): string {
+  return path.join(legacyKobeStateDir(), KOBE_WORKTREE_ROOT_DIR)
 }
 
 /**
  * Absolute path of the worktree root for a given repo.
  *
  * Example: `worktreeRootFor("/Users/x/proj")` →
- * `/Users/x/.kobe/worktrees/proj-a1b2c3d4e5f6` (or, when a base override
+ * `/Users/x/.rove/worktrees/proj-a1b2c3d4e5f6` (or, when a base override
  * is set, `<override>/proj-a1b2c3d4e5f6`).
  */
 export function worktreeRootFor(repo: string): string {
@@ -105,8 +112,14 @@ export function managedWorktreeRootsFor(repo: string): readonly string[] {
   }
   const active = worktreeRootFor(repo)
   const fallback = path.join(defaultLocalWorktreesRoot(), repoWorktreeDirName(repo))
-  const primaryRoots = active === fallback ? [active] : [active, fallback]
-  return [...primaryRoots, ...REPO_LOCAL_KOBE_MANAGED_WORKTREE_ROOT_SUBPATHS.map((subpath) => path.join(repo, subpath))]
+  const legacy = path.join(legacyLocalWorktreesRoot(), repoWorktreeDirName(repo))
+  const primaryRoots = [active, fallback, legacy]
+  return [
+    ...new Set([
+      ...primaryRoots,
+      ...REPO_LOCAL_KOBE_MANAGED_WORKTREE_ROOT_SUBPATHS.map((subpath) => path.join(repo, subpath)),
+    ]),
+  ]
 }
 
 /**
@@ -147,7 +160,11 @@ export async function listWorktreeDirNames(repo: string): Promise<string[]> {
   if (isRemoteRepoKey(repo)) {
     const basePath = getRemoteRepoConfig(repo)?.basePath
     if (!basePath) return []
-    return execHostForRepo(repo).readdir(remoteWorktreeRootFor(basePath))
+    const names = new Set<string>()
+    const host = execHostForRepo(repo)
+    const entries = await Promise.all(remoteManagedWorktreeRootsFor(basePath).map((root) => host.readdir(root)))
+    for (const list of entries) for (const name of list) names.add(name)
+    return [...names]
   }
   const names = new Set<string>()
   for (const root of managedWorktreeRootsFor(repo)) {
@@ -197,14 +214,19 @@ export function isKobeManagedPath(repo: string, candidate: string): boolean {
 }
 
 /**
- * Worktree layout for a REMOTE project. The local `~/.kobe/worktrees/...`
+ * Worktree layout for a REMOTE project. The local `~/.rove/worktrees/...`
  * root can't be used — the worktree lives on the remote host. We root it
- * under the project's remote `basePath` in a `.kobe/worktrees/<slug>` subdir
+ * under the project's remote `basePath` in a `.rove/worktrees/<slug>` subdir
  * (POSIX join: the remote is always POSIX). The main checkout the worktree is
  * added from is `basePath` itself.
  */
 export function remoteWorktreeRootFor(basePath: string): string {
-  return `${stripTrailingSlash(basePath)}/.kobe/worktrees`
+  return `${stripTrailingSlash(basePath)}/.rove/worktrees`
+}
+
+export function remoteManagedWorktreeRootsFor(basePath: string): readonly string[] {
+  const base = stripTrailingSlash(basePath)
+  return [`${base}/.rove/worktrees`, `${base}/.kobe/worktrees`]
 }
 
 export function remoteWorktreePathFor(basePath: string, slug: string): string {
@@ -216,12 +238,14 @@ export function remoteWorktreePathFor(basePath: string, slug: string): string {
 
 /**
  * Remote analogue of {@link managedWorktreeRootForPath}: is `candidate` under
- * `<basePath>/.kobe/worktrees`? Pure string compare on POSIX remote paths (no
+ * `<basePath>/.rove/worktrees` or its `.kobe` predecessor? Pure string compare on POSIX remote paths (no
  * local realpath possible). Returns the remote root when matched, else null.
  */
 export function remoteManagedRootForPath(basePath: string, candidate: string): string | null {
-  const root = remoteWorktreeRootFor(basePath)
-  return candidate === root || candidate.startsWith(`${root}/`) ? root : null
+  for (const root of remoteManagedWorktreeRootsFor(basePath)) {
+    if (candidate === root || candidate.startsWith(`${root}/`)) return root
+  }
+  return null
 }
 
 function stripTrailingSlash(p: string): string {

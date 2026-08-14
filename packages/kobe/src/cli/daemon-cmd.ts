@@ -8,7 +8,7 @@
  */
 
 import { KobeDaemonClient } from "@sma1lboy/kobe-daemon/client"
-import { connectOrStartDaemon } from "@sma1lboy/kobe-daemon/client/daemon-process"
+import { connectOrStartDaemon, probeDaemonSocket } from "@sma1lboy/kobe-daemon/client/daemon-process"
 import { readRoveEnv } from "@sma1lboy/kobe-daemon/compat-env"
 import { installDaemonCrashHandlers } from "@sma1lboy/kobe-daemon/daemon/crash-log"
 import { stopDaemonProcess } from "@sma1lboy/kobe-daemon/daemon/lifecycle"
@@ -23,6 +23,7 @@ import { readPidFile, startDaemonServer } from "@sma1lboy/kobe-daemon/daemon/ser
 import { daemonRuntime } from "../core/daemon-runtime.ts"
 import { createKobeCore } from "../core/index.ts"
 import { LEGACY_KOBE_PRODUCT_NAME } from "../product.ts"
+import { migrateRoveDaemonStateLayout } from "../state/layout-migration.ts"
 import { activeCliName } from "./rename-compat.ts"
 
 const CLI_NAME = activeCliName()
@@ -123,6 +124,18 @@ export async function runDaemonSubcommand(argv: readonly string[]): Promise<void
   // silently killing the daemon. Safe here because this branch only runs
   // in the spawned daemon process, never in the TUI or tests.
   installDaemonCrashHandlers()
+
+  // A pre-upgrade daemon may still be writing the legacy stores. Copy those
+  // stores only after the socket is unowned, immediately before the new core
+  // reads them; otherwise a wrapper-level first-run copy can become stale.
+  const socketState = await probeDaemonSocket(socketPath)
+  if (socketState !== "absent") {
+    throw new Error(
+      `${CLI_NAME} daemon: ${socketState} daemon still owns ${socketPath}; run \`${CLI_NAME} daemon restart\``,
+    )
+  }
+  const migration = migrateRoveDaemonStateLayout()
+  for (const warning of migration.warnings) console.error(`[rove] daemon state migration will retry: ${warning}`)
 
   const core = await createKobeCore()
   const server = await startDaemonServer(core.orchestrator, {

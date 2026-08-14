@@ -130,7 +130,7 @@ export const VERBS: readonly VerbSpec[] = [
         name: "branch",
         type: "string",
         placeholder: "B",
-        description: "Explicit branch name (else auto kobe/<slug>-<id>).",
+        description: "Explicit branch name (else auto rove/<slug>-<id>).",
       },
       { name: "base-branch", type: "string", placeholder: "B", description: "Base ref the worktree branches from." },
       F.vendor(),

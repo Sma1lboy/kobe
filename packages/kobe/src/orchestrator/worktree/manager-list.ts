@@ -46,8 +46,8 @@ export async function listManaged(deps: ListDeps, repo: string): Promise<readonl
   }[] = []
   for (const entry of all) {
     if (!entry.path) continue
-    // Remote: kobe-managed = under <basePath>/.kobe/worktrees. Local: the usual
-    // `~/.kobe/worktrees/<repo-key>` + legacy roots.
+    // Remote: Rove-managed = canonical or legacy remote roots. Local: the
+    // `~/.rove/worktrees/<repo-key>` root plus compatibility roots.
     const callerRoot = ctx.remote
       ? remoteManagedRootForPath(ctx.dir, entry.path)
       : managedWorktreeRootForPath(repo, entry.path)

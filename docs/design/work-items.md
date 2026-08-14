@@ -57,7 +57,7 @@ than refetching.
 1. Re-fetch the single issue **with its body** (the list view omits bodies)
 2. `createTask` titled `#<number> <title>` — the number stays at the front so a
    truncated sidebar row still shows it, and the auto-branch derives from it
-   (`kobe/307-memory-ce2e8j`)
+   (`rove/307-memory-ce2e8j`)
 3. Stamp `linkedWorkItem` (best-effort — losing the link must not strand a task
    whose session is starting)
 4. Start the engine with the issue as its first message, via the same

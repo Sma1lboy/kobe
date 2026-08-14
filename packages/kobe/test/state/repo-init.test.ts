@@ -2,9 +2,9 @@
  * Unit tests for the per-repo init resolution (state/repo-init.ts) and the
  * state.json override accessors (state/repos.ts).
  *
- * Priority is the load-bearing rule: in-repo `.kobe/` files WIN over the
- * per-user state.json override, resolved PER FIELD. The override is the
- * fallback default. Paths used here are plain tmpdirs (not git repos), so
+ * Priority is the load-bearing rule: in-repo `.rove/` files win, `.kobe/`
+ * files remain fallbacks, and both beat the per-user state.json override,
+ * resolved PER FIELD. Paths used here are plain tmpdirs (not git repos), so
  * `resolveRepoRoot` returns them verbatim — no git shelling, deterministic.
  */
 
@@ -72,7 +72,7 @@ describe("resolveRepoInit (files win over override, per field)", () => {
     expect(resolveRepoInit(wt, wt)).toEqual({})
   })
 
-  test("override is the fallback when the repo ships no .kobe files", () => {
+  test("override is the fallback when the repo ships no convention files", () => {
     const wt = makeWorktree()
     setRepoInitOverride(wt, { initScript: "make setup", initPrompt: "hi" })
     expect(resolveRepoInit(wt, wt)).toEqual({ initScript: "make setup", initPrompt: "hi" })
@@ -88,6 +88,30 @@ describe("resolveRepoInit (files win over override, per field)", () => {
     // script runs the committed file by relative path (cwd is the worktree)
     expect(r.initScript).toBe("sh .kobe/init.sh")
     expect(r.initPrompt).toBe("start by reading the docs")
+  })
+
+  test("canonical .rove files win over legacy .kobe files per field", () => {
+    const wt = makeWorktree({
+      ".rove/init.sh": "echo rove",
+      ".rove/init-prompt.md": "canonical prompt",
+      ".kobe/init.sh": "echo kobe",
+      ".kobe/init-prompt.md": "legacy prompt",
+    })
+    expect(resolveRepoInit(wt, wt)).toEqual({
+      initScript: "sh .rove/init.sh",
+      initPrompt: "canonical prompt",
+    })
+  })
+
+  test("canonical and legacy convention files compose per field", () => {
+    const wt = makeWorktree({
+      ".rove/init.sh": "echo rove",
+      ".kobe/init-prompt.md": "legacy prompt",
+    })
+    expect(resolveRepoInit(wt, wt)).toEqual({
+      initScript: "sh .rove/init.sh",
+      initPrompt: "legacy prompt",
+    })
   })
 
   test("per field: file script wins, override prompt fills the gap", () => {
@@ -136,10 +160,10 @@ describe("resolveEngineLaunchInit", () => {
     expect(msg?.text).toContain("set-branch --task-id task-9 --branch")
   })
 
-  test("new-task without a threaded task id falls back to the $KOBE_TASK_ID env", () => {
+  test("new-task without a threaded task id falls back to the $ROVE_TASK_ID env", () => {
     const wt = makeWorktree()
     const msg = resolveEngineLaunchInit(wt, wt, { kind: "new-task", prompt: "fix the bug" }).firstMessage
-    expect(msg?.text).toContain('set-branch --task-id "$KOBE_TASK_ID" --branch')
+    expect(msg?.text).toContain('set-branch --task-id "$ROVE_TASK_ID" --branch rove/')
   })
 
   // Why: outcomes travel as chat back to the spawner, not stored reports —

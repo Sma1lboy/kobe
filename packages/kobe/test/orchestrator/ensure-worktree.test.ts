@@ -54,7 +54,7 @@ let orch: Orchestrator
 beforeEach(async () => {
   prevHome = process.env.KOBE_HOME_DIR
   tmpRoot = fs.mkdtempSync(path.join(os.tmpdir(), "kobe-ensure-wt-"))
-  // The worktree manager computes paths under `$KOBE_HOME_DIR/.kobe/worktrees`,
+  // The worktree manager computes paths under `$KOBE_HOME_DIR/.rove/worktrees`,
   // so isolate it (and the store) to the tmp home.
   const home = path.join(tmpRoot, "home")
   process.env.KOBE_HOME_DIR = home

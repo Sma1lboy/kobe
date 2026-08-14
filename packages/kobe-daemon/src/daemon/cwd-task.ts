@@ -7,10 +7,11 @@
  * (or an ancestor of it, if the engine cd'd into a subdir), so we take the task
  * whose `worktreePath` is the cwd or the LONGEST path-prefix of it.
  *
- * Longest-prefix matters because legacy task worktrees can live under a repo
- * root (`<repo>/.kobe/worktrees/<id>` or `.claude/worktrees/<id>`), and a
- * `main` task's worktreePath IS that repo root. The more specific (longer)
- * worktree wins, so a sub-task is never misattributed to the project.
+ * Longest-prefix matters because managed worktrees may live under canonical
+ * global `~/.rove/worktrees/`, legacy global `~/.kobe/worktrees/`, or repo-local
+ * `.rove/worktrees/`, `.kobe/worktrees/`, and `.claude/worktrees/` roots. A
+ * `main` task's worktreePath can be the repo root itself, so the more specific
+ * (longer) worktree must win.
  *
  * cwds that match no task (an unrelated repo, a project root with no main task)
  * return undefined → the event is dropped.
@@ -19,18 +20,20 @@
 import { createHash } from "node:crypto"
 import { homedir } from "node:os"
 import path from "node:path"
-import { COMPAT_STATE_DIR_BASENAME, readRoveEnv } from "../compat-env.ts"
+import { LEGACY_KOBE_STATE_DIR_BASENAME, ROVE_STATE_DIR_BASENAME, readRoveEnv } from "../compat-env.ts"
 
 const KOBE_WORKTREE_ROOT_DIR = "worktrees"
+const REPO_LOCAL_ROVE_WORKTREE_ROOT_SUBPATH = ".rove/worktrees"
 const REPO_LOCAL_KOBE_WORKTREE_ROOT_SUBPATH = ".kobe/worktrees"
 const LEGACY_KOBE_WORKTREE_ROOT_SUBPATH = ".claude/worktrees"
 const REPO_LOCAL_KOBE_MANAGED_WORKTREE_ROOT_SUBPATHS = [
+  REPO_LOCAL_ROVE_WORKTREE_ROOT_SUBPATH,
   REPO_LOCAL_KOBE_WORKTREE_ROOT_SUBPATH,
   LEGACY_KOBE_WORKTREE_ROOT_SUBPATH,
 ] as const
 
-function kobeStateDir(): string {
-  return path.join(readRoveEnv("HOME_DIR") ?? homedir(), COMPAT_STATE_DIR_BASENAME)
+function stateDir(basename: string): string {
+  return path.join(readRoveEnv("HOME_DIR") ?? homedir(), basename)
 }
 
 function repoWorktreeDirName(repo: string): string {
@@ -44,7 +47,7 @@ function worktreeRootFor(repo: string): string {
   if (!path.isAbsolute(repo)) {
     throw new Error(`worktreeRootFor: repo must be an absolute path, got: ${repo}`)
   }
-  return path.join(kobeStateDir(), KOBE_WORKTREE_ROOT_DIR, repoWorktreeDirName(repo))
+  return path.join(stateDir(ROVE_STATE_DIR_BASENAME), KOBE_WORKTREE_ROOT_DIR, repoWorktreeDirName(repo))
 }
 
 function managedWorktreeRootsFor(repo: string): readonly string[] {
@@ -53,6 +56,7 @@ function managedWorktreeRootsFor(repo: string): readonly string[] {
   }
   return [
     worktreeRootFor(repo),
+    path.join(stateDir(LEGACY_KOBE_STATE_DIR_BASENAME), KOBE_WORKTREE_ROOT_DIR, repoWorktreeDirName(repo)),
     ...REPO_LOCAL_KOBE_MANAGED_WORKTREE_ROOT_SUBPATHS.map((subpath) => path.join(repo, subpath)),
   ]
 }
@@ -140,8 +144,8 @@ export function matchRepoByCwd(tasks: ReadonlyArray<CwdMatchTask>, cwd: string):
 /**
  * Detect a `cwd` that is an UNADOPTED git worktree under a tracked repo's
  * managed worktree roots — the replacement for the removed WorktreeCreate
- * hook. When an engine starts in a worktree under `~/.kobe/worktrees/<repo-key>`
- * or a legacy repo-local root for a repo kobe already has tasks in, the daemon
+ * hook. When an engine starts in a worktree under `~/.rove/worktrees/<repo-key>`
+ * or a legacy repo-local root for a repo Rove already has tasks in, the daemon
  * adopts it as a task on the engine's `session-start`.
  *
  * Pure + git-free (string paths only, bounded to known repos): returns the

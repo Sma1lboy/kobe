@@ -30,7 +30,7 @@ export async function confirmResetState(
   const ok = await DialogConfirm.show(
     dialog,
     "Reset UI state?",
-    "Wipes ~/.config/kobe/state.json and ~/.kobe/tasks.json, then quits Rove — relaunch for a fresh start with empty Working session / Archive lists. Worktrees on disk and Claude Code session history are NOT touched.",
+    "Wipes ~/.config/rove/state.json and ~/.rove/tasks.json, then quits Rove — relaunch for a fresh start with empty Working session / Archive lists. Worktrees on disk and Claude Code session history are NOT touched.",
     "cancel",
   )
   if (ok !== true) return
