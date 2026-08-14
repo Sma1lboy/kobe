@@ -26,7 +26,7 @@
 </p>
 
 <p align="center">
-  <img src="docs/assets/workspace.png" alt="Rove workspace — task sidebar, embedded engine session, file tree and terminal" />
+  <img src="docs/assets/workspace.png" alt="Rove workspace — task sidebar, the embedded engine session mid-review, and the worktree's file tree" />
 </p>
 
 Terminal multiplexers let one terminal hold many shells that survive you. Rove does the same for AI coding agents: one TUI holds many engine sessions, each isolated on its own git worktree and branch, all alive after you close the laptop lid on your SSH connection. Start the auth refactor, start the flaky-test hunt beside it, walk away, come back to two finished branches. It runs where your code already lives — laptop, devbox, VPS — with no desktop app and no browser required.
@@ -41,7 +41,8 @@ Terminal multiplexers let one terminal hold many shells that survive you. Rove d
 - **Agents orchestrating agents** — `rove api` lets a script, or another AI agent, spawn tasks, supervise them, and land the results headlessly.
 
 <p align="center">
-  <img src="docs/assets/brand/task-streams.gif" alt="Rove — three isolated tasks progressing in parallel" />
+  <img src="docs/assets/demo.gif" alt="Rove demo — two tasks running at once, each on its own worktree and branch" /><br />
+  <a href="docs/assets/demo.mp4">▶ watch the full-quality mp4</a>
 </p>
 
 ## Install
@@ -77,11 +78,23 @@ Full documentation: **[docs.kobe.sma1lboy.me](https://docs.kobe.sma1lboy.me)** �
 
 **Review with leverage.** Open a file's diff, `v` a range, `c` a note, and `s` sends every unsent note across the whole task back to the engine as one prompt. The engine gets your words plus file and line numbers — it reads the worktree itself. Notes survive restarts, and sending doesn't switch tabs.
 
+<p align="center">
+  <img src="docs/assets/diff-review.png" alt="Diff review — a range anchored across the agent's new lines and a note being written for the engine" />
+</p>
+
 **Never babysit a rate limit.** The footer carries each usage window the vendor reports (`CLAUDE 5h 42% → 14:00 · 7d 12%`). When Claude hits its subscription window, Rove schedules a resume and continues the task once the window resets. Or don't wait at all: `ctrl+e` continues the same conversation in a *different* engine — the next agent gets the previous transcript's path and picks up from there — and `rove api send --tab new --vendor codex` puts a second vendor on the same worktree, on the same files.
 
 **Run it from your phone.** Below 70 columns the TUI becomes one panel at a time — task list and workspace alternate, the first row jumps you back where you were, quota shrinks to `CLAUDE 42%`. No setting, no separate app; it follows the terminal width.
 
+<p align="center">
+  <img src="docs/assets/narrow-sidebar.png" alt="Narrow mode — the task list filling a phone-width SSH session" />
+</p>
+
 **Work that runs without you.** Routines are daemon-owned cron prompts: every firing creates a fresh task — worktree, branch, engine session — with the prompt as its first message. A `--precheck` command skips the run when nothing changed, so a nightly schedule doesn't burn a turn on an idle repo. An enabled routine keeps the daemon alive with no TUI attached.
+
+<p align="center">
+  <img src="docs/assets/routines.png" alt="The Routines page — scheduled prompts with their cron expressions and next runs" />
+</p>
 
 And the rest, briefly:
 

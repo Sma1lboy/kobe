@@ -126,6 +126,42 @@ out. Ports come from `KOBE_VISUAL_PORT_BASE`, so pointing the shot at another
 harness instance (a throwaway home with a richer fixture, say) is just an env
 var — the ground-truth path is unchanged.
 
+### README and docs assets
+
+Marketing stills and the demo video ride that same `/harness` path, against a
+RICHER throwaway home — the visual fixture is one empty task and photographs
+as an empty product. `packages/kobe-web/e2e/hero-*.ts` owns it:
+
+```bash
+cd packages/kobe-web
+bun e2e/hero-fixture.ts --fresh   # isolated home + a real repo with history
+bun e2e/hero-seed.ts              # REAL Claude Code turns on two worktrees
+bun e2e/hero-serve.ts             # warm capture stack on :5323 (keep running)
+
+bun e2e/hero-shot.ts --scale=2 --out=../../docs/assets/workspace.png ctrl+a l
+bun e2e/hero-record.ts            # demo.mp4 + demo.gif (4× cut)
+```
+
+- **`HOME` stays the operator's**, alone among the isolation knobs: the engine
+  under capture is the real `claude`, and a redirected home photographs a
+  login screen. `ROVE_HOME_DIR` and the settings blob still land in
+  `.scratch/hero/`, and every inherited daemon/task/`CLAUDE_CODE_*` marker is
+  scrubbed — a capture run from inside a Rove task must never reach the
+  operator's daemon, and an inherited child-session marker turns the engine's
+  transcript off, which empties the pane the screenshot is of.
+- **Turns are real, so the output is not reproducible** — expect the
+  transcript, and so the framing, to differ every run. Seeding is idempotent:
+  a re-shoot reuses the sessions it already paid quota for.
+- **Video beats switch panes by CLICKING rows**, never by the `ctrl+a` prefix.
+  The prefix is two strokes, and while an engine streams into the pane the
+  second one gets starved — the storyboard then types its own navigation keys
+  into a chat composer and films it.
+- Encoding uses Remotion's bundled ffmpeg (`bun x remotion ffmpeg` from
+  `packages/branding`); the repo has no system ffmpeg, and Playwright's build
+  ships neither h264 nor the gif palette filters. That build is also
+  `--disable-filters` with a small whitelist, so the speed-up is `-itsscale`
+  and the gif frame rate is an output `-r` — `setpts` and `fps` do not exist.
+
 Both commands rebuild a disposable fixture under `.scratch/opentui-visual-*`
 (real git repo, real task, three issues via `rove api`). Each journey gets a
 fresh `/harness` browser PTY and starts from the Workspace; the journeys are
