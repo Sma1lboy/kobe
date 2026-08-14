@@ -46,8 +46,8 @@ const BRAVO = task("bravo")
 
 function seedState(seen: Record<string, number>): void {
   const home = mkdtempSync(join(tmpdir(), "kobe-unread-restart-"))
-  mkdirSync(join(home, ".config", "kobe"), { recursive: true })
-  writeFileSync(join(home, ".config", "kobe", "state.json"), JSON.stringify({ completionSeen: seen }))
+  mkdirSync(join(home, ".config", "rove"), { recursive: true })
+  writeFileSync(join(home, ".config", "rove", "state.json"), JSON.stringify({ completionSeen: seen }))
   process.env.KOBE_HOME_DIR = home
 }
 
