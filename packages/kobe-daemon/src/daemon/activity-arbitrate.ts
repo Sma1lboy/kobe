@@ -89,7 +89,7 @@ function fromObserved(observed: ObservedSlot, hook?: HookSlot): EffectiveActivit
     source: "observed",
     // Lineage falls back to the hook slot it just corrected: the liveness
     // probe and late subscribers still need to know WHICH engine this was.
-    ...(observed.vendor ?? hook?.vendor ? { vendor: observed.vendor ?? hook?.vendor } : {}),
+    ...((observed.vendor ?? hook?.vendor) ? { vendor: observed.vendor ?? hook?.vendor } : {}),
     ...(hook?.session ? { session: hook.session } : {}),
   }
 }

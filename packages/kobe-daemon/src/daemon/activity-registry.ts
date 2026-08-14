@@ -1,9 +1,4 @@
-import {
-  type EffectiveActivity,
-  type HookSlot,
-  type ObservedSlot,
-  recomputeTabActivity,
-} from "./activity-arbitrate.ts"
+import { type EffectiveActivity, type HookSlot, type ObservedSlot, recomputeTabActivity } from "./activity-arbitrate.ts"
 import {
   type ActivityLiveness,
   type ActivityLivenessProbe,
