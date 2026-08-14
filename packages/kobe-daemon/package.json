@@ -12,6 +12,7 @@
     "./client/daemon-process": "./src/client/daemon-process.ts",
     "./client/pty-process": "./src/client/pty-process.ts",
     "./client/rpc": "./src/client/rpc.ts",
+    "./daemon/activity-arbitrate": "./src/daemon/activity-arbitrate.ts",
     "./daemon/activity-liveness": "./src/daemon/activity-liveness.ts",
     "./daemon/activity-observer": "./src/daemon/activity-observer.ts",
     "./daemon/activity-registry": "./src/daemon/activity-registry.ts",
