@@ -1,4 +1,4 @@
-# @sma1lboy/kobe-plugin-sdk
+# @sma1lboy/rove-plugin-sdk
 
 ## 0.1.1
 

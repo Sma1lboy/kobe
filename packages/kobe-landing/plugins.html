@@ -6,10 +6,10 @@
 <title>Rove — plugins</title>
 <link rel="icon" href="/assets/favicon.png" type="image/png">
 <link rel="apple-touch-icon" href="/assets/favicon.png">
-<meta name="description" content="The Rove plugin marketplace — shareable workflow packages built on the Rove CLI. Every public GitHub repo tagged kobe-plugin, listed automatically.">
+<meta name="description" content="The Rove plugin marketplace — shareable workflow packages built on the Rove CLI. Public repos tagged rove-plugin are listed automatically; legacy kobe-plugin repos stay included.">
 <link rel="canonical" href="https://kobe.sma1lboy.me/plugins">
 <meta property="og:title" content="Rove — plugins">
-<meta property="og:description" content="Shareable workflow packages for Rove. Every public GitHub repo tagged kobe-plugin, listed automatically.">
+<meta property="og:description" content="Shareable workflow packages for Rove. Repositories tagged rove-plugin or legacy kobe-plugin are listed automatically.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://kobe.sma1lboy.me/plugins">
 <meta name="twitter:card" content="summary_large_image">
@@ -228,9 +228,9 @@ code{font-family:var(--font-mono);font-size:12.5px;background:var(--accent-wash)
 
 <!-- HEAD -->
 <section id="top" class="head wrap">
-  <p class="kicker rise" style="animation-delay:.06s" data-i18n-html="plug.kicker">a directory · a <span class="acc" style="font-style:normal;font-weight:700">kobe-plugin.toml</span> · the whole CLI as the API</p>
+  <p class="kicker rise" style="animation-delay:.06s" data-i18n-html="plug.kicker">a directory · a <span class="acc" style="font-style:normal;font-weight:700">rove-plugin.toml</span> · the whole CLI as the API</p>
   <h1 class="rise" style="animation-delay:.16s" data-i18n-html="plug.title">Workflow, packaged and <span class="acc">shareable</span>.</h1>
-  <p class="head-sub rise" style="animation-delay:.28s" data-i18n="plug.sub">A Rove plugin is a directory with a kobe-plugin.toml manifest. There is no separate plugin SDK to learn: the whole Rove CLI is the plugin API, so anything you can script against your fleet, you can ship to someone else.</p>
+  <p class="head-sub rise" style="animation-delay:.28s" data-i18n="plug.sub">A Rove plugin is a directory with a rove-plugin.toml manifest. There is no required SDK: the whole Rove CLI is the plugin API, so anything you can script against your fleet, you can ship to someone else.</p>
   <figure class="term-frame head-term rise" style="animation-delay:.4s"><div class="tbar" aria-hidden="true"><i class="r"></i><i class="y"></i><i class="g"></i><span>install</span></div>
   <pre class="term-out"><span class="ps">$</span> rove plugin install owner/repo<span class="d">[/subdir]</span>
 <span class="ps">$</span> rove plugin list
@@ -242,8 +242,8 @@ code{font-family:var(--font-mono);font-size:12.5px;background:var(--accent-wash)
   <div class="sec-head">
     <div>
       <span class="sec-no" data-i18n="mk.no">01 · MARKETPLACE</span>
-      <h2 data-i18n-html="mk.title">Everything tagged <span class="acc">kobe-plugin</span>.</h2>
-      <p class="sec-lede" data-i18n="mk.lede">This list is not curated by hand. It is every public GitHub repository carrying the kobe-plugin topic, fetched live when you open the page.</p>
+      <h2 data-i18n-html="mk.title">Everything tagged <span class="acc">rove-plugin</span>.</h2>
+      <p class="sec-lede" data-i18n="mk.lede">This list is not curated by hand. It combines the canonical rove-plugin topic with legacy kobe-plugin repositories, fetched live when you open the page.</p>
     </div>
   </div>
 
@@ -282,15 +282,15 @@ code{font-family:var(--font-mono);font-size:12.5px;background:var(--accent-wash)
   <h2 data-i18n="pub.title">Ship yours in three steps.</h2>
   <div class="publish">
     <ol class="steps">
-      <li data-i18n-html="pub.s1"><b>Put a manifest in a public repo.</b> A <code>kobe-plugin.toml</code> at the repo root — or in a subdirectory, if you keep several plugins in one repo.</li>
-      <li data-i18n-html="pub.s2"><b>Add the GitHub topic <code>kobe-plugin</code>.</b> Repo page → the gear next to About → Topics.</li>
+      <li data-i18n-html="pub.s1"><b>Put a manifest in a public repo.</b> A <code>rove-plugin.toml</code> at the repo root — or in a subdirectory, if you keep several plugins in one repo.</li>
+      <li data-i18n-html="pub.s2"><b>Add the GitHub topic <code>rove-plugin</code>.</b> Repo page → the gear next to About → Topics.</li>
       <li data-i18n-html="pub.s3"><b>Done.</b> It shows up on this page on the next load, and anyone can run <code>rove plugin install you/your-repo</code>.</li>
     </ol>
-    <figure class="term-frame"><div class="tbar" aria-hidden="true"><i class="r"></i><i class="y"></i><i class="g"></i><span>kobe-plugin.toml</span></div>
+    <figure class="term-frame"><div class="tbar" aria-hidden="true"><i class="r"></i><i class="y"></i><i class="g"></i><span>rove-plugin.toml</span></div>
     <pre class="term-out"><span class="k">id</span> = <span class="s">"notify"</span>
 <span class="k">name</span> = <span class="s">"Notify"</span>
 <span class="k">version</span> = <span class="s">"0.1.0"</span>
-<span class="k">min_kobe_version</span> = <span class="s">"0.8.0"</span>
+<span class="k">min_rove_version</span> = <span class="s">"0.8.0"</span>
 
 <span class="a">[[actions]]</span>
 <span class="k">id</span> = <span class="s">"test"</span>
@@ -313,19 +313,19 @@ code{font-family:var(--font-mono);font-size:12.5px;background:var(--accent-wash)
   var KOBE_I18N = (function () {
     var zh = {
       'meta.title': 'Rove — 插件',
-      'meta.desc': 'Rove 插件市场——基于 Rove CLI 的可分享工作流包。所有带 kobe-plugin 话题的公开 GitHub 仓库，自动列出。',
+      'meta.desc': 'Rove 插件市场——基于 Rove CLI 的可分享工作流包。rove-plugin 与兼容的 kobe-plugin 仓库都会自动列出。',
       'nav.workflow': '--原语', 'nav.install': '--安装', 'nav.plugins': '--插件', 'nav.themes': '--主题', 'nav.changelog': '--更新日志',
-      'plug.kicker': '一个目录 · 一份 <span class="acc" style="font-style:normal;font-weight:700">kobe-plugin.toml</span> · 整个 CLI 就是 API',
+      'plug.kicker': '一个目录 · 一份 <span class="acc" style="font-style:normal;font-weight:700">rove-plugin.toml</span> · 整个 CLI 就是 API',
       'plug.title': '把工作流打包，<span class="acc">拿去分享</span>。',
-      'plug.sub': 'Rove 插件就是一个带 kobe-plugin.toml 清单的目录。没有另一套插件 SDK 要学：整个 Rove CLI 就是插件 API——你能用脚本对机群做的事，就能打包给别人。',
+      'plug.sub': 'Rove 插件就是一个带 rove-plugin.toml 清单的目录。无需 SDK：整个 Rove CLI 就是插件 API——你能用脚本对机群做的事，就能打包给别人。',
       'mk.no': '01 · 插件市场',
-      'mk.title': '所有带 <span class="acc">kobe-plugin</span> 话题的仓库。',
-      'mk.lede': '这份列表不是人工挑的。它是所有打了 kobe-plugin 话题的公开 GitHub 仓库，在你打开页面时实时拉取。',
+      'mk.title': '所有带 <span class="acc">rove-plugin</span> 话题的仓库。',
+      'mk.lede': '这份列表不是人工挑的。它合并 rove-plugin 与兼容的 kobe-plugin 公开仓库，在你打开页面时实时拉取。',
       'mk.sortLabel': '排序', 'mk.sortStars': '星标', 'mk.sortPushed': '最近推送', 'mk.sortNewest': '最新创建',
       'mk.disclaimer': '这些是社区仓库，自动收录，无人审核。插件以你 shell 的权限运行——安装前先读一遍清单。',
       'mk.filterPlaceholder': '过滤插件…',
       'mk.offline': 'GitHub API 暂时读不到（多半是限流）。下面是本仓库自带的第一方示例插件。',
-      'mk.empty': '还没有公开仓库打上 kobe-plugin 话题。下面是本仓库自带的第一方示例插件——第一个列在这里的可以是你的。',
+      'mk.empty': '还没有公开仓库打上 rove-plugin 或兼容的 kobe-plugin 话题。下面是第一方示例插件——第一个列在这里的可以是你的。',
       'mk.copy': '复制安装命令', 'mk.copied': '✓ 已复制',
       'mk.count': '个插件', 'mk.none': '没有匹配的插件。',
       'mk.firstParty': '第一方',
@@ -336,8 +336,8 @@ code{font-family:var(--font-mono);font-size:12.5px;background:var(--accent-wash)
       'det.readmeFail': '这个插件的 README 读不到。',
       'pub.no': '02 · 发布',
       'pub.title': '三步发布你自己的插件。',
-      'pub.s1': '<b>把清单放进一个公开仓库。</b>仓库根目录放一份 <code>kobe-plugin.toml</code>——如果一个仓库里放好几个插件，也可以放在子目录里。',
-      'pub.s2': '<b>加上 GitHub 话题 <code>kobe-plugin</code>。</b>仓库页 → About 旁边的齿轮 → Topics。',
+      'pub.s1': '<b>把清单放进一个公开仓库。</b>仓库根目录放一份 <code>rove-plugin.toml</code>——如果一个仓库里放好几个插件，也可以放在子目录里。',
+      'pub.s2': '<b>加上 GitHub 话题 <code>rove-plugin</code>。</b>仓库页 → About 旁边的齿轮 → Topics。',
       'pub.s3': '<b>就这样。</b>下次有人打开这个页面时它就出现了，任何人都能跑 <code>rove plugin install you/your-repo</code>。',
       'footer.tagline': '终端原生的编码代理图工程。',
       'footer.colophon': '用 Bun、OpenTUI 和 React 构建。字体为 Fraunces、DM Sans 与 JetBrains Mono。MIT 许可。',
@@ -345,19 +345,19 @@ code{font-family:var(--font-mono);font-size:12.5px;background:var(--accent-wash)
     };
     var en = {
       'meta.title': 'Rove — plugins',
-      'meta.desc': 'The Rove plugin marketplace — shareable workflow packages built on the Rove CLI. Every public GitHub repo tagged kobe-plugin, listed automatically.',
+      'meta.desc': 'The Rove plugin marketplace — shareable workflow packages built on the Rove CLI. rove-plugin and legacy kobe-plugin repositories are listed automatically.',
       'nav.workflow': '--primitives', 'nav.install': '--install', 'nav.plugins': '--plugins', 'nav.themes': '--themes', 'nav.changelog': '--changelog',
-      'plug.kicker': 'a directory · a <span class="acc" style="font-style:normal;font-weight:700">kobe-plugin.toml</span> · the whole CLI as the API',
+      'plug.kicker': 'a directory · a <span class="acc" style="font-style:normal;font-weight:700">rove-plugin.toml</span> · the whole CLI as the API',
       'plug.title': 'Workflow, packaged and <span class="acc">shareable</span>.',
-      'plug.sub': 'A Rove plugin is a directory with a kobe-plugin.toml manifest. There is no separate plugin SDK to learn: the whole Rove CLI is the plugin API, so anything you can script against your fleet, you can ship to someone else.',
+      'plug.sub': 'A Rove plugin is a directory with a rove-plugin.toml manifest. There is no required SDK: the whole Rove CLI is the plugin API, so anything you can script against your fleet, you can ship to someone else.',
       'mk.no': '01 · MARKETPLACE',
-      'mk.title': 'Everything tagged <span class="acc">kobe-plugin</span>.',
-      'mk.lede': 'This list is not curated by hand. It is every public GitHub repository carrying the kobe-plugin topic, fetched live when you open the page.',
+      'mk.title': 'Everything tagged <span class="acc">rove-plugin</span>.',
+      'mk.lede': 'This list is not curated by hand. It combines rove-plugin with legacy kobe-plugin repositories, fetched live when you open the page.',
       'mk.sortLabel': 'SORT', 'mk.sortStars': 'stars', 'mk.sortPushed': 'recently pushed', 'mk.sortNewest': 'newest',
       'mk.disclaimer': "These are community repositories, listed automatically and reviewed by nobody. A plugin runs with your shell's privileges — read the manifest before you install.",
       'mk.filterPlaceholder': 'filter plugins…',
       'mk.offline': "Couldn't reach the GitHub API (usually rate limiting). Showing the first-party example plugins that ship in this repo.",
-      'mk.empty': 'No public repository carries the kobe-plugin topic yet. Below are the first-party examples that ship in this repo — the first one listed here could be yours.',
+      'mk.empty': 'No public repository carries the rove-plugin or legacy kobe-plugin topic yet. Below are the first-party examples — the first one listed here could be yours.',
       'mk.copy': 'copy install command', 'mk.copied': '✓ copied',
       'mk.count': 'plugins', 'mk.none': 'No plugins match that filter.',
       'mk.firstParty': 'first-party',
@@ -368,8 +368,8 @@ code{font-family:var(--font-mono);font-size:12.5px;background:var(--accent-wash)
       'det.readmeFail': "Couldn't load this plugin's README.",
       'pub.no': '02 · PUBLISH',
       'pub.title': 'Ship yours in three steps.',
-      'pub.s1': '<b>Put a manifest in a public repo.</b> A <code>kobe-plugin.toml</code> at the repo root — or in a subdirectory, if you keep several plugins in one repo.',
-      'pub.s2': '<b>Add the GitHub topic <code>kobe-plugin</code>.</b> Repo page → the gear next to About → Topics.',
+      'pub.s1': '<b>Put a manifest in a public repo.</b> A <code>rove-plugin.toml</code> at the repo root — or in a subdirectory, if you keep several plugins in one repo.',
+      'pub.s2': '<b>Add the GitHub topic <code>rove-plugin</code>.</b> Repo page → the gear next to About → Topics.',
       'pub.s3': '<b>Done.</b> It shows up on this page on the next load, and anyone can run <code>rove plugin install you/your-repo</code>.',
       'footer.tagline': 'graph engineering for coding agents, terminal-native.',
       'footer.colophon': 'Built with Bun, OpenTUI and React. Set in Fraunces, DM Sans and JetBrains Mono. MIT licensed.',

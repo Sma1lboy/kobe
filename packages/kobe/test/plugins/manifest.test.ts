@@ -1,7 +1,12 @@
+import { mkdtempSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import {
   currentPluginPlatform,
   parsePluginManifest,
+  pluginManifestPath,
   qualifiedActionId,
+  readPluginManifest,
   supportsPlatform,
 } from "@sma1lboy/kobe-daemon/plugins/manifest"
 import { describe, expect, it } from "vitest"
@@ -40,6 +45,14 @@ describe("parsePluginManifest", () => {
     expect(manifest.actions[0]).toMatchObject({ id: "test", title: "Send a test notification" })
     expect(manifest.events[0]?.on).toBe("agent.turn-complete")
     expect(warnings).toEqual([])
+  })
+
+  it("accepts min_rove_version and gives it precedence over the legacy field", () => {
+    const { manifest, warnings } = parsePluginManifest(
+      'id = "p"\nname = "P"\nversion = "1.0.0"\nmin_rove_version = "0.9.0"\nmin_kobe_version = "0.8.0"',
+    )
+    expect(manifest.minKobeVersion).toBe("0.9.0")
+    expect(warnings.some((warning) => warning.includes("using `min_rove_version`"))).toBe(true)
   })
 
   it("requires id/name/version/min_kobe_version", () => {
@@ -93,6 +106,25 @@ describe("parsePluginManifest", () => {
         'id = "p"\nname = "P"\nversion = "1.0.0"\nmin_kobe_version = "0.1.0"\n[[startup]]\ncommand = "sh run.sh"',
       ),
     ).toThrow(/argv/)
+  })
+})
+
+describe("plugin manifest filenames", () => {
+  const body = 'id = "p"\nname = "P"\nversion = "1.0.0"\nmin_rove_version = "0.1.0"\nplatforms = ["linux"]'
+
+  it("reads rove-plugin.toml as the canonical spelling", () => {
+    const root = mkdtempSync(join(tmpdir(), "rove-manifest-"))
+    writeFileSync(join(root, "rove-plugin.toml"), body)
+    expect(pluginManifestPath(root)).toBe(join(root, "rove-plugin.toml"))
+    expect(readPluginManifest(root).manifest.id).toBe("p")
+  })
+
+  it("falls back to kobe-plugin.toml and prefers Rove when both exist", () => {
+    const root = mkdtempSync(join(tmpdir(), "rove-manifest-compat-"))
+    writeFileSync(join(root, "kobe-plugin.toml"), body.replace('id = "p"', 'id = "legacy"'))
+    expect(readPluginManifest(root).manifest.id).toBe("legacy")
+    writeFileSync(join(root, "rove-plugin.toml"), body)
+    expect(readPluginManifest(root).manifest.id).toBe("p")
   })
 })
 

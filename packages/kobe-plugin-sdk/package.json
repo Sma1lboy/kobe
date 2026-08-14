@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "name": "@sma1lboy/kobe-plugin-sdk",
+  "name": "@sma1lboy/rove-plugin-sdk",
   "version": "0.1.1",
   "description": "Typed SDK for writing Rove plugins — env context, event types, daemon socket client, CLI helpers, and a tiny pane kit. Optional sugar over the plain env+CLI+socket contract.",
   "type": "module",
@@ -12,7 +12,10 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
-    "./contract": "./src/contract.ts"
+    "./contract": {
+      "types": "./dist/contract.d.ts",
+      "default": "./dist/contract.js"
+    }
   },
   "files": ["dist", "README.md"],
   "publishConfig": {
@@ -20,17 +23,17 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/Sma1lboy/rove.git",
+    "url": "git+https://github.com/Sma1lboy/kobe.git",
     "directory": "packages/kobe-plugin-sdk"
   },
-  "homepage": "https://github.com/Sma1lboy/rove/blob/main/docs/PLUGIN-AUTHORING.md",
+  "homepage": "https://github.com/Sma1lboy/kobe/blob/main/docs/PLUGIN-AUTHORING.md",
   "engines": {
     "node": ">=18"
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --passWithNoTests",
+    "test": "bun run build && vitest run --passWithNoTests",
     "prepublishOnly": "bun run typecheck && bun run build"
   },
   "devDependencies": {

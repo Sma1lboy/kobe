@@ -145,7 +145,7 @@ describe("kobe skill print", () => {
   it("prints the bundled SKILL.md verbatim (the `kobe --skill` body)", async () => {
     await runSkillSubcommand(["print"])
     expect(out()).toContain("# Rove shell control")
-    expect(out()).toContain("kobe-skill-version")
+    expect(out()).toContain("rove-skill-version")
     expect(mocks.bunSpawn).not.toHaveBeenCalled()
   })
 })

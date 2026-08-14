@@ -1,10 +1,8 @@
 /**
  * `kobe plugin search [query]` — browse the marketplace from the CLI.
  *
- * The marketplace is the GitHub topic `kobe-plugin` (docs/design/plugins.md
- * §Marketplace): one unauthenticated search-API call, merged with the
- * first-party examples that live in this repo (monorepo subdirs can never
- * carry a topic of their own). Same data the landing page renders.
+ * The marketplace is the canonical GitHub topic `rove-plugin`, unioned with
+ * the legacy `kobe-plugin` topic so existing publishers remain discoverable.
  */
 
 import { activeCliName } from "./rename-compat.ts"
@@ -29,8 +27,8 @@ interface MarketEntry {
   readonly firstParty?: boolean
 }
 
-async function fetchCommunity(query: string | undefined): Promise<MarketEntry[] | null> {
-  const q = encodeURIComponent(`topic:kobe-plugin${query ? ` ${query}` : ""}`)
+async function fetchTopic(topic: string, query: string | undefined): Promise<MarketEntry[] | null> {
+  const q = encodeURIComponent(`topic:${topic}${query ? ` ${query}` : ""}`)
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), SEARCH_TIMEOUT_MS)
   try {
@@ -54,14 +52,14 @@ async function fetchCommunity(query: string | undefined): Promise<MarketEntry[] 
 }
 
 export async function searchMarketplace(query: string | undefined): Promise<void> {
-  const community = await fetchCommunity(query)
+  const topicResults = await Promise.all([fetchTopic("rove-plugin", query), fetchTopic("kobe-plugin", query)])
   const lower = query?.toLowerCase()
   const seeds = FIRST_PARTY.filter((s) => !lower || `${s.ref} ${s.desc}`.toLowerCase().includes(lower)).map((s) => ({
     ...s,
     firstParty: true,
   }))
-  const entries: MarketEntry[] = [...seeds, ...(community ?? [])]
-  if (community === null) {
+  const entries = dedupeEntries([...seeds, ...topicResults.flatMap((result) => result ?? [])])
+  if (topicResults.every((result) => result === null)) {
     console.error("(GitHub search unreachable — showing first-party plugins only)")
   }
   if (entries.length === 0) {
@@ -74,4 +72,14 @@ export async function searchMarketplace(query: string | undefined): Promise<void
     console.log(`${e.ref.padEnd(width)}${stars.padEnd(12)}${e.desc}`)
   }
   console.log(`\ninstall: ${CLI_NAME} plugin install <owner/repo[/subdir]> — browse: https://kobe.sma1lboy.me/plugins`)
+}
+
+function dedupeEntries(entries: readonly MarketEntry[]): MarketEntry[] {
+  const seen = new Set<string>()
+  return entries.filter((entry) => {
+    const key = entry.ref.toLowerCase()
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
 }

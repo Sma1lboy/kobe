@@ -14,7 +14,7 @@ export interface PluginRegistryEntry {
   readonly id: string
   /** `github` = managed checkout under plugins/<id>/checkout; `link` = author's working dir. */
   readonly source: { readonly kind: "github"; readonly spec: string } | { readonly kind: "link" }
-  /** Absolute plugin root (the directory containing kobe-plugin.toml). */
+  /** Absolute plugin root (containing rove-plugin.toml or its legacy alias). */
   readonly root: string
   readonly enabled: boolean
   readonly version: string

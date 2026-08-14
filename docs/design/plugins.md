@@ -3,13 +3,13 @@
 Status: v1 shipped (manifest + CLI + daemon runtime + marketplace page).
 Developer-facing contract/reference: [../PLUGIN-AUTHORING.md](../PLUGIN-AUTHORING.md).
 Model: deliberately isomorphic to herdr's plugin system
-(https://herdr.dev/docs/plugins/) — same philosophy, kobe's domain.
+(https://herdr.dev/docs/plugins/) — same philosophy, Rove's domain.
 
 ## Philosophy
 
-A plugin is a directory with a `kobe-plugin.toml` manifest and argv commands
-kobe can launch. There is **no plugin SDK**: the whole `kobe` CLI (every
-`kobe api` verb) and the daemon socket are the plugin API. Kobe owns the host
+A plugin is a directory with a `rove-plugin.toml` manifest and argv commands
+Rove can launch. There is **no required plugin SDK**: the whole `rove` CLI
+(every `rove api` verb) and the daemon socket are the plugin API. Rove owns the host
 surface — install, validation, event dispatch, env injection, run logs. The
 plugin owns its language, dependencies, and durable state.
 
@@ -20,15 +20,15 @@ shareable packages instead of feature requests.
 The manifest shape mirrors herdr's on purpose. Their ecosystem (396 repos on
 the `herdr-plugin` GitHub topic as of 2026-07) proves the shape works, and an
 author porting a plugin between the two only renames the manifest and swaps
-`HERDR_*`/`herdr` for `KOBE_*`/`kobe api`.
+`HERDR_*`/`herdr` for `ROVE_*`/`rove api`.
 
-## Manifest — `kobe-plugin.toml`
+## Manifest — `rove-plugin.toml`
 
 ```toml
 id = "example.notify"            # letters/digits/dot/colon/underscore/hyphen
 name = "Notify"
 version = "0.1.0"
-min_kobe_version = "0.8.23"      # oldest kobe this plugin works on; install refuses older
+min_rove_version = "0.8.23"      # oldest Rove this plugin works on; install refuses older
 description = "…"                # optional
 platforms = ["macos", "linux"]   # optional; item-level `platforms` overrides
 
@@ -38,7 +38,7 @@ command = ["bun", "install"]
 [[startup]]                      # once per daemon start, after socket is ready
 command = ["node", "restore.js"]
 
-[[actions]]                      # invoked on demand: kobe plugin action invoke <id>.<action>
+[[actions]]                      # invoked on demand: rove plugin action invoke <id>.<action>
 id = "test"                      # local id, no dots
 title = "Send a test notification"
 command = ["sh", "notify.sh", "test"]
@@ -50,7 +50,7 @@ command = ["sh", "notify.sh"]
 [[panes]]                        # a terminal tab in the task workspace
 id = "git"
 title = "lazygit"
-command = ["lazygit"]            # cwd = the task worktree; use $KOBE_PLUGIN_ROOT/... for plugin files
+command = ["lazygit"]            # cwd = the task worktree; use $ROVE_PLUGIN_ROOT/... for plugin files
 ```
 
 `command` is argv — never run through a shell. Parsing/validation:
@@ -78,44 +78,46 @@ after daemon start is baseline — no replay storms):
 ## Runtime env contract
 
 Injected for every plugin command (`plugins/env.ts`; shared by the daemon
-host and `kobe plugin action invoke`):
+host and `rove plugin action invoke`):
 
-- `KOBE_BIN_PATH` — exec this to call back into kobe (portable across dev/packaged)
-- `KOBE_SOCKET_PATH` — daemon socket, for raw JSON requests
-- `KOBE_HOME_DIR` — passed through so sandbox daemons keep their isolation
-- `KOBE_PLUGIN_ID`, `KOBE_PLUGIN_ROOT`
-- `KOBE_PLUGIN_CONFIG_DIR` — user-editable config (`.env` etc.); survives reinstall
-- `KOBE_PLUGIN_STATE_DIR` — plugin-owned runtime state; survives reinstall
-- events: `KOBE_PLUGIN_EVENT`, `KOBE_PLUGIN_EVENT_JSON`, plus plain
-  `KOBE_PLUGIN_TASK_ID` / `KOBE_PLUGIN_TASK_TITLE` so shell plugins skip JSON
-- startup: `KOBE_PLUGIN_EVENT=startup`
-- actions: `KOBE_PLUGIN_ACTION_ID`, `KOBE_PLUGIN_INVOKE_CWD` (where the user
+- `ROVE_BIN_PATH` — exec this to call back into Rove (portable across dev/packaged)
+- `ROVE_SOCKET_PATH` — daemon socket, for raw JSON requests
+- `ROVE_HOME_DIR` — passed through so sandbox daemons keep their isolation
+- `ROVE_PLUGIN_ID`, `ROVE_PLUGIN_ROOT`
+- `ROVE_PLUGIN_CONFIG_DIR` — user-editable config (`.env` etc.); survives reinstall
+- `ROVE_PLUGIN_STATE_DIR` — plugin-owned runtime state; survives reinstall
+- events: `ROVE_PLUGIN_EVENT`, `ROVE_PLUGIN_EVENT_JSON`, plus plain
+  `ROVE_PLUGIN_TASK_ID` / `ROVE_PLUGIN_TASK_TITLE` so shell plugins skip JSON
+- startup: `ROVE_PLUGIN_EVENT=startup`
+- actions: `ROVE_PLUGIN_ACTION_ID`, `ROVE_PLUGIN_INVOKE_CWD` (where the user
   ran the invoke — "the repo I mean"), extra CLI args appended to argv
 
-Do not store durable state under `KOBE_PLUGIN_ROOT`: GitHub installs are
+Every canonical variable is also injected as a `KOBE_*` compatibility alias.
+Do not store durable state under `ROVE_PLUGIN_ROOT`: GitHub installs are
 managed checkouts, replaced on reinstall.
 
 ## Install / registry / layout
 
-`kobe plugin install owner/repo[/subdir]` (GitHub shorthand only): clone →
+`rove plugin install owner/repo[/subdir]` (GitHub shorthand only): clone →
 parse manifest → preview commands + confirm (`--yes` to skip, refused
 non-interactively without it) → run `[[build]]` → move under
-`~/.kobe/plugins/<id>/checkout/` → register. `kobe plugin link <dir>` for
+`~/.kobe/plugins/<id>/checkout/` → register. `rove plugin link <dir>` for
 local authoring (no build; your tree, your build). `uninstall` removes the
 managed checkout but keeps `config/` + `state/`; `unlink` never touches files.
 
 Registry: `~/.kobe/plugins.json`, written only by the CLI. The daemon
 (`plugins/runtime.ts`, wired in `daemon/server.ts`) file-watches it, so
 install/enable/disable apply to a running daemon without a restart. Run log:
-`~/.kobe/plugins/<id>/log.jsonl` (`kobe plugin log <id>`), stdout/stderr
+`~/.kobe/plugins/<id>/log.jsonl` (`rove plugin log <id>`), stdout/stderr
 capped at 8 KB per run.
 
-Trust model is herdr's: plugins are ordinary code running as you; kobe
+Trust model is herdr's: plugins are ordinary code running as you; Rove
 validates the manifest and previews commands but does not sandbox or review.
 
 ## Marketplace
 
-Zero infrastructure: the GitHub topic **`kobe-plugin`** is the only signal.
+Zero infrastructure: the canonical GitHub topic is **`rove-plugin`**. Search
+also unions the legacy **`kobe-plugin`** topic, so existing publishers stay listed.
 The landing page (`packages/kobe-landing/plugins.html`, kobe.sma1lboy.me)
 queries GitHub's repo search client-side and lists tagged public repos;
 first-party examples live in [Sma1lboy/kobe-plugins](https://github.com/Sma1lboy/kobe-plugins) (topic-tagged, so the repo auto-lists) and also seed the list per-plugin. No
@@ -124,7 +126,7 @@ bites, the upgrade path is herdr's ~400-line Cloudflare worker index.
 
 ## Panes
 
-`kobe plugin pane open <plugin-id>.<pane-id>` (defaults to the active task)
+`rove plugin pane open <plugin-id>.<pane-id>` (defaults to the active task)
 → `tab.open` RPC → the daemon validates and broadcasts → the TUI hosting the
 task places the pane. Default placement is **`split`** (owner semantics
 2026-07-29): the pane joins the focused chattab's split group beside the
@@ -133,7 +135,7 @@ self-closing command tab instead; overlay/popup are tolerated with a warning
 and treated as split. Falls back to a tab when the active tab can't host a
 split (content tab / min-pane-size gate). The pane's cwd is the task
 worktree;
-`$KOBE_PLUGIN_ROOT` in command elements is expanded by the CLI, and the
+`$ROVE_PLUGIN_ROOT` (or legacy `$KOBE_PLUGIN_ROOT`) in command elements is expanded by the CLI, and the
 plugin env contract rides an `env` prefix inside one `sh -lc` script, so no
 tab/PTY schema knows about plugins. Trust: same boundary as `pty.open` —
 the daemon socket already grants argv execution.
@@ -148,7 +150,7 @@ Launch composition is shared with the CLI (`plugins/pane-command.ts`).
 
 Users bind their own chords to plugin panes/actions via the `plugins:`
 section of `~/.rove/settings/keybindings.yaml`
-(`ctrl+g: pane:examples.lazygit.git`) — kobe ships no default plugin chords.
+(`ctrl+g: pane:examples.lazygit.git`) — Rove ships no default plugin chords.
 Mechanics + resolution record: docs/KEYBINDINGS.md §Plugin chords.
 
 ## Deferred (v2+, deliberate)

@@ -1,6 +1,8 @@
 export { pluginContext, pluginEvent, type PluginContext } from "./context.ts"
 export { readSettings, setting } from "./settings.ts"
 export {
+  rove,
+  roveJson,
   kobe,
   kobeJson,
   notify,
@@ -8,10 +10,12 @@ export {
   listTasks,
   openPane,
   promptUser,
+  type RoveRunOptions,
+  type RoveRunResult,
   type KobeRunOptions,
   type KobeRunResult,
 } from "./cli.ts"
-export { KobeSocket, type KobeSocketOptions } from "./socket.ts"
+export { RoveSocket, KobeSocket, type RoveSocketOptions, type KobeSocketOptions } from "./socket.ts"
 export { Pane, parseKeys, type Key, type PaneOptions } from "./pane.ts"
 export {
   PLUGIN_EVENT_NAMES,

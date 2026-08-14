@@ -1,15 +1,17 @@
 /**
- * `kobe-plugin.toml` — the contract between kobe and a plugin.
+ * `rove-plugin.toml` — the canonical contract between Rove and a plugin.
  *
- * A plugin is a directory with this manifest plus argv commands kobe can
- * launch; there is no plugin SDK — the whole `kobe` CLI (and the daemon
+ * A plugin is a directory with this manifest plus argv commands Rove can
+ * launch; the whole `rove` CLI (and the daemon
  * socket) is the plugin API. The manifest shape is deliberately isomorphic
  * to herdr's `herdr-plugin.toml` ([[build]] / [[startup]] / [[actions]] /
  * [[events]]) so porting a plugin between the two ecosystems is a rename
  * plus swapping the callback CLI. Design doc: docs/design/plugins.md.
  */
 
-import { PLUGIN_EVENT_NAMES, type PluginEventName } from "@sma1lboy/kobe-plugin-sdk/contract"
+import { existsSync, readFileSync } from "node:fs"
+import { join } from "node:path"
+import { PLUGIN_EVENT_NAMES, type PluginEventName } from "@sma1lboy/rove-plugin-sdk/contract"
 import { parse as parseToml } from "smol-toml"
 
 export type PluginPlatform = "macos" | "linux" | "windows"
@@ -42,7 +44,7 @@ export interface PluginEventHook extends PluginCommandSpec {
  *  stored as `KEY=value` in the plugin's config `.env` (the contract plugin
  *  commands already source). */
 export interface PluginSetting {
-  /** Env var name written to the config .env (conventionally KOBE_<PLUGIN>_*). */
+  /** Env var name written to the config .env (conventionally ROVE_<PLUGIN>_*). */
   readonly key: string
   readonly label: string
   readonly type: "string" | "number" | "boolean" | "enum"
@@ -93,7 +95,26 @@ export interface ParsedPluginManifest {
   readonly warnings: readonly string[]
 }
 
-export const PLUGIN_MANIFEST_FILENAME = "kobe-plugin.toml"
+export const PLUGIN_MANIFEST_FILENAME = "rove-plugin.toml"
+export const LEGACY_PLUGIN_MANIFEST_FILENAME = "kobe-plugin.toml"
+export const PLUGIN_MANIFEST_FILENAMES = [PLUGIN_MANIFEST_FILENAME, LEGACY_PLUGIN_MANIFEST_FILENAME] as const
+
+/** Resolve a plugin manifest with the canonical Rove spelling winning when
+ * both files exist. The Kobe spelling remains a permanent read fallback. */
+export function pluginManifestPath(root: string): string | null {
+  for (const filename of PLUGIN_MANIFEST_FILENAMES) {
+    const path = join(root, filename)
+    if (existsSync(path)) return path
+  }
+  return null
+}
+
+/** Read and parse either supported manifest spelling from a plugin root. */
+export function readPluginManifest(root: string): ParsedPluginManifest {
+  const path = pluginManifestPath(root)
+  if (!path) throw new ManifestError(`no ${PLUGIN_MANIFEST_FILENAMES.join(" or ")} found at ${root}`)
+  return parsePluginManifest(readFileSync(path, "utf8"))
+}
 
 /** ASCII letters, digits, dot, colon, underscore, hyphen — same as herdr. */
 const PLUGIN_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._:-]*$/
@@ -126,7 +147,7 @@ export function supportsPlatform(
 class ManifestError extends Error {}
 
 function fail(message: string): never {
-  throw new ManifestError(`kobe-plugin.toml: ${message}`)
+  throw new ManifestError(`rove-plugin.toml: ${message}`)
 }
 
 function asString(value: unknown, field: string): string {
@@ -158,7 +179,7 @@ function asTableArray(value: unknown, field: string): Record<string, unknown>[] 
 }
 
 /**
- * Parse + validate manifest text. Throws with a `kobe-plugin.toml:`-prefixed
+ * Parse + validate manifest text. Throws with a `rove-plugin.toml:`-prefixed
  * message on a fatal problem; collects non-fatal issues into `warnings`.
  */
 export function parsePluginManifest(text: string): ParsedPluginManifest {
@@ -174,10 +195,18 @@ export function parsePluginManifest(text: string): ParsedPluginManifest {
   if (!PLUGIN_ID_RE.test(id)) fail(`plugin id \`${id}\` may use ASCII letters, digits, dot, colon, underscore, hyphen`)
   const name = asString(raw.name, "name")
   const version = asString(raw.version, "version")
-  const minKobeVersion = asString(raw.min_kobe_version, "min_kobe_version")
+  const rawMinVersion = raw.min_rove_version ?? raw.min_kobe_version
+  const minKobeVersion = asString(rawMinVersion, "min_rove_version")
   const description = raw.description === undefined ? undefined : asString(raw.description, "description")
   const platforms = asPlatforms(raw.platforms, "platforms")
   if (!platforms) warnings.push("no top-level `platforms` declared; assuming the plugin runs everywhere")
+  if (
+    raw.min_rove_version !== undefined &&
+    raw.min_kobe_version !== undefined &&
+    raw.min_rove_version !== raw.min_kobe_version
+  ) {
+    warnings.push("both `min_rove_version` and legacy `min_kobe_version` are set; using `min_rove_version`")
+  }
 
   const build = asTableArray(raw.build, "build").map((t, i) => ({
     command: asCommand(t.command, `build[${i}].command`),

@@ -40,7 +40,7 @@ export interface DaemonServerOptions {
   readonly webHost?: string
   /** Optional static web UI directory served by the daemon web transport. */
   readonly webStaticDir?: string
-  /** Enable the plugin runtime; `binPath` becomes plugins' KOBE_BIN_PATH. Omitted in tests. */
+  /** Enable the plugin runtime; `binPath` becomes plugins' ROVE_BIN_PATH plus its legacy alias. */
   readonly plugins?: { readonly binPath: string }
   /** Socket-ownership watch interval in ms; `0` disables the periodic check. */
   readonly socketWatchMs?: number

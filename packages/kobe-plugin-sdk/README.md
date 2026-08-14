@@ -1,4 +1,4 @@
-# @sma1lboy/kobe-plugin-sdk
+# @sma1lboy/rove-plugin-sdk
 
 Typed SDK for writing [Rove](https://github.com/Sma1lboy/kobe) plugins.
 
@@ -17,35 +17,35 @@ via changesets; every Rove release publishes any not-yet-released SDK
 version to npm.
 
 ```bash
-npm install @sma1lboy/kobe-plugin-sdk
+npm install @sma1lboy/rove-plugin-sdk
 ```
 
 ## Event hook
 
 ```ts
 // notify.ts — [[events]] on = "agent.turn-complete"
-import { pluginContext, pluginEvent, notify } from "@sma1lboy/kobe-plugin-sdk"
+import { pluginContext, pluginEvent, notify } from "@sma1lboy/rove-plugin-sdk"
 
-const ctx = pluginContext()          // typed KOBE_PLUGIN_* env
-const ev = pluginEvent()             // typed KOBE_PLUGIN_EVENT_JSON envelope
+const ctx = pluginContext()          // typed ROVE_PLUGIN_* env
+const ev = pluginEvent()             // typed ROVE_PLUGIN_EVENT_JSON envelope
 if (ev?.task) await notify(`${ev.task.title} finished a turn`)
 ```
 
 ## Settings
 
 ```ts
-import { pluginContext, setting } from "@sma1lboy/kobe-plugin-sdk"
+import { pluginContext, setting } from "@sma1lboy/rove-plugin-sdk"
 const mode = setting(pluginContext().configDir, "MODE", "fast")
 ```
 
 ## A pane ("page")
 
 ```ts
-// board.ts — [[panes]] command = ["node", "$KOBE_PLUGIN_ROOT/board.js"]
-import { Pane, KobeSocket } from "@sma1lboy/kobe-plugin-sdk"
+// board.ts — [[panes]] command = ["node", "$ROVE_PLUGIN_ROOT/board.js"]
+import { Pane, RoveSocket } from "@sma1lboy/rove-plugin-sdk"
 
 const pane = new Pane()
-const daemon = new KobeSocket()
+const daemon = new RoveSocket()
 await daemon.connect()
 
 let tasks: any[] = []
@@ -74,13 +74,18 @@ flow — that's what ghost-wraps in embedded terminals). Keep each row within
 ## Calling back into Rove
 
 ```ts
-import { kobe, kobeJson, dispatch, listTasks, openPane } from "@sma1lboy/kobe-plugin-sdk"
+import { rove, roveJson, dispatch, listTasks, openPane } from "@sma1lboy/rove-plugin-sdk"
 
 await dispatch(taskId, "run the tests")            // text into a live session
 const tasks = await listTasks()                    // Rove API task list (JSON)
 await openPane("you.example.board")                // open your own pane
-await kobe(["api", "issue-create", "--repo", ".", "--title", "found a bug"])
+await rove(["api", "issue-create", "--repo", ".", "--title", "found a bug"])
 ```
 
 Full contract (manifest reference, event catalog, env table):
 [docs/PLUGIN-AUTHORING.md](https://github.com/Sma1lboy/kobe/blob/main/docs/PLUGIN-AUTHORING.md).
+
+Existing plugins can keep importing `@sma1lboy/kobe-plugin-sdk`: every SDK
+release publishes the same files and version under both package names. The
+legacy `kobe()` / `kobeJson()` helpers, `KobeSocket` class, and `KOBE_*`
+environment aliases remain available as well.

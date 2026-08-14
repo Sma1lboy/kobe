@@ -50,7 +50,7 @@ async function withPeerProvenance(daemon: DaemonRpc, targetTaskId: string, promp
   // improvises verbs and side-channels (2026-08-10: a peer coordination
   // round-trip fell back to a human relay because neither side had the
   // skill's contract in context).
-  return `[KOBE PEER] from "${label}" (task ${senderId} — load the Rove agent skill FIRST (registered as /kobe for compatibility), then reply: \`${api} send ${replyTarget} --prompt "<text>"\`; verb reference: \`${api} schema\`): ${prompt}`
+  return `[KOBE PEER] from "${label}" (task ${senderId} — load the Rove agent skill FIRST (registered as /rove; legacy /kobe installs still work), then reply: \`${api} send ${replyTarget} --prompt "<text>"\`; verb reference: \`${api} schema\`): ${prompt}`
 }
 
 export async function issueUpdate(ctx: VerbContext): Promise<unknown> {

@@ -4,25 +4,24 @@
  * PluginEventReducer). Every run is appended to the plugin's `log.jsonl`.
  *
  * Plugins are ordinary argv commands — no shell, cwd = plugin root, env
- * carries the KOBE_PLUGIN_* contract (docs/design/plugins.md). The host
+ * carries the ROVE_PLUGIN_* contract plus Kobe compatibility aliases. The host
  * file-watches `plugins.json` so a CLI install/link/enable applies to the
  * running daemon without a restart. Startup hooks run only at daemon start
  * (herdr semantics): a reload swaps hook registrations, nothing more.
  */
 
 import { spawn } from "node:child_process"
-import { type FSWatcher, appendFileSync, mkdirSync, readFileSync, watch } from "node:fs"
+import { type FSWatcher, appendFileSync, mkdirSync, watch } from "node:fs"
 import { dirname } from "node:path"
 import type { ChannelEvent } from "../daemon/event-bus.ts"
 import { buildPluginEnv } from "./env.ts"
 import { type PluginEvent, PluginEventReducer, lifecycleEventFor } from "./events.ts"
 import {
-  PLUGIN_MANIFEST_FILENAME,
   type PluginCommandSpec,
   type PluginEventName,
   type PluginManifest,
   currentPluginPlatform,
-  parsePluginManifest,
+  readPluginManifest,
   supportsPlatform,
 } from "./manifest.ts"
 import { pluginConfigDir, pluginLogPath, pluginRegistryPath, pluginStateDir } from "./plugin-paths.ts"
@@ -84,7 +83,7 @@ export class PluginHost {
     for (const plugin of this.plugins) {
       for (const [i, hook] of plugin.manifest.startup.entries()) {
         if (!supportsPlatform(hook, plugin.manifest, currentPluginPlatform())) continue
-        void this.run(plugin, hook, "startup", { KOBE_PLUGIN_EVENT: "startup" }, `startup[${i}]`)
+        void this.run(plugin, hook, "startup", { ROVE_PLUGIN_EVENT: "startup" }, `startup[${i}]`)
       }
     }
     this.watchRegistry()
@@ -160,10 +159,10 @@ export class PluginHost {
           hook,
           "event",
           {
-            KOBE_PLUGIN_EVENT: event.event,
-            KOBE_PLUGIN_EVENT_JSON: JSON.stringify(event),
-            ...(event.taskId ? { KOBE_PLUGIN_TASK_ID: event.taskId } : {}),
-            ...(event.task?.title ? { KOBE_PLUGIN_TASK_TITLE: event.task.title } : {}),
+            ROVE_PLUGIN_EVENT: event.event,
+            ROVE_PLUGIN_EVENT_JSON: JSON.stringify(event),
+            ...(event.taskId ? { ROVE_PLUGIN_TASK_ID: event.taskId } : {}),
+            ...(event.task?.title ? { ROVE_PLUGIN_TASK_TITLE: event.task.title } : {}),
           },
           hook.on,
         )
@@ -179,8 +178,7 @@ export class PluginHost {
       if (!entry.enabled) continue
       let manifest: PluginManifest
       try {
-        const text = readFileSync(`${entry.root}/${PLUGIN_MANIFEST_FILENAME}`, "utf8")
-        manifest = parsePluginManifest(text).manifest
+        manifest = readPluginManifest(entry.root).manifest
       } catch (err) {
         this.opts.log?.(`plugin ${entry.id}: manifest unreadable, skipping — ${String(err)}`)
         continue

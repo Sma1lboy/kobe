@@ -8,8 +8,10 @@
  * its skills from, which get a real directory vs a symlink into the shared
  * `.agents/skills`. kobe does NOT reimplement any of that.
  *
- * What kobe changes is the SOURCE. `npx skills add Sma1lboy/kobe` clones the
- * repo (`git clone --depth 1`) — 198MB of working tree to deliver an 8KB
+ * What Rove changes is the packaged SOURCE. The public fallback remains
+ * `Sma1lboy/kobe` until the repository URL migrates; `--skill rove` selects
+ * the canonical skill from that compatibility URL. Cloning the repository
+ * (`git clone --depth 1`) means a huge working tree just to deliver one
  * SKILL.md, which is effectively un-installable on a slow connection. But a
  * user running `kobe skill install` already HAS kobe, and the skill ships
  * inside the npm package, so the CLI is pointed at that local copy instead:
@@ -29,19 +31,20 @@ import { homedir } from "node:os"
 import { join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { activeCliName } from "../cli/rename-compat.ts"
-import { LEGACY_KOBE_PRODUCT_NAME } from "../product.ts"
+import { ROVE_PRODUCT_NAME } from "../product.ts"
 import { getPersistedString, setPersistedString } from "../state/repos.ts"
 
 /**
- * Version of the SKILL.md guidance THIS kobe build expects. Bump it (in
- * lockstep with the `<!-- kobe-skill-version: N -->` marker in
- * `.agents/skills/kobe/SKILL.md`) whenever the skill's instructions change
+ * Version of the SKILL.md guidance THIS Rove build expects. Bump it (in
+ * lockstep with the `<!-- rove-skill-version: N -->` marker in
+ * `.agents/skills/kobe/SKILL.md`, retained as the repository compatibility
+ * source path) whenever the skill's instructions change
  * meaningfully — e.g. the `kobe api` surface grows. An installed skill whose
  * marker is below this number is STALE: the binary moved on, the skill
  * didn't, so we prompt the developer to re-run the active CLI's
  * `skill install` command.
  */
-export const KOBE_SKILL_VERSION = 21
+export const KOBE_SKILL_VERSION = 22
 
 /**
  * Where an installed kobe skill can be FOUND, relative to a home/project
@@ -54,7 +57,12 @@ export const KOBE_SKILL_VERSION = 21
  * answering is a genuine install. `.claude` stays in the list so skills
  * installed by older kobe versions still register as present.
  */
-const SKILL_REL_PATHS = [".agents/skills/kobe/SKILL.md", ".claude/skills/kobe/SKILL.md"] as const
+const SKILL_REL_PATHS = [
+  ".agents/skills/rove/SKILL.md",
+  ".claude/skills/rove/SKILL.md",
+  ".agents/skills/kobe/SKILL.md",
+  ".claude/skills/kobe/SKILL.md",
+] as const
 
 /** The invoked wrapper command a user runs. Shown in hints / doctor. */
 export function skillInstallCommand(env: NodeJS.ProcessEnv = process.env): string {
@@ -63,7 +71,7 @@ export function skillInstallCommand(env: NodeJS.ProcessEnv = process.env): strin
 
 /**
  * The public repo slug. Only a FALLBACK now (and the documented route for
- * people who don't have kobe installed): resolving it means a 198MB clone.
+ * people who don't have Rove installed): resolving it means a large clone.
  */
 export const SKILL_SOURCE_SLUG = "Sma1lboy/kobe"
 
@@ -77,7 +85,7 @@ export function bundledSkillDir(): string | null {
   const here = fileURLToPath(import.meta.url)
   const candidates = [
     resolve(here, "../../../../../.agents/skills/kobe"), // dev: repo root .agents/skills/kobe
-    resolve(here, "../../skills/kobe"), // packaged: dist/skills/kobe
+    resolve(here, "../../skills/rove"), // packaged: dist/skills/rove
   ]
   return candidates.find((dir) => existsSync(join(dir, "SKILL.md"))) ?? null
 }
@@ -114,7 +122,7 @@ export function npxSkillsArgv(opts: NpxSkillsOpts = {}): string[] {
     "add",
     source ?? SKILL_SOURCE_SLUG,
     "--skill",
-    LEGACY_KOBE_PRODUCT_NAME,
+    ROVE_PRODUCT_NAME,
     ...(opts.global === false ? [] : ["--global"]),
     ...agents.flatMap((a) => ["--agent", a]),
   ]
@@ -152,14 +160,14 @@ export function kobeSkillPaths(opts: { home?: string; cwd?: string } = {}): stri
   return [home, cwd].flatMap((root) => SKILL_REL_PATHS.map((rel) => join(root, rel)))
 }
 
-/** True if the kobe agent skill is installed at the user OR project level. */
+/** True if the Rove skill or a legacy Kobe-named install is present. */
 export function isKobeSkillInstalled(opts?: { home?: string; cwd?: string }): boolean {
   return kobeSkillPaths(opts).some((p) => existsSync(p))
 }
 
-/** Parse the `<!-- kobe-skill-version: N -->` marker out of a SKILL.md body. */
+/** Parse the canonical marker or an installed legacy marker. */
 export function parseSkillVersion(content: string): number | null {
-  const m = content.match(/kobe-skill-version:\s*(\d+)/)
+  const m = content.match(/(?:rove|kobe)-skill-version:\s*(\d+)/)
   return m ? Number.parseInt(m[1], 10) : null
 }
 

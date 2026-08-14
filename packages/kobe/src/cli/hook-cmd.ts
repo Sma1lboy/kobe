@@ -25,7 +25,7 @@ import { readFileSync } from "node:fs"
 import { homedir } from "node:os"
 import { join, resolve } from "node:path"
 import { connectIfRunning } from "@sma1lboy/kobe-daemon/client/daemon-process"
-import { PLUGIN_MANIFEST_FILENAME, parsePluginManifest } from "@sma1lboy/kobe-daemon/plugins/manifest"
+import { readPluginManifest } from "@sma1lboy/kobe-daemon/plugins/manifest"
 import { loadPluginRegistry } from "@sma1lboy/kobe-daemon/plugins/registry"
 import { type EngineSessionRef, createEngineHookAdapter } from "../engine/hook-adapter.ts"
 import type { EngineActivityDetail } from "../engine/hook-events.ts"
@@ -371,8 +371,7 @@ function pluginsWantToolEvents(): boolean {
     for (const entry of loadPluginRegistry().plugins) {
       if (!entry.enabled) continue
       try {
-        const text = readFileSync(join(entry.root, PLUGIN_MANIFEST_FILENAME), "utf8")
-        if (parsePluginManifest(text).manifest.events.some((e) => e.on.startsWith("tool."))) return true
+        if (readPluginManifest(entry.root).manifest.events.some((e) => e.on.startsWith("tool."))) return true
       } catch {
         /* unreadable manifest → doesn't vote */
       }

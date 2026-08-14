@@ -22,6 +22,8 @@ describe("Rove package distribution", () => {
     const commands = Object.values(root.scripts)
 
     expect(commands.some((command) => command.includes("--filter @sma1lboy/rove"))).toBe(true)
+    expect(root.scripts.postinstall).toBe("bun --filter @sma1lboy/rove-plugin-sdk build")
+    expect(root.scripts.build).toMatch(/^bun --filter @sma1lboy\/rove-plugin-sdk build && /)
     expect(commands.some((command) => /--filter @sma1lboy\/kobe(?:\s|$)/.test(command))).toBe(false)
   })
 
@@ -29,6 +31,24 @@ describe("Rove package distribution", () => {
     const daemon = json<{ devDependencies: Record<string, string> }>("packages/kobe-daemon/package.json")
 
     expect(daemon.devDependencies["@types/node"]).toBe("25.6.2")
+  })
+
+  test("the plugin SDK workspace and daemon dependency use the canonical Rove package", () => {
+    const sdk = json<{
+      name: string
+      exports: Record<string, { types: string; default: string }>
+      repository: { url: string }
+    }>("packages/kobe-plugin-sdk/package.json")
+    const daemon = json<{ dependencies: Record<string, string> }>("packages/kobe-daemon/package.json")
+
+    expect(sdk.name).toBe("@sma1lboy/rove-plugin-sdk")
+    expect(sdk.exports["./contract"]).toEqual({
+      types: "./dist/contract.d.ts",
+      default: "./dist/contract.js",
+    })
+    expect(sdk.repository.url).toBe("git+https://github.com/Sma1lboy/kobe.git")
+    expect(daemon.dependencies["@sma1lboy/rove-plugin-sdk"]).toBe("workspace:*")
+    expect(daemon.dependencies["@sma1lboy/kobe-plugin-sdk"]).toBeUndefined()
   })
 
   test("release publishes Rove first and rewrites only the compatibility alias", () => {
@@ -42,12 +62,25 @@ describe("Rove package distribution", () => {
     expect(workflow).not.toContain("pkg.name = '@sma1lboy/rove'")
   })
 
+  test("release publishes the canonical plugin SDK before its identical compatibility alias", () => {
+    const workflow = read(".github/workflows/release.yml")
+    const canonicalStep = workflow.indexOf("Publish canonical plugin SDK")
+    const compatibilityStep = workflow.indexOf("Publish plugin SDK compatibility alias")
+
+    expect(canonicalStep).toBeGreaterThanOrEqual(0)
+    expect(compatibilityStep).toBeGreaterThan(canonicalStep)
+    expect(workflow).toContain('npm view "@sma1lboy/rove-plugin-sdk@$V"')
+    expect(workflow).toContain("pkg.name = '@sma1lboy/kobe-plugin-sdk'")
+    expect(workflow.slice(canonicalStep, compatibilityStep)).toContain("bun run build")
+  })
+
   test("pending changesets version the canonical package", () => {
     const files = readdirSync(join(ROOT, ".changeset")).filter((name) => name.endsWith(".md") && name !== "README.md")
 
     for (const file of files) {
       const source = read(join(".changeset", file))
       expect(source, `${file} still targets the compatibility package`).not.toMatch(/^"@sma1lboy\/kobe":/m)
+      expect(source, `${file} still targets the compatibility SDK`).not.toMatch(/^"@sma1lboy\/kobe-plugin-sdk":/m)
     }
   })
 

@@ -6,7 +6,7 @@
  * import path for the wire protocol.
  */
 
-import { DAEMON_CHANNELS } from "@sma1lboy/kobe-plugin-sdk/contract"
+import { DAEMON_CHANNELS } from "@sma1lboy/rove-plugin-sdk/contract"
 import type {
   AttentionInboxItem,
   EngineActivityDetail,

@@ -213,7 +213,8 @@ rove plugin pane open <plugin-id.pane-id> [--task <task-id>]
 
 Changes apply to a running daemon without a restart. Writing one:
 [Plugin authoring](./PLUGIN-AUTHORING.md). Marketplace:
-<https://github.com/topics/kobe-plugin>.
+<https://github.com/topics/rove-plugin>. Repositories carrying the legacy
+`kobe-plugin` topic remain included.
 
 ## doctor
 

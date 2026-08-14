@@ -137,7 +137,7 @@ paths against `$PWD` (`~` expanded). Engine vendors: `claude`, `codex`,
 
 A create issued from inside a Rove engine tab (`add`, `fan-out`) records
 the caller as the new task's `dispatcher` (`{taskId, tabId}` from
-`$KOBE_TASK_ID`/`$KOBE_TAB_ID`) — the reply address the worker's bare
+`$ROVE_TASK_ID`/`$ROVE_TAB_ID`, with Kobe aliases) — the reply address the worker's bare
 `send` routes back to. Creates from a plain shell or the TUI record none.
 
 A new task's FIRST prompt (`add --prompt`, `fan-out`, quick-fork) gets a
@@ -187,7 +187,7 @@ placeholder branch to a descriptive name. Prompts into existing sessions
   `sh -lc` and the pane closes when it exits; omit it for an interactive
   shell. Broadcast over the daemon's `tab.open` channel, so an attached TUI
   showing the task performs the split (headless, nothing happens). Task
-  defaults to `$KOBE_TASK_ID`, then the active task. How far splits can go
+  defaults to `$ROVE_TASK_ID` (or its Kobe alias), then the active task. How far splits can go
   is decided by the terminal's size: a split that would shrink any pane
   below the minimum usable size (20×6 cells) falls back to a tab.
 - `pane-close [--task-id ID] --title TEXT`: the inverse — close every pane

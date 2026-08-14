@@ -1,6 +1,6 @@
 /**
  * Read the plugin's `[[settings]]` values — plain KEY=value lines in
- * `$KOBE_PLUGIN_CONFIG_DIR/.env`, the same file the Settings → Plugins
+ * `$ROVE_PLUGIN_CONFIG_DIR/.env`, the same file the Settings → Plugins
  * editors write. Values are strings; booleans store "1" or are absent.
  */
 

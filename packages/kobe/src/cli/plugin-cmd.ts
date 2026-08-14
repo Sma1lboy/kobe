@@ -1,24 +1,19 @@
 /**
  * `kobe plugin` — install, link, inspect, and invoke plugins.
  *
- * A plugin is a directory with a `kobe-plugin.toml` manifest; the whole
- * `kobe` CLI is the plugin API (docs/design/plugins.md). This command owns
+ * A plugin is a directory with a `rove-plugin.toml` manifest (the legacy
+ * `kobe-plugin.toml` spelling remains accepted); the whole Rove CLI is the
+ * plugin API. This command owns
  * the registry (`~/.kobe/plugins.json`); the daemon's PluginHost watches
  * that file, so mutations here apply to a running daemon without a restart.
  */
 
 import { spawnSync } from "node:child_process"
 import { readFileSync, rmSync } from "node:fs"
-import { join } from "node:path"
 import { errorMessage } from "@/lib/error-message"
 import { defaultDaemonSocketPath } from "@sma1lboy/kobe-daemon/daemon/paths"
 import { buildPluginEnv } from "@sma1lboy/kobe-daemon/plugins/env"
-import {
-  PLUGIN_MANIFEST_FILENAME,
-  type PluginManifest,
-  parsePluginManifest,
-  qualifiedActionId,
-} from "@sma1lboy/kobe-daemon/plugins/manifest"
+import { type PluginManifest, qualifiedActionId, readPluginManifest } from "@sma1lboy/kobe-daemon/plugins/manifest"
 import { buildPaneArgv } from "@sma1lboy/kobe-daemon/plugins/pane-command"
 import { pluginCheckoutDir, pluginConfigDir, pluginLogPath } from "@sma1lboy/kobe-daemon/plugins/plugin-paths"
 import {
@@ -40,7 +35,7 @@ function printUsage(out: NodeJS.WriteStream): void {
       "  install <owner/repo[/subdir]> [--yes] [--ref <rev>]   clone from GitHub, preview, build, register",
       "  link <dir>                                            register a local plugin directory (dev)",
       "  list                                                  installed + linked plugins",
-      "  search [query]                                        browse the marketplace (GitHub topic kobe-plugin)",
+      "  search [query]                                        browse the marketplace (GitHub topic rove-plugin)",
       "  outdated                                              check GitHub-installed plugins against upstream",
       "  update <id…> | --all [--yes]                          reinstall stale plugins from GitHub",
       "  enable <id> | disable <id>                            toggle a plugin without unregistering it",
@@ -52,7 +47,7 @@ function printUsage(out: NodeJS.WriteStream): void {
       "  action invoke <plugin-id.action-id>                   run an action now",
       "  pane open --plugin <id> --entrypoint <pane-id>        open a plugin pane as a terminal tab",
       "",
-      "Marketplace: https://github.com/topics/kobe-plugin — docs: docs/design/plugins.md",
+      "Marketplace: https://github.com/topics/rove-plugin (legacy kobe-plugin is included)",
       "",
     ].join("\n"),
   )
@@ -66,8 +61,7 @@ interface LoadedEntry {
 function loadAll(): LoadedEntry[] {
   return loadPluginRegistry().plugins.map((entry) => {
     try {
-      const text = readFileSync(join(entry.root, PLUGIN_MANIFEST_FILENAME), "utf8")
-      return { entry, manifest: parsePluginManifest(text).manifest }
+      return { entry, manifest: readPluginManifest(entry.root).manifest }
     } catch {
       return { entry, manifest: undefined }
     }
@@ -84,7 +78,7 @@ function listPlugins(): void {
   const all = loadAll()
   if (all.length === 0) {
     console.log(
-      `no plugins installed. Try: ${CLI_NAME} plugin install <owner/repo> — browse the \`kobe-plugin\` GitHub topic.`,
+      `no plugins installed. Try: ${CLI_NAME} plugin install <owner/repo> — browse the \`rove-plugin\` GitHub topic.`,
     )
     return
   }
@@ -159,7 +153,7 @@ function invokeAction(qualified: string, extraArgs: string[]): void {
       binPath: CLI_NAME,
       pluginId: hit.entry.id,
       pluginRoot: hit.entry.root,
-      extra: { KOBE_PLUGIN_ACTION_ID: hit.action.id, KOBE_PLUGIN_INVOKE_CWD: process.cwd() },
+      extra: { ROVE_PLUGIN_ACTION_ID: hit.action.id, ROVE_PLUGIN_INVOKE_CWD: process.cwd() },
     }),
   })
   process.exit(res.status ?? 1)

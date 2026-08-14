@@ -1,9 +1,9 @@
 ---
-name: kobe
+name: rove
 description: Use when controlling Rove tasks, parallel coding attempts, hosted agent sessions, task lifecycle, or the daemon-owned issue tracker from a shell. Also the ONLY channel for messaging another agent session on this machine — `rove api send`, never a peer/MCP side channel.
 ---
 
-<!-- kobe-skill-version: 21 — bump in lockstep with KOBE_SKILL_VERSION (src/lib/skill-install.ts). -->
+<!-- rove-skill-version: 22 — bump in lockstep with KOBE_SKILL_VERSION (src/lib/skill-install.ts). -->
 
 # Rove shell control
 
@@ -16,11 +16,11 @@ TUI; prompted `send`, `add`, and `fan-out` ensure the canonical engine session.
 Check where you are before choosing how to delegate or parallelize:
 
 ```bash
-test -n "${KOBE_TASK_ID:-}"
+test -n "${ROVE_TASK_ID:-}"
 ```
 
-When that passes, you are an engine session Rove manages — `$KOBE_TASK_ID`
-is your task, `$KOBE_TAB_ID` your tab. Coordination should then go through
+When that passes, you are an engine session Rove manages — `$ROVE_TASK_ID`
+is your task, `$ROVE_TAB_ID` your tab. Coordination should then go through
 Rove, not around it, because work routed through `rove api` gets what
 ad-hoc subprocesses never do: its own Worktree and branch (no file
 collisions with you), a sidebar row with live state the user can watch,
@@ -99,7 +99,7 @@ something (logs, `btop`, a test loop) next to the work — never the answer to
 
 ### Where does this work land?
 
-Inside a Rove session (`$KOBE_TASK_ID` non-empty — check first: it is what
+Inside a Rove session (`$ROVE_TASK_ID` non-empty — check first: it is what
 makes the tab/split rows addressable at all), match top to bottom and take
 the first row that fits:
 
@@ -109,8 +109,8 @@ the first row that fits:
 | "try it N ways", "compare approaches" | N new tasks | `rove api fan-out --repo "$PWD" --count N --prompt "…"` |
 | "split", "side by side", "keep an eye on X while…" | a new region in the CURRENT tab | `rove api pane-open --command "…"` |
 | names a tab: "tell the agent in tab 3" | that exact tab | `rove api send --task-id <id> --tab tab-3 --prompt "…"` |
-| a LOCATION word: "in this workspace/worktree/checkout", "on this branch", "here", "same task" | THIS task, a NEW Terminal Tab | `rove api send --task-id "$KOBE_TASK_ID" --tab new --prompt "…"` |
-| names an ENGINE for the same files: "let codex take over here", "try this one with claude instead" | THIS task, a new tab pinned to that engine | `rove api send --task-id "$KOBE_TASK_ID" --tab new --vendor codex --prompt "…"` |
+| a LOCATION word: "in this workspace/worktree/checkout", "on this branch", "here", "same task" | THIS task, a NEW Terminal Tab | `rove api send --task-id "$ROVE_TASK_ID" --tab new --prompt "…"` |
+| names an ENGINE for the same files: "let codex take over here", "try this one with claude instead" | THIS task, a new tab pinned to that engine | `rove api send --task-id "$ROVE_TASK_ID" --tab new --vendor codex --prompt "…"` |
 | **anything else — no row above matched** | a NEW task — new worktree + branch | `rove api add --repo "$PWD" --prompt "…"` |
 
 Order is the tiebreak: a count ("3 ways in this workspace") beats a location
@@ -128,8 +128,8 @@ a tab to, so `add` / `fan-out` are the only routings available.
 ### Know where you are before you route
 
 ```bash
-echo "$KOBE_TASK_ID / $KOBE_TAB_ID"          # who you are (empty = not a Rove session)
-rove api get-task --task-id "$KOBE_TASK_ID"  # .task.worktreePath, .task.branch, .running, .tabs[]
+echo "$ROVE_TASK_ID / $ROVE_TAB_ID"          # who you are (empty = not a Rove session)
+rove api get-task --task-id "$ROVE_TASK_ID"  # .task.worktreePath, .task.branch, .running, .tabs[]
 ```
 
 `get-task` is the per-task read that answers "what is my worktree, my
@@ -220,7 +220,7 @@ rove api pane-close --title logs
 rove api notify --title "build green, artifacts in dist/" --kind done
 ```
 
-Defaults: the caller's own task (`$KOBE_TASK_ID`, then the active task),
+Defaults: the caller's own task (`$ROVE_TASK_ID`, then the active task),
 `--placement split`, `--direction right`. Alternate right/down to build a
 grid; screen size bounds splitting — a split that would shrink any pane
 below the minimum usable size (20×6 cells) falls back to a tab.

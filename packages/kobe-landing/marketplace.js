@@ -279,10 +279,23 @@
     host.insertAdjacentElement('beforebegin', n);
   }
 
-  fetch('https://api.github.com/search/repositories?q=topic:kobe-plugin&sort=stars&order=desc&per_page=100')
-    .then(function (r) { if (!r.ok) throw new Error('http ' + r.status); return r.json(); })
-    .then(function (d) {
-      var repos = (d && d.items) || [];
+  function searchTopic(topic) {
+    return fetch('https://api.github.com/search/repositories?q=topic:' + topic + '&sort=stars&order=desc&per_page=100')
+      .then(function (r) { if (!r.ok) throw new Error('http ' + r.status); return r.json(); })
+      .then(function (d) { return (d && d.items) || []; })
+      .catch(function () { return null; });
+  }
+
+  Promise.all([searchTopic('rove-plugin'), searchTopic('kobe-plugin')])
+    .then(function (results) {
+      if (results[0] === null && results[1] === null) throw new Error('both topic searches failed');
+      var seen = {};
+      var repos = [].concat(results[0] || [], results[1] || []).filter(function (repo) {
+        var key = String(repo.full_name || '').toLowerCase();
+        if (!key || seen[key]) return false;
+        seen[key] = true;
+        return true;
+      });
       var parent = null;
       var community = repos.map(fromApi).filter(function (r) {
         if (r.ref !== FIRST_PARTY_REPO) return true;
