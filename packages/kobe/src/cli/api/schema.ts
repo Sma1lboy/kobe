@@ -9,6 +9,7 @@
  * constraint — they're only called from inside other function bodies.
  */
 
+import { getCustomEngineIds } from "../../state/repos.ts"
 import { CURRENT_VERSION } from "../../version.ts"
 import { activeCliName } from "../rename-compat.ts"
 import { ApiError, type FlagSpec, type VerbSpec } from "./types.ts"
@@ -29,12 +30,29 @@ const GLOBAL_FLAGS = [
   { name: "help", type: "bool", description: "Show usage for the verb and exit." },
 ]
 
+/**
+ * The values a flag's schema/help should SHOW. `--vendor` is the one open
+ * enum: its spec `values` lists the built-ins, but user-registered custom
+ * engines are equally valid at runtime (`validateAgainstSpec` /
+ * `VerbArgs.vendor` both accept them) — listing only built-ins here hid them
+ * from every agent that discovers the surface through `schema` / `--help`.
+ * Read at render time, not in the static VERBS table, so a newly registered
+ * engine shows up in the very next invocation.
+ */
+function displayValues(f: FlagSpec): readonly string[] | undefined {
+  if (!f.values) return undefined
+  if (f.name !== "vendor") return f.values
+  const custom = getCustomEngineIds().filter((id) => !f.values!.includes(id))
+  return custom.length > 0 ? [...f.values, ...custom] : f.values
+}
+
 function flagJson(f: FlagSpec): unknown {
+  const values = displayValues(f)
   return {
     name: f.name,
     type: f.type,
     required: f.required ?? false,
-    ...(f.values ? { values: f.values } : {}),
+    ...(values ? { values } : {}),
     ...(f.default !== undefined ? { default: f.default } : {}),
     ...(f.placeholder ? { placeholder: f.placeholder } : {}),
     description: f.description,
@@ -104,7 +122,7 @@ function flagSignature(verb: VerbSpec): string {
   return verb.flags
     .map((f) => {
       const meta =
-        f.type === "enum" && f.values ? f.values.join("|") : (f.placeholder ?? (f.type === "bool" ? "" : "X"))
+        f.type === "enum" && f.values ? displayValues(f)!.join("|") : (f.placeholder ?? (f.type === "bool" ? "" : "X"))
       const core = meta ? `--${f.name} ${meta}` : `--${f.name}`
       return f.required ? core : `[${core}]`
     })
@@ -121,7 +139,7 @@ export function verbHelp(verb: VerbSpec): string {
     for (const f of verb.flags) {
       const req = f.required ? " (required)" : ""
       const def = f.default !== undefined ? ` [default: ${f.default}]` : ""
-      const vals = f.type === "enum" && f.values ? ` {${f.values.join("|")}}` : ""
+      const vals = f.type === "enum" && f.values ? ` {${displayValues(f)!.join("|")}}` : ""
       lines.push(`  --${f.name}${vals}${req}${def}  ${f.description}`)
     }
     lines.push("")
