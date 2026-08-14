@@ -1,4 +1,10 @@
 import {
+  type EffectiveActivity,
+  type HookSlot,
+  type ObservedSlot,
+  recomputeTabActivity,
+} from "./activity-arbitrate.ts"
+import {
   type ActivityLiveness,
   type ActivityLivenessProbe,
   type EngineSessionInfo,
@@ -11,7 +17,8 @@ import type { DaemonEventBus } from "./event-bus.ts"
 import type { ChannelPayloads } from "./protocol.ts"
 
 // Pure reducer + policy constants/types live in activity-reduce.ts (file-size
-// cap split); re-exported so this stays the one public entry point.
+// cap split); re-exported so this stays the one public entry point. The
+// arbitration core likewise lives in activity-arbitrate.ts.
 export {
   type ActivityLiveness,
   type ActivityLivenessProbe,
@@ -19,7 +26,15 @@ export {
   DEFAULT_ENGINE_STATE_TTL_MS,
   resolveEngineStateTtlMs,
 } from "./activity-reduce.ts"
+export {
+  type EffectiveActivity,
+  type HookSlot,
+  type ObservedSlot,
+  type TabActivitySlots,
+  recomputeTabActivity,
+} from "./activity-arbitrate.ts"
 
+/** Task-level rollup entry — last-event-wins across the task's tabs. */
 interface ActivityEntry {
   state: TaskActivityState
   detail?: EngineActivityDetail
@@ -30,12 +45,25 @@ interface ActivityEntry {
   /** The reporting engine's id (hook `--engine`) — what the liveness probe
    *  asks about. Carried forward like `session`. */
   vendor?: string
-  /** True for entries written by the activity OBSERVER (PTY output/foreground
-   *  facts, `observeTab`) rather than a hook event. Observed entries are
-   *  managed by the observer's own poll lifecycle — no lapse watchdog — and
-   *  a hook event replacing one drops the flag. */
-  observed?: true
   lapse?: ReturnType<typeof setTimeout>
+}
+
+/** A hook slot plus its lapse watchdog — the only slot that gets one. */
+interface TabHookEntry extends HookSlot {
+  lapse?: ReturnType<typeof setTimeout>
+}
+
+/**
+ * One tab's activity record, herdr-style: ONE SLOT PER SOURCE, arbitrated by
+ * {@link recomputeTabActivity} (see activity-arbitrate.ts for the priority
+ * rules). Writers never edit each other's slot — `report()` writes `hook`,
+ * `observeTab()` writes `observed` — and `effective` caches the last
+ * arbitrated result so a write that changes nothing publishes nothing.
+ */
+interface TabEntry {
+  hook?: TabHookEntry
+  observed?: ObservedSlot
+  effective: EffectiveActivity
 }
 
 /** What `observeTab` did — the caller (activity-observer) logs corrections. */
@@ -43,17 +71,32 @@ export type ObserveTabOutcome = "noop" | "observed-running" | "observed-idle" | 
 
 export type EngineStatePayload = ChannelPayloads["engine-state"]
 
+/** The subset of an entry the wire payload reads. */
+interface PayloadSource {
+  state: TaskActivityState
+  detail?: EngineActivityDetail
+  session?: EngineSessionInfo
+  at: number
+}
+
 /**
  * In-memory, daemon-owned activity registry for hook-driven engine badges.
  *
  * This is UI state, not task lifecycle: it is replayed to subscribers and the
  * web snapshot, but never persisted to tasks.json.
+ *
+ * Two levels: the task-level rollup (last-event-wins across tabs, every
+ * existing consumer reads it) and the per-tab ledger (the F7 attention jump's
+ * tab precision + the tab strip's chip). The per-tab ledger is where the
+ * multi-source arbitration lives: hook events and observer facts occupy
+ * separate slots and ONE pure function decides what subscribers see, instead
+ * of each writer special-casing the other source's entries.
  */
 export class DaemonActivityRegistry {
   private readonly activity = new Map<string, ActivityEntry>()
-  /** Per-tab entries (taskId → tabId → entry) for events that carried a
+  /** Per-tab records (taskId → tabId → entry) for events that carried a
    *  `tabId`. UI state like everything here — replayed, never persisted. */
-  private readonly tabActivity = new Map<string, Map<string, ActivityEntry>>()
+  private readonly tabActivity = new Map<string, Map<string, TabEntry>>()
 
   constructor(
     private readonly bus: DaemonEventBus,
@@ -96,33 +139,40 @@ export class DaemonActivityRegistry {
       entry.lapse = this.armLapse(taskId, at)
     }
     this.activity.set(taskId, entry)
-    // Per-tab ledger (the F7 attention jump's tab precision + the tab
-    // strip's hook-driven chip). The task-level entry above stays the
-    // last-event-wins rollup every existing consumer reads; this map only
-    // adds "which tab". reduceActivity ignores `prev`, so one reduction
-    // serves both levels. Idle deletes the entry — a closed/ended tab must
-    // not linger as a candidate. Tab entries get their OWN lapse watchdog
-    // (a copy, not the shared task entry): the tab chip keys off `running`
-    // now, so a missed Stop must not pin the ● — same probe-then-idle
-    // heartbeat as the task level, publishing a per-tab idle so hook-wins
-    // subscribers fall back to the quiescence poll.
-    // A TAB-scoped publish must carry the TAB's session lineage only — the
-    // event's own id, or the same tab's previous one. Inheriting the
-    // task-level rollup here leaked another tab's (even another ENGINE's)
-    // session onto a fresh tab whose hooks don't pipe session ids.
-    let publishEntry = entry
+    // Per-tab ledger. A TAB-scoped publish must carry the TAB's session
+    // lineage only — the event's own id, or the same tab's previous one.
+    // Inheriting the task-level rollup here leaked another tab's (even
+    // another ENGINE's) session onto a fresh tab whose hooks don't pipe
+    // session ids. A hook event SUPERSEDES the observed slot for its tab:
+    // hooks are authoritative while the engine lives (see
+    // activity-arbitrate.ts), so the observation that filled the gap is
+    // dropped rather than left to age against the fresh claim.
+    let publishEntry: PayloadSource = entry
     if (tabId) {
-      const tabs = this.tabActivity.get(taskId) ?? new Map<string, ActivityEntry>()
+      const tabs = this.tabActivity.get(taskId) ?? new Map<string, TabEntry>()
       const prevTab = tabs.get(tabId)
-      if (prevTab?.lapse) clearTimeout(prevTab.lapse)
-      const tabSession = session ?? prevTab?.session
-      const tabVendor = vendor ?? prevTab?.vendor
-      publishEntry = { state, detail, at, session: tabSession, vendor: tabVendor }
-      if (state === "idle") tabs.delete(tabId)
-      else {
-        const tabEntry: ActivityEntry = { state, detail, at, session: tabSession, vendor: tabVendor }
-        if (!STICKY_STATES.has(state)) tabEntry.lapse = this.armTabLapse(taskId, tabId, at)
-        tabs.set(tabId, tabEntry)
+      if (prevTab?.hook?.lapse) clearTimeout(prevTab.hook.lapse)
+      const tabSession = session ?? prevTab?.hook?.session
+      const tabVendor = vendor ?? prevTab?.hook?.vendor
+      publishEntry = { state, detail, at, session: tabSession }
+      if (state === "idle") {
+        // A closed/ended tab must not linger as a candidate — idle CLEARS
+        // the tab's record (both slots) rather than being stored.
+        tabs.delete(tabId)
+      } else {
+        const hook: TabHookEntry = { state, detail, at, session: tabSession, vendor: tabVendor }
+        if (!STICKY_STATES.has(state)) hook.lapse = this.armTabLapse(taskId, tabId, at)
+        tabs.set(tabId, {
+          hook,
+          effective: {
+            state,
+            at,
+            source: "hook",
+            ...(detail ? { detail } : {}),
+            ...(tabVendor ? { vendor: tabVendor } : {}),
+            ...(tabSession ? { session: tabSession } : {}),
+          },
+        })
       }
       if (tabs.size > 0) this.tabActivity.set(taskId, tabs)
       else this.tabActivity.delete(taskId)
@@ -130,16 +180,6 @@ export class DaemonActivityRegistry {
     this.bus.publish("engine-state", this.payload(taskId, publishEntry, tabId))
   }
 
-  /**
-   * Arm (or re-arm) the lapse watchdog for the entry stamped `at`. A long
-   * single turn emits only `turn-start` … `Stop` over many minutes — nothing
-   * in between — so a fixed timer would fire mid-turn and wrongly idle a
-   * working agent. Bumping the TTL only moves that cliff. Instead, when the
-   * timer fires we probe whether the engine is still writing its transcript:
-   * a write within the trailing `staleMs` window ⇒ the turn is alive, so we
-   * re-arm (a heartbeat) instead of idling. Only a genuinely silent engine
-   * (no recent write ⇒ a missed Stop / hung process) lapses to idle.
-   */
   /** Probe wrapper: a best-effort filesystem read must never crash the daemon,
    *  and a failure reads as "silent" ⇒ lapse. */
   private async probe(taskId: string, vendor?: string, transcriptPath?: string): Promise<ActivityLiveness | undefined> {
@@ -172,6 +212,16 @@ export class DaemonActivityRegistry {
     return live.mtimeMs !== undefined && live.mtimeMs > this.now() - this.staleMs
   }
 
+  /**
+   * Arm (or re-arm) the lapse watchdog for the entry stamped `at`. A long
+   * single turn emits only `turn-start` … `Stop` over many minutes — nothing
+   * in between — so a fixed timer would fire mid-turn and wrongly idle a
+   * working agent. Bumping the TTL only moves that cliff. Instead, when the
+   * timer fires we probe whether the engine is still writing its transcript:
+   * a write within the trailing `staleMs` window ⇒ the turn is alive, so we
+   * re-arm (a heartbeat) instead of idling. Only a genuinely silent engine
+   * (no recent write ⇒ a missed Stop / hung process) lapses to idle.
+   */
   private armLapse(taskId: string, at: number): ReturnType<typeof setTimeout> {
     const timer = setTimeout(() => {
       void this.handleLapse(taskId, at)
@@ -181,7 +231,7 @@ export class DaemonActivityRegistry {
   }
 
   /** Per-tab sibling of {@link armLapse} — same probe-then-idle heartbeat,
-   *  scoped to one (taskId, tabId) entry. */
+   *  scoped to one (taskId, tabId) hook slot. */
   private armTabLapse(taskId: string, tabId: string, at: number): ReturnType<typeof setTimeout> {
     const timer = setTimeout(() => {
       void this.handleTabLapse(taskId, tabId, at)
@@ -191,17 +241,19 @@ export class DaemonActivityRegistry {
   }
 
   /** Per-tab sibling of {@link handleLapse}: same supersede guards (re-read
-   *  before AND after the probe, match on `at`), same liveness heartbeat;
-   *  on a genuine lapse the tab entry is deleted and a per-tab idle is
-   *  published so subscribers drop the hook claim for that tab. */
+   *  before AND after the probe, match on `at`), same liveness heartbeat.
+   *  Only the HOOK slot is policed (observed entries carry no watchdog — the
+   *  observer's own poll retires them); on a genuine lapse the whole tab
+   *  record is dropped and a per-tab idle is published so hook-wins
+   *  subscribers fall back to the quiescence poll. */
   private async handleTabLapse(taskId: string, tabId: string, at: number): Promise<void> {
-    const before = this.tabActivity.get(taskId)?.get(tabId)
+    const before = this.tabActivity.get(taskId)?.get(tabId)?.hook
     if (!before || before.at !== at) return
 
     const live = await this.probe(taskId, before.vendor, before.session?.transcriptPath)
 
     const tabs = this.tabActivity.get(taskId)
-    const cur = tabs?.get(tabId)
+    const cur = tabs?.get(tabId)?.hook
     if (!tabs || !cur || cur.at !== at) return
 
     if (this.stillWorking(live, at)) {
@@ -245,22 +297,12 @@ export class DaemonActivityRegistry {
   /**
    * Fold one OBSERVED per-session fact (issue #11/#16 — the activity
    * observer's PTY output heartbeat + foreground-walk reconciler) into the
-   * per-tab ledger. Precedence is strict: hook events always outrank
-   * observation —
-   *
-   *   - `working`: fills only a hole (no entry, or an observed-idle one).
-   *     A hook entry in ANY non-idle state stands untouched; the daemon
-   *     restart case (#16: registry wiped while engines run) is exactly the
-   *     hole this fills, so a busy session's dot re-lights on the first
-   *     observer pass instead of the next turn boundary.
-   *   - `rest`: retires an observed-running entry, marks a never-signaled
-   *     session as KNOWN-idle (distinguishable from "no signal" — the
-   *     client's unknown state), and — the one place observation overrides
-   *     a hook — idles a hook-claimed `running` older than
-   *     `correctHookRunningAfterMs` (walk/title/silence say the engine is
-   *     not working: the ESC-interrupt and dead-engine gaps). Sticky
-   *     attention states are NEVER touched: they mean "a human is needed"
-   *     and carry no output by nature.
+   * per-tab record's OBSERVED slot. The hook slot is never mutated here;
+   * what subscribers see follows {@link recomputeTabActivity}'s priority —
+   * hook claims outrank observation except the one documented correction (a
+   * stale hook `running` vs a fresher observed rest). Sticky attention
+   * states are NEVER touched: they mean "a human is needed" and carry no
+   * output by nature.
    *
    * Observed entries (including idle ones) are STORED so the subscribe-time
    * replay hands late clients the same known-idle facts; they carry no
@@ -272,48 +314,36 @@ export class DaemonActivityRegistry {
     claim: "working" | "rest",
     opts: { vendor?: string; correctHookRunningAfterMs?: number } = {},
   ): ObserveTabOutcome {
-    const entry = this.tabActivity.get(taskId)?.get(tabId)
-    if (claim === "working") {
-      if (entry && entry.observed !== true && entry.state !== "idle") return "noop"
-      if (entry?.observed && entry.state === "running") {
-        entry.at = this.now() // quiet refresh — no republish churn
-        return "noop"
-      }
-      this.setObservedTab(taskId, tabId, "running", opts.vendor ?? entry?.vendor)
-      return "observed-running"
-    }
-    if (!entry) {
-      this.setObservedTab(taskId, tabId, "idle", opts.vendor)
-      return "observed-idle"
-    }
-    if (entry.observed) {
-      if (entry.state === "idle") return "noop"
-      this.setObservedTab(taskId, tabId, "idle", opts.vendor ?? entry.vendor)
-      return "observed-idle"
-    }
-    if (entry.state !== "running") return "noop" // sticky states stand
-    const minAgeMs = opts.correctHookRunningAfterMs ?? Number.POSITIVE_INFINITY
-    if (this.now() - entry.at < minAgeMs) return "noop"
-    this.setObservedTab(taskId, tabId, "idle", opts.vendor ?? entry.vendor)
-    return "corrected-hook-running"
-  }
-
-  /** Store + publish one observed per-tab entry (replacing any previous,
-   *  cancelling its watchdog; session lineage carries forward). */
-  private setObservedTab(taskId: string, tabId: string, state: "running" | "idle", vendor?: string): void {
-    const tabs = this.tabActivity.get(taskId) ?? new Map<string, ActivityEntry>()
-    const prev = tabs.get(tabId)
-    if (prev?.lapse) clearTimeout(prev.lapse)
-    const entry: ActivityEntry = {
-      state,
+    const tabs = this.tabActivity.get(taskId) ?? new Map<string, TabEntry>()
+    const entry = tabs.get(tabId)
+    const prev = entry?.effective
+    const observed: ObservedSlot = {
+      state: claim === "working" ? "running" : "idle",
       at: this.now(),
-      observed: true,
-      ...(vendor ? { vendor } : {}),
-      ...(prev?.session ? { session: prev.session } : {}),
+      vendor: opts.vendor ?? entry?.observed?.vendor ?? entry?.hook?.vendor,
     }
-    tabs.set(tabId, entry)
+    const effective = recomputeTabActivity(
+      { hook: entry?.hook, observed },
+      observed.at,
+      opts.correctHookRunningAfterMs ?? Number.POSITIVE_INFINITY,
+    )
+    if (!effective) return "noop" // unreachable — the observed slot was just written
+
+    // Same state from the same source ⇒ a quiet refresh of the observed
+    // slot's timestamp, no republish churn (a working engine re-asserted
+    // every poll must not spam subscribers).
+    if (prev && prev.state === effective.state && prev.source === effective.source) {
+      if (entry) entry.observed = observed
+      return "noop"
+    }
+
+    tabs.set(tabId, { hook: entry?.hook, observed, effective })
     this.tabActivity.set(taskId, tabs)
-    this.bus.publish("engine-state", this.payload(taskId, entry, tabId))
+    this.bus.publish("engine-state", this.payload(taskId, effective, tabId))
+
+    if (effective.source === "hook") return "noop" // the observation lost arbitration
+    if (effective.state === "running") return "observed-running"
+    return prev?.source === "hook" ? "corrected-hook-running" : "observed-idle"
   }
 
   clearTask(taskId: string): void {
@@ -326,7 +356,7 @@ export class DaemonActivityRegistry {
     this.tabActivity.delete(taskId)
     if (tabs) {
       for (const [tabId, tabEntry] of tabs) {
-        if (tabEntry.lapse) clearTimeout(tabEntry.lapse)
+        if (tabEntry.hook?.lapse) clearTimeout(tabEntry.hook.lapse)
         this.bus.publish("engine-state", { taskId, tabId, state: "idle", at: this.now() })
       }
     }
@@ -348,11 +378,11 @@ export class DaemonActivityRegistry {
       if (entry.state !== "idle") out.push(this.payload(taskId, entry))
     }
     // Tab entries ride the same replay so a late subscriber rebuilds its
-    // per-tab map too. Hook entries are only stored non-idle; OBSERVED
-    // entries include known-idle ones on purpose — replaying them is what
-    // lets a late client tell "known idle" from "no signal" (unknown).
+    // per-tab map too. Hook-driven entries are only stored non-idle; the
+    // OBSERVED slot includes known-idle ones on purpose — replaying them is
+    // what lets a late client tell "known idle" from "no signal" (unknown).
     for (const [taskId, tabs] of this.tabActivity) {
-      for (const [tabId, entry] of tabs) out.push(this.payload(taskId, entry, tabId))
+      for (const [tabId, entry] of tabs) out.push(this.payload(taskId, entry.effective, tabId))
     }
     return out
   }
@@ -360,29 +390,47 @@ export class DaemonActivityRegistry {
   /**
    * Raw diagnostic dump for `kobe api inspect` — every task/tab entry with
    * the fields the wire payload deliberately omits (probe vendor, whether a
-   * lapse watchdog is armed). Read-only; production bug reports need to see
-   * what the registry ACTUALLY holds, not the projected payload.
+   * lapse watchdog is armed, which source won the arbitration). Read-only;
+   * production bug reports need to see what the registry ACTUALLY holds, not
+   * the projected payload.
    */
   debugSnapshot(): {
     tasks: Record<string, { state: TaskActivityState; at: number; vendor?: string; lapseArmed: boolean }>
     tabs: Record<
       string,
-      Record<string, { state: TaskActivityState; at: number; vendor?: string; lapseArmed: boolean; observed?: true }>
+      Record<
+        string,
+        {
+          state: TaskActivityState
+          at: number
+          vendor?: string
+          lapseArmed: boolean
+          observed?: true
+          source: "hook" | "observed"
+        }
+      >
     >
   } {
     const dump = (e: ActivityEntry) => ({
       state: e.state,
       at: e.at,
       ...(e.vendor ? { vendor: e.vendor } : {}),
-      ...(e.observed ? { observed: true as const } : {}),
       lapseArmed: e.lapse !== undefined,
+    })
+    const dumpTab = (e: TabEntry) => ({
+      state: e.effective.state,
+      at: e.effective.at,
+      ...(e.effective.vendor ? { vendor: e.effective.vendor } : {}),
+      ...(e.effective.source === "observed" ? { observed: true as const } : {}),
+      lapseArmed: e.hook?.lapse !== undefined,
+      source: e.effective.source,
     })
     const tasks: Record<string, ReturnType<typeof dump>> = {}
     for (const [taskId, entry] of this.activity) tasks[taskId] = dump(entry)
-    const tabs: Record<string, Record<string, ReturnType<typeof dump>>> = {}
+    const tabs: Record<string, Record<string, ReturnType<typeof dumpTab>>> = {}
     for (const [taskId, tabMap] of this.tabActivity) {
-      const out: Record<string, ReturnType<typeof dump>> = {}
-      for (const [tabId, entry] of tabMap) out[tabId] = dump(entry)
+      const out: Record<string, ReturnType<typeof dumpTab>> = {}
+      for (const [tabId, entry] of tabMap) out[tabId] = dumpTab(entry)
       tabs[taskId] = out
     }
     return { tasks, tabs }
@@ -394,7 +442,7 @@ export class DaemonActivityRegistry {
     }
     for (const tabs of this.tabActivity.values()) {
       for (const entry of tabs.values()) {
-        if (entry.lapse) clearTimeout(entry.lapse)
+        if (entry.hook?.lapse) clearTimeout(entry.hook.lapse)
       }
     }
     this.activity.clear()
@@ -407,7 +455,7 @@ export class DaemonActivityRegistry {
     this.bus.publish("engine-state", this.payload(taskId, entry))
   }
 
-  private payload(taskId: string, entry: ActivityEntry, tabId?: string): EngineStatePayload {
+  private payload(taskId: string, entry: PayloadSource, tabId?: string): EngineStatePayload {
     return {
       taskId,
       ...(tabId ? { tabId } : {}),

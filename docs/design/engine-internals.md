@@ -158,6 +158,31 @@ The poll loop runs every ~2 s against the daemon's shared transcript-activity
 slice, and it also spots a hand-launched `claude` in a plain shell tab (via
 the OSC window title) so even unmanaged sessions get a badge.
 
+**Daemon-side arbitration** (2026-08, adopted from herdr's
+`TerminalState::recompute_effective_state`): each tab's activity record keeps
+**one slot per source** — a `hook` slot written by `report()` and an
+`observed` slot written by the PTY/foreground observer's `observeTab()` — and
+ONE pure function arbitrates them
+(`packages/kobe-daemon/src/daemon/activity-arbitrate.ts`):
+
+1. a hook entry in a sticky state (`turn_complete` / `permission_needed` /
+   `error` / `rate_limited`) always wins — observation never dims an
+   attention state;
+2. a hook `running` wins unless an observed `rest` fact is **fresher than the
+   claim** (herdr's `fallback_not_older_than_hook`) and the claim is older
+   than `correctHookRunningAfterMs` — the one correction, covering ESC
+   interrupts and dead engines;
+3. any other hook entry wins;
+4. no hook entry → the observed slot wins (`running` re-seeds a busy dot
+   after a daemon restart; `idle` is the known-idle marker that stays
+   distinguishable from "no signal" = unknown).
+
+Writers never edit each other's slot, so adding a source means adding a slot
+plus one rule — not special-casing another writer. A hook event supersedes
+its tab's observed slot (hooks are authoritative while the engine lives); a
+hook idle clears the tab's record outright. Only hook slots get the lapse
+watchdog; observed entries are retired by the observer's own poll.
+
 The user-visible consequence: **only claude/codex sessions can ever show
 needs-input**; every other engine tops out at working/done.
 
