@@ -60,6 +60,11 @@ describe("withWorktreeProtocol", () => {
     const customFile = ["claude", "--append-system-prompt-file", "/tmp/p.txt"]
     expect(withWorktreeProtocol(customFile, "claude", "t1", { status: on, notes: on })).toEqual(customFile)
   })
+
+  it("respects the attached --append-system-prompt=… form too", () => {
+    const custom = ["claude", "--append-system-prompt=user's own"]
+    expect(withWorktreeProtocol(custom, "claude", "t1", { status: on, notes: on })).toEqual(custom)
+  })
 })
 
 describe("statusReportProtocol", () => {
@@ -154,6 +159,11 @@ describe("withDispatcherProtocol", () => {
 
   it("never double-injects over a custom command that sets the flag", () => {
     const custom = ["claude", "--append-system-prompt", "user's own"]
+    expect(withDispatcherProtocol(custom, "claude", "m1", on)).toEqual(custom)
+  })
+
+  it("respects the attached --append-system-prompt=… form too", () => {
+    const custom = ["claude", "--append-system-prompt=user's own"]
     expect(withDispatcherProtocol(custom, "claude", "m1", on)).toEqual(custom)
   })
 

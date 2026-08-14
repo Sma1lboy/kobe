@@ -176,7 +176,20 @@ export function withEngineEffort(
  * `--session-id` (claude would reject two, or our id would lose to the
  * resumed one). Covers both long and short forms.
  */
-const CLAUDE_SESSION_CONTROL_FLAGS = new Set(["--session-id", "--resume", "-r", "--continue", "-c", "--from-pr"])
+const CLAUDE_SESSION_CONTROL_FLAGS = ["--session-id", "--resume", "-r", "--continue", "-c", "--from-pr"] as const
+
+/**
+ * True when `argv` carries `flag` in EITHER the separated form (`--flag value`,
+ * its own token) or the attached form (`--flag=value`, a single token).
+ * {@link parseEngineCommand} deliberately keeps the attached form — "the common
+ * CLI idiom" per its own doc — as one token, so an exact-equality check alone
+ * silently misses `claude --resume=<id>` / `--append-system-prompt="…"`. Every
+ * "the command already sets this flag, don't add our own" guard must see both.
+ */
+function argvHasFlag(argv: readonly string[], flag: string): boolean {
+  const attached = `${flag}=`
+  return argv.some((a) => a === flag || a.startsWith(attached))
+}
 
 /**
  * For a Claude launch, append a kobe-generated `--session-id <uuid>` so the
@@ -194,7 +207,7 @@ export function withClaudeSessionId(
   vendor: string | undefined,
 ): { argv: readonly string[]; sessionId: string | null } {
   if ((vendor ?? "claude") !== "claude") return { argv, sessionId: null }
-  if (argv.some((a) => CLAUDE_SESSION_CONTROL_FLAGS.has(a))) return { argv, sessionId: null }
+  if (CLAUDE_SESSION_CONTROL_FLAGS.some((flag) => argvHasFlag(argv, flag))) return { argv, sessionId: null }
   const sessionId = randomUUID()
   return { argv: [...argv, "--session-id", sessionId], sessionId }
 }
@@ -376,7 +389,7 @@ export function withWorktreeProtocol(
 ): readonly string[] {
   if (!taskId) return argv
   if ((vendor ?? "claude") !== "claude") return argv
-  if (argv.includes("--append-system-prompt") || argv.includes("--append-system-prompt-file")) {
+  if (argvHasFlag(argv, "--append-system-prompt") || argvHasFlag(argv, "--append-system-prompt-file")) {
     return argv
   }
   const text = worktreeProtocol(taskId, kobeApiInvocation(), gates, notes)
@@ -429,7 +442,7 @@ export function withDispatcherProtocol(
 ): readonly string[] {
   if (!taskId || !enabled()) return argv
   if ((vendor ?? "claude") !== "claude") return argv
-  if (argv.includes("--append-system-prompt") || argv.includes("--append-system-prompt-file")) {
+  if (argvHasFlag(argv, "--append-system-prompt") || argvHasFlag(argv, "--append-system-prompt-file")) {
     return argv
   }
   return [...argv, "--append-system-prompt", dispatcherProtocol(taskId)]
