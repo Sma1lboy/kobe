@@ -136,11 +136,17 @@ as an empty product. `packages/kobe-web/e2e/hero-*.ts` owns it:
 cd packages/kobe-web
 bun e2e/hero-fixture.ts --fresh   # isolated home + a real repo with history
 bun e2e/hero-seed.ts              # REAL Claude Code turns on two worktrees
+bun e2e/hero-issues.ts            # the kanban board's stories (no quota)
 bun e2e/hero-serve.ts             # warm capture stack on :5323 (keep running)
 
 bun e2e/hero-shot.ts --scale=2 --out=../../docs/assets/workspace.png ctrl+a l
 bun e2e/hero-record.ts            # demo.mp4 + demo.gif (4× cut)
+bun e2e/hero-kanban.ts            # kanban.mp4 + kanban.gif (3× cut)
 ```
+
+`hero-capture.ts` holds what the two recorders share — the `/harness` browser
+PTY, the typed-and-verified input helpers, and the encode — so a storyboard
+file is only its beats. `--encode-only` re-encodes the take already on disk.
 
 - **`HOME` stays the operator's**, alone among the isolation knobs: the engine
   under capture is the real `claude`, and a redirected home photographs a
@@ -152,6 +158,15 @@ bun e2e/hero-record.ts            # demo.mp4 + demo.gif (4× cut)
 - **Turns are real, so the output is not reproducible** — expect the
   transcript, and so the framing, to differ every run. Seeding is idempotent:
   a re-shoot reuses the sessions it already paid quota for.
+- **The kanban capture is the exception: no engine, fully deterministic.** A
+  card reaches In progress by being LINKED to a task, so `hero-issues.ts`
+  seeds the board off the fixture's idle tasks, and `hero-kanban.ts` fires a
+  real `rove api issue-update --task` mid-take to move a card on camera. It
+  files a story and creates a task, so it is NOT idempotent — re-shoot from
+  `hero-fixture.ts --fresh && hero-issues.ts`. It also stops short of the
+  drawer's Start: a story started into its own worktree boots the engine in a
+  directory Claude Code has never seen, and the folder-trust prompt would be
+  what got filmed.
 - **Video beats switch panes by CLICKING rows**, never by the `ctrl+a` prefix.
   The prefix is two strokes, and while an engine streams into the pane the
   second one gets starved — the storyboard then types its own navigation keys
