@@ -13,7 +13,7 @@ A theme is a JSON object with two top-level fields:
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/sma1lboy/kobe/main/packages/kobe/src/tui/context/theme/theme.schema.json",
+  "$schema": "https://raw.githubusercontent.com/sma1lboy/rove/main/packages/kobe/src/tui/context/theme/theme.schema.json",
   "defs": {
     "brand": "#cc785c"
   },

@@ -155,10 +155,10 @@ describe("kobe skill install", () => {
     await runSkillSubcommand(["install"])
     const [argv, opts] = mocks.bunSpawn.mock.calls[0]
     // The source must be a local directory, never the repo slug: resolving
-    // `Sma1lboy/kobe` is a ~198MB clone to deliver an 8KB file.
+    // `Sma1lboy/rove` is a ~198MB clone to deliver an 8KB file.
     expect(argv.slice(0, 2)).toEqual(["npx", "skills"])
     expect(argv[3]).toMatch(/[/\\]/)
-    expect(argv).not.toContain("Sma1lboy/kobe")
+    expect(argv).not.toContain("Sma1lboy/rove")
     expect(argv).not.toContain("--agent")
     // stdio inherited so the CLI's own agent picker is interactive here.
     expect(opts).toEqual({ stdin: "inherit", stdout: "inherit", stderr: "inherit" })

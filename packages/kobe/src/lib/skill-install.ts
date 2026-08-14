@@ -8,9 +8,9 @@
  * its skills from, which get a real directory vs a symlink into the shared
  * `.agents/skills`. kobe does NOT reimplement any of that.
  *
- * What Rove changes is the packaged SOURCE. The public fallback remains
- * `Sma1lboy/kobe` until the repository URL migrates; `--skill rove` selects
- * the canonical skill from that compatibility URL. Cloning the repository
+ * What Rove changes is the packaged SOURCE. The public fallback is the
+ * canonical `Sma1lboy/rove` repository; `--skill rove` selects the skill.
+ * Cloning the repository
  * (`git clone --depth 1`) means a huge working tree just to deliver one
  * SKILL.md, which is effectively un-installable on a slow connection. But a
  * user running `kobe skill install` already HAS kobe, and the skill ships
@@ -73,7 +73,7 @@ export function skillInstallCommand(env: NodeJS.ProcessEnv = process.env): strin
  * The public repo slug. Only a FALLBACK now (and the documented route for
  * people who don't have Rove installed): resolving it means a large clone.
  */
-export const SKILL_SOURCE_SLUG = "Sma1lboy/kobe"
+export const SKILL_SOURCE_SLUG = "Sma1lboy/rove"
 
 /**
  * The skill directory shipped inside this install, or null in an environment

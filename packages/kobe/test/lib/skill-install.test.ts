@@ -89,7 +89,7 @@ describe("npxSkillsArgv / npxSkillsCommand", () => {
   })
 
   it("installs from the BUNDLED path, not a repo clone", () => {
-    // `npx skills add Sma1lboy/kobe` is a `git clone --depth 1` = ~198MB of
+    // `npx skills add Sma1lboy/rove` is a `git clone --depth 1` = ~198MB of
     // working tree for an 8KB file. The local path skips the network.
     const dir = bundledSkillDir()
     expect(dir).not.toBeNull()
@@ -97,7 +97,7 @@ describe("npxSkillsArgv / npxSkillsCommand", () => {
   })
 
   it("falls back to the repo slug when nothing is bundled", () => {
-    expect(npxSkillsArgv({ source: null })).toContain("Sma1lboy/kobe")
+    expect(npxSkillsArgv({ source: null })).toContain("Sma1lboy/rove")
   })
 
   it("repeats --agent per agent (the CLI rejects a comma-joined list)", () => {

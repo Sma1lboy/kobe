@@ -1,5 +1,5 @@
 {
-  "$schema": "https://raw.githubusercontent.com/sma1lboy/kobe/main/packages/kobe/src/tui/context/theme/theme.schema.json",
+  "$schema": "https://raw.githubusercontent.com/sma1lboy/rove/main/packages/kobe/src/tui/context/theme/theme.schema.json",
   "defs": {
     "darkStep1": "#1e1e2e",
     "darkStep2": "#181825",

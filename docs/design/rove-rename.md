@@ -32,7 +32,7 @@ Rove is the canonical product name and `rove` is the canonical CLI command. Prod
 | Protocol and persisted field names | `kobeVersion`, `minKobeVersion`, related established identifiers | Wire and manifest compatibility |
 | Plugin discovery | `kobe-plugin.toml`, `min_kobe_version`, `kobe-plugin` topic | Canonical-first manifest resolution and dual-topic search keep existing plugins discoverable |
 | Agent skill id and install paths | `kobe` | Existing installs are still detected and versioned; new installs use the `rove` id |
-| Repository, docs, and website URLs | Current `…/kobe` URLs | URL migration is independent of the package distribution migration |
+| Existing repository redirects and deployed website domains | `github.com/Sma1lboy/kobe`, `kobe.sma1lboy.me`, `docs.kobe.sma1lboy.me` | Old repository links keep redirecting and deployed domains remain reachable; new repository links use `github.com/Sma1lboy/rove` |
 
 New user-facing copy must use Rove/`rove`. New compatibility identifiers should not use `kobe` unless they extend one of the established contracts above. Internal TypeScript symbols may retain `Kobe` when renaming them would create churn without changing a user-visible or serialized contract.
 
