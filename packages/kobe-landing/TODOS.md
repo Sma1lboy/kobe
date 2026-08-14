@@ -27,7 +27,7 @@ Landing page 迭代清单。目标：去掉与项目实际不符的细节，让�
 - 改法：
   - 显示 GitHub 官方 logo（inline SVG）。
   - 显示 repo 当前**实时 star 数**。
-- 实现注意：纯静态页，star 数需前端 fetch GitHub API（`https://api.github.com/repos/Sma1lboy/kobe`，读 `stargazers_count`）；注意未鉴权速率限制（60/h per IP），加 fallback/缓存。
+- 实现注意：纯静态页，star 数需前端 fetch GitHub API（`https://api.github.com/repos/Sma1lboy/rove`，读 `stargazers_count`）；注意未鉴权速率限制（60/h per IP），加 fallback/缓存。
 
 ## 4. Hero CTA 文案
 - 位置：L67 "Read the docs ↗"

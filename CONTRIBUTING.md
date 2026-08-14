@@ -24,8 +24,8 @@ The tech stack is locked: **TypeScript + `@opentui/core` + `@opentui/react` + Re
 ## Setup
 
 ```bash
-git clone https://github.com/Sma1lboy/kobe.git
-cd kobe
+git clone https://github.com/Sma1lboy/rove.git
+cd rove
 bun install
 ```
 
@@ -38,7 +38,7 @@ This is a Bun-workspaces monorepo:
 
 The current ownership map is in [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md).
 
-Run package scripts from the root via `bun --filter @sma1lboy/kobe <script>`, or `cd packages/kobe` first. Most common scripts are also aliased at the root (`bun run dev`, `bun run test`, etc.).
+Run package scripts from the root via `bun --filter @sma1lboy/rove <script>`, or `cd packages/kobe` first. Most common scripts are also aliased at the root (`bun run dev`, `bun run test`, etc.).
 
 ### Reference repos (optional but recommended)
 
@@ -123,4 +123,4 @@ normal project planning.
 
 ## Questions
 
-Open a [GitHub issue](https://github.com/Sma1lboy/kobe/issues) or start a discussion on your PR. If a doc and the implementation disagree, surface the mismatch — don't silently pick one.
+Open a [GitHub issue](https://github.com/Sma1lboy/rove/issues) or start a discussion on your PR. If a doc and the implementation disagree, surface the mismatch — don't silently pick one.

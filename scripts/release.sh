@@ -92,7 +92,7 @@ await_ci_then_tag() {
   git push origin "$tag"
   echo ""
   echo "✓  Tagged + pushed $tag — publish is running:"
-  echo "   https://github.com/sma1lboy/kobe/actions"
+  echo "   https://github.com/sma1lboy/rove/actions"
 }
 
 # ── safety: there must be pending changesets to release ───────────────────────

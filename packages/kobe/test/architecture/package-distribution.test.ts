@@ -38,6 +38,7 @@ describe("Rove package distribution", () => {
       name: string
       exports: Record<string, { types: string; default: string }>
       repository: { url: string }
+      homepage: string
     }>("packages/kobe-plugin-sdk/package.json")
     const daemon = json<{ dependencies: Record<string, string> }>("packages/kobe-daemon/package.json")
 
@@ -46,7 +47,8 @@ describe("Rove package distribution", () => {
       types: "./dist/contract.d.ts",
       default: "./dist/contract.js",
     })
-    expect(sdk.repository.url).toBe("git+https://github.com/Sma1lboy/kobe.git")
+    expect(sdk.repository.url).toBe("git+https://github.com/Sma1lboy/rove.git")
+    expect(sdk.homepage).toBe("https://github.com/Sma1lboy/rove/blob/main/docs/PLUGIN-AUTHORING.md")
     expect(daemon.dependencies["@sma1lboy/rove-plugin-sdk"]).toBe("workspace:*")
     expect(daemon.dependencies["@sma1lboy/kobe-plugin-sdk"]).toBeUndefined()
   })
@@ -116,5 +118,71 @@ describe("Rove package distribution", () => {
         /www\.npmjs\.com\/package\/@sma1lboy\/kobe(?:[/?#"')]|$)/,
       )
     }
+  })
+
+  test("active repository links use the canonical Rove repository", () => {
+    const surfaces = [
+      ".claude/skills/changelog-generator/SKILL.md",
+      ".claude/skills/recent-release/SKILL.md",
+      "CONTRIBUTING.md",
+      "README.md",
+      "docs/themes.md",
+      "packages/kobe-plugin-sdk/README.md",
+      "packages/kobe-plugin-sdk/package.json",
+      "packages/kobe-docs/lib/layout.shared.tsx",
+      "packages/kobe-docs/scripts/sync-docs.mjs",
+      "packages/kobe-landing/TODOS.md",
+      "packages/kobe-landing/changelog.html",
+      "packages/kobe-landing/index.html",
+      "packages/kobe-landing/index.js",
+      "packages/kobe-landing/plugins.html",
+      "packages/kobe-landing/themes.html",
+      "packages/kobe-landing/themes/catppuccin.json",
+      "packages/kobe-landing/themes/everforest.json",
+      "packages/kobe-landing/themes/gruvbox.json",
+      "packages/kobe-landing/themes/kanagawa.json",
+      "packages/kobe-landing/themes/rose-pine.json",
+      "packages/kobe-landing/themes/solarized.json",
+      "packages/kobe/scripts/build.ts",
+      "packages/kobe/src/cli/theme.ts",
+      "packages/kobe/src/lib/skill-install.ts",
+      "packages/kobe/src/tui/context/theme/theme.schema.json",
+      "scripts/release.sh",
+    ]
+    const legacyRepository =
+      /(?:github\.com|raw\.githubusercontent\.com|api\.github\.com\/repos)\/sma1lboy\/kobe(?:\.git|[/?#"'`\s]|$)/i
+
+    for (const path of surfaces) {
+      const source = read(path)
+      expect(source, `${path} does not point at the canonical repository`).toMatch(/sma1lboy\/rove/i)
+      expect(source, `${path} still points at the redirected Kobe repository`).not.toMatch(legacyRepository)
+    }
+
+    expect(read("CONTRIBUTING.md")).toContain("git clone https://github.com/Sma1lboy/rove.git\ncd rove")
+  })
+
+  test("release-note skills target the canonical package and product", () => {
+    const changelogSkill = read(".claude/skills/changelog-generator/SKILL.md")
+    const recentReleaseSkill = read(".claude/skills/recent-release/SKILL.md")
+
+    expect(changelogSkill).toContain('"@sma1lboy/rove": patch')
+    expect(changelogSkill).not.toContain('"@sma1lboy/kobe":')
+    expect(recentReleaseSkill).toContain("Recent Release Page (Rove)")
+    expect(recentReleaseSkill).toContain("rove-release-notes-zh.html")
+  })
+
+  test("landing pages load their extracted static assets", () => {
+    const home = read("packages/kobe-landing/index.html")
+    const homeScript = read("packages/kobe-landing/index.js")
+    const themes = read("packages/kobe-landing/themes.html")
+    const themesScript = read("packages/kobe-landing/themes.js")
+    const themesStyles = read("packages/kobe-landing/themes.css")
+
+    expect(home).toContain('<script src="/index.js"></script>')
+    expect(homeScript).toContain("https://api.github.com/repos/Sma1lboy/rove")
+    expect(themes).toContain('<link rel="stylesheet" href="/themes.css">')
+    expect(themes).toContain('<script src="/themes.js"></script>')
+    expect(themesScript).toContain("var KOBE_I18N")
+    expect(themesStyles).toContain(".tcard")
   })
 })

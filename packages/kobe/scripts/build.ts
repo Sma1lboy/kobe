@@ -12,7 +12,7 @@
  * `kobe daemon ...`, so there is no separate `kobed` binary to build.
  *
  * The canonical Rove SKILL.md is copied from its compatibility source path
- * into the tarball. `npx skills add Sma1lboy/kobe --skill rove` does a `git clone
+ * into the tarball. `npx skills add Sma1lboy/rove --skill rove` does a `git clone
  * --depth 1`, which for this repo means 198MB of working tree — unusable
  * on a slow connection for a file this size. Since the user already has
  * Rove installed, `rove skill install` points the agent-skills CLI at the

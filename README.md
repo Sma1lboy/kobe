@@ -12,7 +12,7 @@
 
 <p align="center">
   <a href="https://www.npmjs.com/package/@sma1lboy/rove"><img src="https://img.shields.io/npm/v/%40sma1lboy%2Frove?style=flat-square&label=npm&color=c96442" alt="npm version" /></a>
-  <a href="https://github.com/Sma1lboy/kobe/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Sma1lboy/kobe/ci.yml?branch=main&style=flat-square" alt="build" /></a>
+  <a href="https://github.com/Sma1lboy/rove/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Sma1lboy/rove/ci.yml?branch=main&style=flat-square" alt="build" /></a>
   <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="MIT license" /></a>
 </p>
 
@@ -72,7 +72,7 @@ Press `n`, pick a repo, base branch, and engine, and prompt the embedded session
 
 Full documentation: **[docs.kobe.sma1lboy.me](https://docs.kobe.sma1lboy.me)** — quick start, concepts, CLI, agent API, configuration, keybindings, themes, engines, plugins, troubleshooting.
 
-> **If Rove saves you an afternoon, [star the repo](https://github.com/Sma1lboy/kobe/stargazers)** — it is the single strongest signal that tells other developers this is worth their time.
+> **If Rove saves you an afternoon, [star the repo](https://github.com/Sma1lboy/rove/stargazers)** — it is the single strongest signal that tells other developers this is worth their time.
 
 ## Beyond the three panes
 

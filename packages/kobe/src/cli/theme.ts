@@ -235,7 +235,7 @@ function printUsage(out: NodeJS.WriteStream = process.stderr): void {
       "  remove <name>                 Remove a user-installed theme",
       "",
       `User themes live under: ${userThemesDir()}`,
-      "Schema: https://raw.githubusercontent.com/sma1lboy/kobe/main/packages/kobe/src/tui/context/theme/theme.schema.json",
+      "Schema: https://raw.githubusercontent.com/sma1lboy/rove/main/packages/kobe/src/tui/context/theme/theme.schema.json",
       "",
     ].join("\n"),
   )

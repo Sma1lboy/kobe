@@ -5,6 +5,6 @@ export function baseOptions(): BaseLayoutProps {
     nav: {
       title: 'Rove',
     },
-    githubUrl: 'https://github.com/Sma1lboy/kobe',
+    githubUrl: 'https://github.com/Sma1lboy/rove',
   };
 }

@@ -1,6 +1,6 @@
 # @sma1lboy/rove-plugin-sdk
 
-Typed SDK for writing [Rove](https://github.com/Sma1lboy/kobe) plugins.
+Typed SDK for writing [Rove](https://github.com/Sma1lboy/rove) plugins.
 
 **Optional by design.** The plugin contract stays plain env + CLI + unix
 socket — any language, no SDK required. This package is TypeScript sugar
@@ -83,7 +83,7 @@ await rove(["api", "issue-create", "--repo", ".", "--title", "found a bug"])
 ```
 
 Full contract (manifest reference, event catalog, env table):
-[docs/PLUGIN-AUTHORING.md](https://github.com/Sma1lboy/kobe/blob/main/docs/PLUGIN-AUTHORING.md).
+[docs/PLUGIN-AUTHORING.md](https://github.com/Sma1lboy/rove/blob/main/docs/PLUGIN-AUTHORING.md).
 
 Existing plugins can keep importing `@sma1lboy/kobe-plugin-sdk`: every SDK
 release publishes the same files and version under both package names. The

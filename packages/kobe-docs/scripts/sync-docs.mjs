@@ -25,7 +25,7 @@ const docsSourceDir = join(repoRoot, 'docs');
 const docsOutDir = join(packageDir, 'content/docs');
 const assetsOutDir = join(packageDir, 'public/docs-assets');
 
-const repoBlob = 'https://github.com/Sma1lboy/kobe/blob/main/';
+const repoBlob = 'https://github.com/Sma1lboy/rove/blob/main/';
 
 /**
  * The sidebar, as ordered sections of `[docs/ source file, site slug]`.
