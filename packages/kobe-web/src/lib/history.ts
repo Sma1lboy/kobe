@@ -93,7 +93,12 @@ export function summarizeUsage(
 
 /** Compact token formatting: 1234 → "1.2k", 1234567 → "1.2m". */
 export function formatTokens(value: number): string {
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}m`
+  // Promote to the next unit BEFORE rounding. `(value / 1_000).toFixed(1)`
+  // rounds half-up, so a value just under the 1m boundary — e.g. 999_999 —
+  // would otherwise render the impossible "1000.0k" instead of "1.0m".
+  // 999_950 is the smallest value that rounds up to "1000.0k". (Same reasoning
+  // as preview-core's formatBytes, which promotes at 1023.5, not 1024.)
+  if (value >= 999_950) return `${(value / 1_000_000).toFixed(1)}m`
   if (value >= 1_000) return `${(value / 1_000).toFixed(1)}k`
   return String(value)
 }

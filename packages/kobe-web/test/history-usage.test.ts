@@ -64,7 +64,15 @@ describe("formatTokens", () => {
     // The boundary is the bit a `>` refactor would silently break: 999 stays
     // raw, 1000 is already "1.0k", and 1_000_000 is already "1.0m".
     expect(formatTokens(1_000)).toBe("1.0k")
-    expect(formatTokens(999_999)).toBe("1000.0k") // just under 1m → still k
     expect(formatTokens(1_000_000)).toBe("1.0m")
+  })
+
+  it("promotes to m before rounding can render an impossible '1000.0k'", () => {
+    // (value / 1_000).toFixed(1) rounds half-up, so a value just under 1m must
+    // promote to "m" or it prints "1000.0k". 999_950 is the smallest value that
+    // rounds up to 1000.0k; 999_949 still rounds down and stays in "k".
+    expect(formatTokens(999_949)).toBe("999.9k")
+    expect(formatTokens(999_950)).toBe("1.0m")
+    expect(formatTokens(999_999)).toBe("1.0m")
   })
 })
