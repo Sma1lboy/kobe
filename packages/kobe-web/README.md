@@ -42,7 +42,7 @@ here.
 
 ## Production
 
-The default `@sma1lboy/kobe` package bundles this web dashboard under
+The canonical `@sma1lboy/rove` package bundles this web dashboard under
 `dist/web-ui`. Source checkouts can use `bun run dev` / `bun run dev:sandbox`;
 installed packages can run `kobe web`, which serves the built SPA through the
 daemon web transport and spawns the PTY sidecar on `port + 2`:

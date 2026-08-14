@@ -1,9 +1,9 @@
-# @sma1lboy/kobe
+# @sma1lboy/rove
 
 The published Rove CLI and PureTUI package.
 
 ```bash
-bun install -g @sma1lboy/kobe
+bun install -g @sma1lboy/rove
 rove add /path/to/repo
 rove
 ```

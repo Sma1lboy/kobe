@@ -40,7 +40,7 @@ export interface NodePtyHostResolution {
  * Locate `node` on PATH, returning its absolute path.
  *
  * The Windows PTY host is a node program, but kobe itself runs under Bun — and
- * `bun install -g @sma1lboy/kobe` never brings node along. Without this the
+ * `bun install -g @sma1lboy/rove` never brings node along. Without this the
  * spawn fails silently into the host's log and `ensurePtyHostReachable` only
  * reports a 5s timeout, which says nothing about the actual cause. Resolving
  * to an absolute path also stops the detached child from depending on however

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/package.json",
-  "name": "@sma1lboy/kobe",
+  "name": "@sma1lboy/rove",
   "version": "0.8.90",
   "description": "Rove — the terminal-native agent multiplexer",
   "type": "module",

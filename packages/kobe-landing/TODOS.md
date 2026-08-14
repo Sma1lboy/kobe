@@ -13,8 +13,8 @@ Landing page 迭代清单。目标：去掉与项目实际不符的细节，让�
 ---
 
 ## 1. Hero badge 去重
-- 位置：`index.html` 顶部 hero badge（L52）"TUI orchestrator for Claude Code · bun i -g @sma1lboy/kobe"
-- 问题：`bun i -g @sma1lboy/kobe` 与下方的安装命令按钮（L64 `bun install -g @sma1lboy/kobe`）重复。
+- 位置：`index.html` 顶部 hero badge（L52）"TUI orchestrator for Claude Code · bun i -g @sma1lboy/rove"
+- 问题：`bun i -g @sma1lboy/rove` 与下方的安装命令按钮（L64 `bun install -g @sma1lboy/rove`）重复。
 - 改法：badge 只保留 slogan（如 "TUI orchestrator for Claude Code"），删掉安装命令片段。
 
 ## 2. 安装要求补充平台支持

@@ -1,6 +1,6 @@
 # Rove product identity and compatibility boundary
 
-Rove is the canonical product name and `rove` is the canonical CLI command. Product data and new git conventions use the Rove name; protocol, package, repository, runtime-process, and plugin compatibility identifiers remain stable. Existing installations must open the same tasks and keep working with old integrations.
+Rove is the canonical product name and `rove` is the canonical CLI command. Product data, distribution, and new git conventions use the Rove name; protocol, runtime-process, and plugin compatibility identifiers remain stable. Existing installations must open the same tasks and keep working with old integrations.
 
 ## Canonical surfaces
 
@@ -10,6 +10,7 @@ Rove is the canonical product name and `rove` is the canonical CLI command. Prod
 | CLI examples, shell completions, and standalone compile output | `rove` |
 | TUI, web, docs, landing page, notifications, and generated brand assets | `Rove` |
 | Agent instructions and generated commands | `rove api …` |
+| npm package | `@sma1lboy/rove` |
 | Product state and config | `~/.rove`, `~/.config/rove/state.json` |
 | New worktrees and branches | `~/.rove/worktrees/…`, `rove/…` |
 | Per-repo init | `.rove/init.sh`, `.rove/init-prompt.md` |
@@ -19,7 +20,8 @@ Rove is the canonical product name and `rove` is the canonical CLI command. Prod
 | Surface | Preserved value | Reason |
 |---|---|---|
 | Legacy executable | `kobe` | Existing scripts and global installs keep working |
-| npm packages | `@sma1lboy/kobe`, `@sma1lboy/kobe-plugin-sdk` | Renaming packages would require a separate distribution migration |
+| Legacy npm package | `@sma1lboy/kobe` | Published from the same build/version as `@sma1lboy/rove`, so existing global installs keep updating |
+| Plugin SDK package | `@sma1lboy/kobe-plugin-sdk` | Plugin imports are a separate public compatibility contract |
 | Existing state and config | `~/.kobe`, `~/.config/kobe` | First Rove launch copies supported product data without overwriting or removing the legacy source |
 | Existing worktrees and branches | `~/.kobe/worktrees/…`, repo-local `.kobe`/`.claude`, `kobe/…` | Task records pin absolute paths and branch names; discovery recognizes every legacy root |
 | Runtime process paths | daemon/PTY sockets, pidfiles, and logs under `.kobe` | Keeps an upgraded client attached to the same daemon and preserves hosted PTYs across upgrades |
@@ -27,7 +29,7 @@ Rove is the canonical product name and `rove` is the canonical CLI command. Prod
 | Protocol and persisted field names | `kobeVersion`, `minKobeVersion`, related established identifiers | Wire and manifest compatibility |
 | Plugin discovery | `kobe-plugin.toml`, `kobe-plugin` topic | Existing plugins remain discoverable and installable |
 | Agent skill id and install paths | `kobe` | Existing agent configuration finds the upgraded skill in place |
-| Repository, docs, and website URLs | Current `…/kobe` URLs | URL migration is independent of the product-copy rename |
+| Repository, docs, and website URLs | Current `…/kobe` URLs | URL migration is independent of the package distribution migration |
 
 New user-facing copy must use Rove/`rove`. New compatibility identifiers should not use `kobe` unless they extend one of the established contracts above. Internal TypeScript symbols may retain `Kobe` when renaming them would create churn without changing a user-visible or serialized contract.
 
@@ -42,6 +44,16 @@ or deletes the source or overwrites an existing Rove file. Worktrees are not
 copied: existing task records continue pointing at their absolute legacy paths,
 while new worktrees use the canonical root. Plugin directories and daemon/PTY
 runtime files remain under `.kobe` until their dedicated compatibility work.
+
+## Package distribution migration
+
+`packages/kobe/package.json` names `@sma1lboy/rove`, so workspace filters,
+Changesets, update checks, install commands, and the first npm publish all use
+the canonical package. The release job then rewrites only `package.json#name`
+in its checkout and publishes the identical artifact as `@sma1lboy/kobe`.
+Both packages contain the `rove` and `kobe` bins and use the same version and
+dist-tag. The updater migrates legacy global installs to `@sma1lboy/rove`,
+while users who never run it continue receiving releases through the alias.
 
 ## Visual asset policy
 

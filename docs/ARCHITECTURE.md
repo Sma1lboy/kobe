@@ -27,7 +27,7 @@ Task = git worktree + hosted engine sessions + branch
 
 ## 2. Package map
 
-- `packages/kobe/` — published CLI and PureTUI.
+- `packages/kobe/` — CLI and PureTUI, published canonically as `@sma1lboy/rove` and in lockstep as the `@sma1lboy/kobe` compatibility alias.
   - `src/cli/` — command routing, help, API handlers, daemon and PTY-host
     process entrypoints.
   - `src/engine/` — engine registry, command/capability/history adapters,

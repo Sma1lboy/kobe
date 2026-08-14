@@ -27,7 +27,7 @@ takes tens of seconds, so the 1x capture runs minutes.
 ## Historical regeneration (not shippable visual evidence)
 
 ```bash
-bun --filter @sma1lboy/kobe build          # the capture drives the BUILT cli
+bun --filter @sma1lboy/rove build          # the capture drives the BUILT cli
 cd packages/branding
 KOBE_REPLAY_CLAUDE_COMMAND='claude --permission-mode acceptEdits --allowedTools "Bash(git *)"' \
 bun run capture:puretui --keep-demo-root
