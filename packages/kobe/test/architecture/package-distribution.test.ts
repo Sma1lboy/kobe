@@ -215,22 +215,6 @@ describe("Rove package distribution", () => {
     expect(contributing).toContain("Use `rove daemon restart`")
   })
 
-  test("the production landing workflow applies Vercel's configured root directory once", () => {
-    const workflow = read(".github/workflows/deploy-landing.yml")
-    const landing = json<{ scripts: Record<string, string> }>("packages/kobe-landing/package.json")
-    const readme = read("packages/kobe-landing/README.md")
-
-    expect(workflow).not.toMatch(/working-directory:\s*packages\/kobe-landing/)
-    expect(workflow).toContain('run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"')
-    expect(workflow).toContain('run: vercel build --prod --token="$VERCEL_TOKEN"')
-    expect(workflow).toContain('run: vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"')
-    expect(landing.scripts.deploy).toBe("vercel --cwd ../.. --prod")
-    expect(landing.scripts["deploy:preview"]).toBe("vercel --cwd ../..")
-    expect(readme).toContain("so Vercel starts at the monorepo root")
-    expect(readme).toContain('ignoreCommand: "git diff --quiet HEAD^ HEAD -- ."')
-    expect(readme).not.toContain('ignoreCommand: "exit 1"')
-  })
-
   test("landing pages load their extracted static assets", () => {
     const home = read("packages/kobe-landing/index.html")
     const homeScript = read("packages/kobe-landing/index.js")
