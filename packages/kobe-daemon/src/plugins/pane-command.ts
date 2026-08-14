@@ -1,21 +1,14 @@
 /**
  * Pane launch composition — shared by `kobe plugin pane open` (CLI) and the
  * TUI's ctrl+e picker, so both build the IDENTICAL argv: one `sh -lc` script
- * carrying the plugin env contract, with `$KOBE_PLUGIN_ROOT` expanded in the
+ * carrying the plugin env contract, with `$ROVE_PLUGIN_ROOT` (or its legacy
+ * Kobe alias) expanded in the
  * manifest command. The pane's PTY runs in the task worktree; no tab/PTY
  * schema knows about plugins (docs/design/plugins.md §Panes).
  */
 
-import { readFileSync } from "node:fs"
-import { join } from "node:path"
 import { buildPluginEnv } from "./env.ts"
-import {
-  PLUGIN_MANIFEST_FILENAME,
-  type PluginPane,
-  currentPluginPlatform,
-  parsePluginManifest,
-  supportsPlatform,
-} from "./manifest.ts"
+import { type PluginPane, currentPluginPlatform, readPluginManifest, supportsPlatform } from "./manifest.ts"
 import { loadPluginRegistry } from "./registry.ts"
 
 export interface PaneLaunch {
@@ -50,10 +43,13 @@ export function buildPaneArgv(
     binPath: opts.binPath,
     pluginId,
     pluginRoot,
-    extra: { KOBE_PLUGIN_ENTRYPOINT_ID: pane.id },
+    extra: { ROVE_PLUGIN_ENTRYPOINT_ID: pane.id },
   })
-  const pairs = Object.entries(env).filter(([k]) => k.startsWith("KOBE_")) as [string, string][]
-  const command = pane.command.map((a) => a.replace(/\$\{?KOBE_PLUGIN_ROOT\}?/g, pluginRoot))
+  const pairs = Object.entries(env).filter(([k]) => k.startsWith("ROVE_") || k.startsWith("KOBE_")) as [
+    string,
+    string,
+  ][]
+  const command = pane.command.map((a) => a.replace(/\$\{?(?:ROVE|KOBE)_PLUGIN_ROOT\}?/g, pluginRoot))
   const script = `exec env ${pairs.map(([k, v]) => shq(`${k}=${v}`)).join(" ")} ${command.map(shq).join(" ")}`
   return ["sh", "-lc", script]
 }
@@ -65,8 +61,7 @@ export function listPaneLaunches(opts: PaneLaunchOpts): PaneLaunch[] {
   for (const entry of loadPluginRegistry(opts.homeDir).plugins) {
     if (!entry.enabled) continue
     try {
-      const text = readFileSync(join(entry.root, PLUGIN_MANIFEST_FILENAME), "utf8")
-      const { manifest } = parsePluginManifest(text)
+      const { manifest } = readPluginManifest(entry.root)
       if (!supportsPlatform({}, manifest, platform)) continue
       for (const pane of manifest.panes) {
         if (!supportsPlatform(pane, manifest, platform)) continue

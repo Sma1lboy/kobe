@@ -57,7 +57,9 @@ Task = git worktree + hosted engine sessions + branch
   never the generated copies.
 - Official plugins live in the separate
   [Sma1lboy/kobe-plugins](https://github.com/Sma1lboy/kobe-plugins) repo
-  (`rove plugin install Sma1lboy/kobe-plugins/<name>`).
+  (`rove plugin install Sma1lboy/kobe-plugins/<name>`). New plugins use
+  `rove-plugin.toml` and `@sma1lboy/rove-plugin-sdk`; legacy Kobe spellings
+  remain accepted.
 
 ## 3. Launch and lifetime
 
@@ -122,7 +124,9 @@ from creating duplicate children.
   `~/.claude/projects/**`
 - Plugins: registry `<KOBE_HOME>/.kobe/plugins.json` (CLI-written,
   daemon-watched); per-plugin checkout/config/state/log under
-  `<KOBE_HOME>/.kobe/plugins/<id>/`
+  `<KOBE_HOME>/.kobe/plugins/<id>/`. These paths intentionally remain in the
+  compatibility namespace; new commands receive both `ROVE_PLUGIN_*` and
+  `KOBE_PLUGIN_*` variables pointing at the same data.
 
 Never treat browser storage as authoritative for local product state.
 

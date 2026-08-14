@@ -104,7 +104,7 @@ And the rest, briefly:
 - **Field notes** — `rove api note` files a resolved gotcha into the repo's durable store; every future worktree session on that repo starts with it in its system prompt.
 - **Human in the loop** — an agent can toast every attached UI (`notify`), ask you a question through the TUI and block on the answer (`prompt`), or open a split beside itself for a dev server (`pane-open`).
 - **Attachments** — drag an image or PDF onto a session and the path lands in its input; `ctrl+v` a screenshot and Rove saves it first. Rove only ever passes paths.
-- **Themes and plugins** — three bundled themes plus ten hosted (`rove theme add <url>`), and a manifest plugin system with panes, lifecycle events, chords, and an optional [typed SDK](https://www.npmjs.com/package/@sma1lboy/kobe-plugin-sdk).
+- **Themes and plugins** — three bundled themes plus ten hosted (`rove theme add <url>`), and a manifest plugin system with panes, lifecycle events, chords, and an optional [typed SDK](https://www.npmjs.com/package/@sma1lboy/rove-plugin-sdk).
 
 ## Scripting it
 

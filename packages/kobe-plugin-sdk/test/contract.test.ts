@@ -1,3 +1,4 @@
+import { DAEMON_CHANNELS, PLUGIN_EVENT_NAMES } from "@sma1lboy/rove-plugin-sdk/contract"
 import { describe, expect, it } from "vitest"
 /**
  * The catalogs are SINGLE-SOURCED in src/contract.ts; the daemon imports
@@ -9,7 +10,6 @@ import { describe, expect, it } from "vitest"
 // runs only in-repo, and the daemon's internals aren't a published surface.
 import { CHANNEL_NAMES } from "../../kobe-daemon/src/daemon/channels.ts"
 import { PLUGIN_EVENT_NAMES as HOST_EVENT_NAMES } from "../../kobe-daemon/src/plugins/manifest.ts"
-import { DAEMON_CHANNELS, PLUGIN_EVENT_NAMES } from "../src/contract.ts"
 
 describe("SDK ↔ host contract (single source)", () => {
   it("the daemon re-exports the SDK's event catalog object itself", () => {

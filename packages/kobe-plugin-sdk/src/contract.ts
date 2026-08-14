@@ -62,7 +62,7 @@ export interface PluginEventTask {
   readonly status?: string
 }
 
-/** The JSON in `KOBE_PLUGIN_EVENT_JSON` — one fired event. */
+/** The JSON in `ROVE_PLUGIN_EVENT_JSON` (and its legacy alias) — one fired event. */
 export interface PluginEventEnvelope {
   readonly event: PluginEventName
   readonly taskId?: string

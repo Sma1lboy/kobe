@@ -7,14 +7,17 @@
 import { type Socket, createConnection } from "node:net"
 import type { DaemonFrame } from "./contract.ts"
 
-export interface KobeSocketOptions {
-  /** Defaults to `process.env.KOBE_SOCKET_PATH`. */
+export interface RoveSocketOptions {
+  /** Defaults to `process.env.ROVE_SOCKET_PATH`, then `KOBE_SOCKET_PATH`. */
   readonly socketPath?: string
 }
 
+/** @deprecated Use RoveSocketOptions. */
+export type KobeSocketOptions = RoveSocketOptions
+
 type Pending = { resolve: (payload: unknown) => void; reject: (err: Error) => void }
 
-export class KobeSocket {
+export class RoveSocket {
   private sock: Socket | null = null
   private buffer = ""
   private nextId = 1
@@ -22,9 +25,9 @@ export class KobeSocket {
   private eventHandler: ((name: string, payload: unknown) => void) | null = null
 
   /** Connect; resolves once the socket is up (before any `hello`). */
-  connect(opts: KobeSocketOptions = {}): Promise<void> {
-    const path = opts.socketPath ?? process.env.KOBE_SOCKET_PATH
-    if (!path) return Promise.reject(new Error("KOBE_SOCKET_PATH is not set and no socketPath was given"))
+  connect(opts: RoveSocketOptions = {}): Promise<void> {
+    const path = opts.socketPath ?? process.env.ROVE_SOCKET_PATH ?? process.env.KOBE_SOCKET_PATH
+    if (!path) return Promise.reject(new Error("ROVE_SOCKET_PATH is not set and no socketPath was given"))
     return new Promise((resolve, reject) => {
       const sock = createConnection(path, () => resolve())
       sock.setEncoding("utf8")
@@ -96,3 +99,6 @@ export class KobeSocket {
     this.pending.clear()
   }
 }
+
+/** Compatibility alias for plugins written against the Kobe-named SDK. */
+export { RoveSocket as KobeSocket }

@@ -6,7 +6,7 @@ back in. Design rationale lives in [design/plugins.md](./design/plugins.md)
 and [design/plugin-events.md](./design/plugin-events.md); this page is the
 contract.
 
-A plugin is **a directory with a `kobe-plugin.toml` manifest** plus any argv
+A plugin is **a directory with a `rove-plugin.toml` manifest** plus any argv
 commands your machine can run: Bash, Node, Bun, Python, Rust, a prebuilt
 binary. There is no SDK: the whole `rove` CLI and the daemon socket are the
 plugin API. Rove owns the host surface (install, validation, event dispatch,
@@ -16,15 +16,15 @@ env injection, panes, settings UI, run logs); you own the implementation.
 
 ```bash
 mkdir my-plugin && cd my-plugin
-cat > kobe-plugin.toml <<'EOF'
+cat > rove-plugin.toml <<'EOF'
 id = "you.hello"
 name = "Hello"
 version = "0.1.0"
-min_kobe_version = "0.8.24"
+min_rove_version = "0.8.24"
 
 [[events]]
 on = "agent.turn-complete"
-command = ["sh", "-c", "echo \"$KOBE_PLUGIN_TASK_TITLE finished a turn\" >> \"$KOBE_PLUGIN_STATE_DIR/log\""]
+command = ["sh", "-c", "echo \"$ROVE_PLUGIN_TASK_TITLE finished a turn\" >> \"$ROVE_PLUGIN_STATE_DIR/log\""]
 EOF
 
 rove plugin link .            # register your working directory (dev loop)
@@ -34,21 +34,21 @@ rove plugin log you.hello     # inspect hook runs (exit codes, output, timing)
 ## Optional SDK (TypeScript)
 
 The contract above is the API: any language, no SDK required. For
-TypeScript/JavaScript authors, **`@sma1lboy/kobe-plugin-sdk`** wraps that
+TypeScript/JavaScript authors, **`@sma1lboy/rove-plugin-sdk`** wraps that
 same contract with types and autocomplete (zero deps, Node ≥ 18 or Bun):
 
 ```ts
-import { pluginContext, pluginEvent, notify, Pane, KobeSocket } from "@sma1lboy/kobe-plugin-sdk"
+import { pluginContext, pluginEvent, notify, Pane, RoveSocket } from "@sma1lboy/rove-plugin-sdk"
 
-const ctx = pluginContext()   // typed KOBE_PLUGIN_* env
+const ctx = pluginContext()   // typed ROVE_PLUGIN_* env
 const ev = pluginEvent()      // typed event envelope (null outside [[events]])
 ```
 
 - `pluginContext()` / `pluginEvent()`: the env contract, typed.
 - `readSettings()` / `setting()`: your `[[settings]]` values from config `.env`.
-- `kobe()` / `kobeJson()` + `notify` / `dispatch` / `listTasks` / `openPane`:
-  `$KOBE_BIN_PATH` callbacks.
-- `KobeSocket`: daemon socket client: `request(name, payload)` + live
+- `rove()` / `roveJson()` + `notify` / `dispatch` / `listTasks` / `openPane`:
+  `$ROVE_BIN_PATH` callbacks.
+- `RoveSocket`: daemon socket client: `request(name, payload)` + live
   channel `subscribe` (always `role: "pane"`).
 - `Pane`: a tiny pane kit for `[[panes]]` pages: alt screen, raw-mode
   keys, resize, absolute-addressed `draw(lines)`.
@@ -59,7 +59,7 @@ const ev = pluginEvent()      // typed event envelope (null outside [[events]])
 Package README has full examples: `packages/kobe-plugin-sdk/README.md`.
 
 Publish: push a public GitHub repo (one plugin per subdirectory is fine),
-add the topic **`kobe-plugin`** → it appears in the marketplace
+add the topic **`rove-plugin`** → it appears in the marketplace
 ([kobe.sma1lboy.me/plugins](https://kobe.sma1lboy.me/plugins) and
 `rove plugin search`) automatically. Users install with
 `rove plugin install owner/repo[/subdir]` and stay fresh with
@@ -72,7 +72,7 @@ reinstall of the managed checkout; config/state survive).
 id = "you.example"               # letters/digits/dot/colon/underscore/hyphen
 name = "Example"
 version = "0.1.0"
-min_kobe_version = "0.8.24"      # install refuses older Rove versions
+min_rove_version = "0.8.24"      # install refuses older Rove versions
 description = "…"                # optional
 platforms = ["macos", "linux"]   # optional; item-level `platforms` overrides
 
@@ -96,7 +96,7 @@ id = "board"
 title = "Board"
 placement = "split"              # split (default: joins the focused chattab's
                                  # split group beside the engine) | tab (own tab)
-command = ["node", "$KOBE_PLUGIN_ROOT/board.js"]   # cwd = the TASK WORKTREE
+command = ["node", "$ROVE_PLUGIN_ROOT/board.js"]   # cwd = the TASK WORKTREE
 
 [[settings]]                     # rendered as an editor in Settings → Plugins
 key = "YOU_EXAMPLE_MODE"         # stored as KEY=value in your config .env
@@ -111,13 +111,13 @@ action = "greet"                 # your action, invoked with the absolute path
 ```
 
 `command` is always argv: never a shell, no expansion (panes expand only
-`$KOBE_PLUGIN_ROOT`). Unknown event names are warnings (forward compat);
+`$ROVE_PLUGIN_ROOT`). Unknown event names are warnings (forward compat);
 invalid types/patterns are install-time errors.
 
 ## Event catalog
 
 Declare `[[events]]` hooks; each fire runs your command with the envelope in
-`KOBE_PLUGIN_EVENT_JSON`. Events are **asynchronous observers**. Your exit
+`ROVE_PLUGIN_EVENT_JSON`. Events are **asynchronous observers**. Your exit
 code and output never block or change what happened. Support: C = Claude
 Code, X = Codex (Kimi adapter pending).
 
@@ -139,7 +139,7 @@ Code, X = Codex (Kimi adapter pending).
 | `context.pre-compact` / `context.post-compact` | context compaction (C, X) | `compact.trigger: manual\|auto` |
 | `subagent.start` / `subagent.stop` | nested agent lifecycle (C) | `subagent.type/id` |
 
-Envelope (`KOBE_PLUGIN_EVENT_JSON`):
+Envelope (`ROVE_PLUGIN_EVENT_JSON`):
 
 ```jsonc
 {
@@ -165,40 +165,45 @@ Every plugin command gets, on top of the user's environment:
 
 | Variable | Meaning |
 |---|---|
-| `KOBE_BIN_PATH` | exec this to call back into Rove |
-| `KOBE_SOCKET_PATH` | daemon unix socket, for raw JSON requests |
-| `KOBE_HOME_DIR` | set when Rove runs against a non-default home (keep passing it through) |
-| `KOBE_PLUGIN_ID`, `KOBE_PLUGIN_ROOT` | who you are, where your files are |
-| `KOBE_PLUGIN_CONFIG_DIR` | user-editable config (`.env` etc.); survives reinstall |
-| `KOBE_PLUGIN_STATE_DIR` | your durable state; survives reinstall |
-| events | `KOBE_PLUGIN_EVENT`, `KOBE_PLUGIN_EVENT_JSON`, `KOBE_PLUGIN_TASK_ID`, `KOBE_PLUGIN_TASK_TITLE` |
-| startup | `KOBE_PLUGIN_EVENT=startup` |
-| actions | `KOBE_PLUGIN_ACTION_ID`, `KOBE_PLUGIN_INVOKE_CWD` (where the user invoked, usually "the repo I mean") |
-| panes | `KOBE_PLUGIN_ENTRYPOINT_ID`; cwd is the task worktree |
+| `ROVE_BIN_PATH` | exec this to call back into Rove |
+| `ROVE_SOCKET_PATH` | daemon unix socket, for raw JSON requests |
+| `ROVE_HOME_DIR` | set when Rove runs against a non-default home (keep passing it through) |
+| `ROVE_PLUGIN_ID`, `ROVE_PLUGIN_ROOT` | who you are, where your files are |
+| `ROVE_PLUGIN_CONFIG_DIR` | user-editable config (`.env` etc.); survives reinstall |
+| `ROVE_PLUGIN_STATE_DIR` | your durable state; survives reinstall |
+| events | `ROVE_PLUGIN_EVENT`, `ROVE_PLUGIN_EVENT_JSON`, `ROVE_PLUGIN_TASK_ID`, `ROVE_PLUGIN_TASK_TITLE` |
+| startup | `ROVE_PLUGIN_EVENT=startup` |
+| actions | `ROVE_PLUGIN_ACTION_ID`, `ROVE_PLUGIN_INVOKE_CWD` (where the user invoked, usually "the repo I mean") |
+| panes | `ROVE_PLUGIN_ENTRYPOINT_ID`; cwd is the task worktree |
 
-Never write durable state under `KOBE_PLUGIN_ROOT`. GitHub installs are
+Every `ROVE_*` variable above is also injected under its established `KOBE_*`
+alias. Existing plugins need no edits; when both are supplied, SDK readers
+prefer `ROVE_*`. Likewise, `kobe-plugin.toml`, `min_kobe_version`, and
+`@sma1lboy/kobe-plugin-sdk` remain supported compatibility spellings.
+
+Never write durable state under `ROVE_PLUGIN_ROOT`. GitHub installs are
 managed checkouts replaced on reinstall. Settings you declare in
 `[[settings]]` arrive as plain vars in your config `.env`; source it
-(`. "$KOBE_PLUGIN_CONFIG_DIR/.env"`) or read it yourself.
+(`. "$ROVE_PLUGIN_CONFIG_DIR/.env"`) or read it yourself.
 
 ## Calling back into Rove
 
-**CLI (recommended, portable):** exec `$KOBE_BIN_PATH` with any command.
+**CLI (recommended, portable):** exec `$ROVE_BIN_PATH` with any command.
 The high-value verbs live under `rove api`: machine-readable list via
 `rove api schema`, human list via `rove api help`. Highlights:
 
 ```bash
-"$KOBE_BIN_PATH" api add --repo <dir> --title T --prompt "…"   # create task + start engine
-"$KOBE_BIN_PATH" api dispatch --task-id ID --prompt "…"        # text into a live session
-"$KOBE_BIN_PATH" api list                                      # all tasks (JSON)
-"$KOBE_BIN_PATH" api notify --title "done"                     # toast in every attached UI
-"$KOBE_BIN_PATH" api issue-create --repo <dir> --title "…"     # daemon issue tracker
-"$KOBE_BIN_PATH" api prompt --title "URL?"                     # host input dialog → {value}|{cancelled}
-"$KOBE_BIN_PATH" api read-output --task-id ID                  # structured session reads
-"$KOBE_BIN_PATH" plugin pane open you.example.board            # open your own pane
+"$ROVE_BIN_PATH" api add --repo <dir> --title T --prompt "…"   # create task + start engine
+"$ROVE_BIN_PATH" api dispatch --task-id ID --prompt "…"        # text into a live session
+"$ROVE_BIN_PATH" api list                                      # all tasks (JSON)
+"$ROVE_BIN_PATH" api notify --title "done"                     # toast in every attached UI
+"$ROVE_BIN_PATH" api issue-create --repo <dir> --title "…"     # daemon issue tracker
+"$ROVE_BIN_PATH" api prompt --title "URL?"                     # host input dialog → {value}|{cancelled}
+"$ROVE_BIN_PATH" api read-output --task-id ID                  # structured session reads
+"$ROVE_BIN_PATH" plugin pane open you.example.board            # open your own pane
 ```
 
-**Socket (advanced):** newline-delimited JSON frames on `KOBE_SOCKET_PATH`
+**Socket (advanced):** newline-delimited JSON frames on `ROVE_SOCKET_PATH`
 (`{"type":"request","id":"1","name":"task.list","payload":{}}`); request
 names and payloads in `packages/kobe-daemon/src/daemon/protocol.ts`. Prefer
 the CLI unless you need push channels.

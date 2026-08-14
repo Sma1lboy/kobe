@@ -1,5 +1,5 @@
 /**
- * Parse the KOBE_PLUGIN_* environment the host injects into every plugin
+ * Parse the ROVE_PLUGIN_* environment the host injects into every plugin
  * command (see docs/PLUGIN-AUTHORING.md § Environment contract). Pure env
  * reads — safe to call from any entrypoint kind.
  */
@@ -29,37 +29,42 @@ export interface PluginContext {
   readonly entrypointId?: string
 }
 
-function required(env: NodeJS.ProcessEnv, key: string): string {
-  const value = env[key]
-  if (!value) throw new Error(`${key} is not set — is this process running as a Rove plugin command?`)
+function readCompat(env: NodeJS.ProcessEnv, suffix: string): string | undefined {
+  return env[`ROVE_${suffix}`] ?? env[`KOBE_${suffix}`]
+}
+
+function required(env: NodeJS.ProcessEnv, suffix: string): string {
+  const value = readCompat(env, suffix)
+  if (!value) throw new Error(`ROVE_${suffix} is not set — is this process running as a Rove plugin command?`)
   return value
 }
 
 /** Read the plugin context from the environment. Throws off-host. */
 export function pluginContext(env: NodeJS.ProcessEnv = process.env): PluginContext {
   return {
-    pluginId: required(env, "KOBE_PLUGIN_ID"),
-    pluginRoot: required(env, "KOBE_PLUGIN_ROOT"),
-    configDir: required(env, "KOBE_PLUGIN_CONFIG_DIR"),
-    stateDir: required(env, "KOBE_PLUGIN_STATE_DIR"),
-    binPath: required(env, "KOBE_BIN_PATH"),
-    socketPath: required(env, "KOBE_SOCKET_PATH"),
-    homeDir: env.KOBE_HOME_DIR,
-    event: env.KOBE_PLUGIN_EVENT,
-    taskId: env.KOBE_PLUGIN_TASK_ID,
-    taskTitle: env.KOBE_PLUGIN_TASK_TITLE,
-    actionId: env.KOBE_PLUGIN_ACTION_ID,
-    invokeCwd: env.KOBE_PLUGIN_INVOKE_CWD,
-    entrypointId: env.KOBE_PLUGIN_ENTRYPOINT_ID,
+    pluginId: required(env, "PLUGIN_ID"),
+    pluginRoot: required(env, "PLUGIN_ROOT"),
+    configDir: required(env, "PLUGIN_CONFIG_DIR"),
+    stateDir: required(env, "PLUGIN_STATE_DIR"),
+    binPath: required(env, "BIN_PATH"),
+    socketPath: required(env, "SOCKET_PATH"),
+    homeDir: readCompat(env, "HOME_DIR"),
+    event: readCompat(env, "PLUGIN_EVENT"),
+    taskId: readCompat(env, "PLUGIN_TASK_ID"),
+    taskTitle: readCompat(env, "PLUGIN_TASK_TITLE"),
+    actionId: readCompat(env, "PLUGIN_ACTION_ID"),
+    invokeCwd: readCompat(env, "PLUGIN_INVOKE_CWD"),
+    entrypointId: readCompat(env, "PLUGIN_ENTRYPOINT_ID"),
   }
 }
 
 /**
- * The fired event's envelope, parsed from `KOBE_PLUGIN_EVENT_JSON`.
+ * The fired event's envelope, parsed from `ROVE_PLUGIN_EVENT_JSON` (or its
+ * legacy `KOBE_` alias).
  * Returns null outside an `[[events]]` entrypoint.
  */
 export function pluginEvent(env: NodeJS.ProcessEnv = process.env): PluginEventEnvelope | null {
-  const raw = env.KOBE_PLUGIN_EVENT_JSON
+  const raw = readCompat(env, "PLUGIN_EVENT_JSON")
   if (!raw) return null
   return JSON.parse(raw) as PluginEventEnvelope
 }

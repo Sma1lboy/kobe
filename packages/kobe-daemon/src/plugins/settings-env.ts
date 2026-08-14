@@ -7,7 +7,7 @@
 
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
-import { PLUGIN_MANIFEST_FILENAME, type PluginManifest, parsePluginManifest, qualifiedActionId } from "./manifest.ts"
+import { type PluginManifest, qualifiedActionId, readPluginManifest } from "./manifest.ts"
 import { pluginConfigDir } from "./plugin-paths.ts"
 import { loadPluginRegistry } from "./registry.ts"
 
@@ -74,7 +74,7 @@ export function findFileHandler(fileName: string, homeDir?: string): { qualified
     if (!entry.enabled) continue
     let manifest: PluginManifest
     try {
-      manifest = parsePluginManifest(readFileSync(join(entry.root, PLUGIN_MANIFEST_FILENAME), "utf8")).manifest
+      manifest = readPluginManifest(entry.root).manifest
     } catch {
       continue
     }

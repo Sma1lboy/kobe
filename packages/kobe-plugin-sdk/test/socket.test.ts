@@ -3,7 +3,7 @@ import { type Server, type Socket, createServer } from "node:net"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, describe, expect, it } from "vitest"
-import { KobeSocket } from "../src/socket.ts"
+import { KobeSocket, RoveSocket } from "../src/socket.ts"
 
 let server: Server | null = null
 
@@ -30,15 +30,19 @@ afterEach(() => {
   server = null
 })
 
-describe("KobeSocket", () => {
+describe("RoveSocket", () => {
   it("resolves requests with the matching response payload", async () => {
     const path = fakeDaemon((frame, sock) => {
       sock.write(`${JSON.stringify({ type: "response", id: frame.id, payload: { echo: frame.name } })}\n`)
     })
-    const client = new KobeSocket()
+    const client = new RoveSocket()
     await client.connect({ socketPath: path })
     expect(await client.request("task.list")).toEqual({ echo: "task.list" })
     client.close()
+  })
+
+  it("keeps KobeSocket as a constructor-compatible alias", () => {
+    expect(new KobeSocket()).toBeInstanceOf(RoveSocket)
   })
 
   it("rejects on daemon error frames and routes event frames to the handler", async () => {

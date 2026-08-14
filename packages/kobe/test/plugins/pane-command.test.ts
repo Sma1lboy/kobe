@@ -22,13 +22,18 @@ describe("buildPaneArgv", () => {
     const argv = buildPaneArgv(
       "p.id",
       "/plug/root",
-      { id: "b", title: "B", placement: "split", command: ["sh", "$KOBE_PLUGIN_ROOT/run.sh", "it's"] },
+      { id: "b", title: "B", placement: "split", command: ["sh", "$ROVE_PLUGIN_ROOT/run.sh", "it's"] },
       OPTS,
     )
     expect(argv.slice(0, 2)).toEqual(["sh", "-lc"])
     const script = argv[2] as string
     expect(script.startsWith("exec env ")).toBe(true)
     for (const frag of [
+      "'ROVE_PLUGIN_ID=p.id'",
+      "'ROVE_PLUGIN_ROOT=/plug/root'",
+      "'ROVE_SOCKET_PATH=/tmp/x.sock'",
+      "'ROVE_BIN_PATH=kobe'",
+      "'ROVE_PLUGIN_ENTRYPOINT_ID=b'",
       "'KOBE_PLUGIN_ID=p.id'",
       "'KOBE_PLUGIN_ROOT=/plug/root'",
       "'KOBE_SOCKET_PATH=/tmp/x.sock'",
@@ -48,8 +53,8 @@ describe("listPaneLaunches", () => {
     const home = tmp("kobe-pane-home-")
     const root = tmp("kobe-pane-root-")
     writeFileSync(
-      join(root, "kobe-plugin.toml"),
-      'id = "p"\nname = "P"\nversion = "1.0.0"\nmin_kobe_version = "0.1.0"\n[[panes]]\nid = "git"\ntitle = "lazygit"\ncommand = ["lazygit"]',
+      join(root, "rove-plugin.toml"),
+      'id = "p"\nname = "P"\nversion = "1.0.0"\nmin_rove_version = "0.1.0"\n[[panes]]\nid = "git"\ntitle = "lazygit"\ncommand = ["lazygit"]',
     )
     mkdirSync(join(home, ".kobe"), { recursive: true })
     savePluginRegistry(

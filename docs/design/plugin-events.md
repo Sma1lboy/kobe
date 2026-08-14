@@ -2,20 +2,20 @@
 
 Status: SHIPPED for Claude Code + Codex (2026-07-28; Kimi adapter pending). Extends [plugins.md](./plugins.md) §Events.
 Goal: one engine-agnostic event taxonomy covering the WHOLE product
-lifecycle — kobe's task/worktree layer plus the engine's session/turn/tool
+lifecycle — Rove's task/worktree layer plus the engine's session/turn/tool
 layer — so a plugin can hook any point of the flow without knowing which
 vendor (Claude Code, Codex, Kimi Code) is underneath.
 
 Grounding: all three engines now ship a Claude-Code-shaped `hooks` system
 (stdin JSON, per-event commands). The differences are payload field names,
 config format, and coverage gaps — exactly what an adapter layer is for.
-kobe already normalizes engine hooks into activity verbs
-(`src/engine/hook-events.ts` → `kobe hook` → daemon `engine.reportEvent`);
+Rove already normalizes engine hooks into activity verbs
+(`src/engine/hook-events.ts` → `rove hook` → daemon `engine.reportEvent`);
 this design widens that vocabulary and re-broadcasts it to plugins.
 
 ## Two layers, one stream
 
-- **Product lifecycle (kobe-owned).** Task and worktree state the
+- **Product lifecycle (Rove-owned).** Task and worktree state the
   orchestrator itself controls. Already plugin-visible: `task.created`,
   `task.deleted`, `worktree.created` (plugins/events.ts).
 - **Agent lifecycle (engine-owned, normalized).** What the engine reports
@@ -57,7 +57,7 @@ Support: **C** Claude Code · **X** Codex · **K** Kimi Code. `N` native hook,
 `F` emulatable by watching session files, `—` absent. Status: ✅ shipped,
 💤 deferred.
 
-### Product layer (kobe-owned, engine-independent)
+### Product layer (Rove-owned, engine-independent)
 
 | Event | Fires when | Status |
 |---|---|---|
@@ -98,7 +98,7 @@ Support: **C** Claude Code · **X** Codex · **K** Kimi Code. `N` native hook,
 
 Normalized payload: `{ toolName, toolUseId, input?, output?, ok }` — the
 vendor field spellings (`tool_result` / `tool_response` / `tool_output`)
-are the adapter's problem, never the plugin's. Note kobe's existing
+are the adapter's problem, never the plugin's. Note Rove's existing
 `worktree-created` detection is ALREADY a hard-coded `PostToolUse` observer
 (`cli/hook-cmd.ts`); the general mechanism now ships alongside it.
 
@@ -112,7 +112,7 @@ are the adapter's problem, never the plugin's. Note kobe's existing
 
 † Codex `PermissionRequest` hooks are SYNCHRONOUS: exit 0 + empty stdout is
 an explicitly supported no-op, but a slow hook wedges the approval dialog.
-`kobe hook` must stay sub-second on this path (it already is: bounded stdin
+`rove hook` must stay sub-second on this path (it already is: bounded stdin
 read, connect-if-running, always exit 0).
 
 ### E. Context / compaction — cheapest win, uniform tri-engine shape
@@ -129,9 +129,9 @@ read, connect-if-running, always exit 0).
 
 ## Payload envelope (plugin-facing)
 
-Every event a plugin hook receives keeps the existing contract
-(`KOBE_PLUGIN_EVENT`, `KOBE_PLUGIN_EVENT_JSON`, plain `KOBE_PLUGIN_TASK_*`
-vars) with the JSON envelope:
+Every event a plugin hook receives exposes the canonical contract
+(`ROVE_PLUGIN_EVENT`, `ROVE_PLUGIN_EVENT_JSON`, plain `ROVE_PLUGIN_TASK_*`
+vars) plus identical `KOBE_PLUGIN_*` aliases, with the JSON envelope:
 
 ```jsonc
 {
@@ -140,7 +140,7 @@ vars) with the JSON envelope:
   "task": { "id", "title", "repo", "branch", "worktreePath", "vendor", "status" },
   "vendor": "claude",          // which engine produced it (agent-layer events)
   "sessionId": "…",           // engine's own session id, when known
-  "tabId": "…",               // kobe terminal tab, when the session is kobe-spawned
+  "tabId": "…",               // Rove terminal tab, when the session is Rove-spawned
   "detail": { /* family-specific normalized fields, see catalog */ },
   "at": 1690000000000
 }
@@ -152,11 +152,11 @@ fields are optional, never fabricated.
 
 ## What a plugin can tweak — and what it can't
 
-kobe plugin event hooks are **asynchronous observers**: the daemon
+Rove plugin event hooks are **asynchronous observers**: the daemon
 broadcasts after the fact; a hook's exit code and output never feed back
 into the engine's control flow. Blocking/mutating tweaks (deny a tool call,
 rewrite a prompt) remain the territory of engine-native hooks the user
-installs directly — kobe must never re-export a blocking surface it would
+installs directly — Rove must never re-export a blocking surface it would
 then be responsible for keeping synchronous across three vendors. The
 observer stream still covers the high-value tweaks the ecosystem actually
 builds: notify, log, mirror state, auto-file, auto-bootstrap, dashboards.
@@ -164,10 +164,10 @@ builds: notify, log, mirror state, auto-file, auto-bootstrap, dashboards.
 ## Implementation notes (shipped shape)
 
 - **Vendor-tagged reports (done).** Installed hook commands carry
-  `--engine <vendor>`; `kobe hook` decodes with exactly that adapter (legacy
+  `--engine <vendor>`; `rove hook` decodes with exactly that adapter (legacy
   untagged installs fall back to first-answer guessing until re-install).
 - **Verb transport (done).** New normalized verbs ride the existing
-  `kobe hook` → `engine.reportEvent` path. Lifecycle-only kinds are gated by
+  `rove hook` → `engine.reportEvent` path. Lifecycle-only kinds are gated by
   `affectsActivityState` — they never touch the activity badge, inbox, or
   `engine-state` broadcast; the handler feeds them straight to the PluginHost
   (a direct sink, deliberately NOT a bus channel, so tool volume reaches only
@@ -175,7 +175,7 @@ builds: notify, log, mirror state, auto-file, auto-bootstrap, dashboards.
 - **Tool-family volume gate (done).** The PreToolUse/PostToolUse(/Failure)
   hooks are written into engine config ONLY while an enabled plugin declares
   a `tool.*` event (checked on every launch in `ensureGlobalKobeHooks`;
-  install/remove such a plugin → takes effect on the next kobe start). A
+  install/remove such a plugin → takes effect on the next Rove start). A
   future manifest matcher (`tool = "Bash"`) can narrow further.
 - **UI events (done).** The TUI fire-and-forgets product moments over the
   `ui.reportEvent` RPC → PluginHost direct sink (same no-broadcast path as

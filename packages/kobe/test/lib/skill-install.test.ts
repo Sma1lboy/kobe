@@ -21,9 +21,9 @@ function tempDir(): string {
   dirs.push(d)
   return d
 }
-function installSkillUnder(root: string, body = "skill"): void {
-  mkdirSync(join(root, ".claude/skills/kobe"), { recursive: true })
-  writeFileSync(join(root, ".claude/skills/kobe/SKILL.md"), body)
+function installSkillUnder(root: string, body = "skill", name = "rove"): void {
+  mkdirSync(join(root, `.claude/skills/${name}`), { recursive: true })
+  writeFileSync(join(root, `.claude/skills/${name}/SKILL.md`), body)
 }
 
 afterEach(() => {
@@ -36,8 +36,12 @@ describe("kobeSkillPaths", () => {
     // symlinks agent dirs at it. Looking only under .claude reported "not
     // installed" for a perfectly good install.
     expect(kobeSkillPaths({ home: "/h", cwd: "/p" })).toEqual([
+      "/h/.agents/skills/rove/SKILL.md",
+      "/h/.claude/skills/rove/SKILL.md",
       "/h/.agents/skills/kobe/SKILL.md",
       "/h/.claude/skills/kobe/SKILL.md",
+      "/p/.agents/skills/rove/SKILL.md",
+      "/p/.claude/skills/rove/SKILL.md",
       "/p/.agents/skills/kobe/SKILL.md",
       "/p/.claude/skills/kobe/SKILL.md",
     ])
@@ -60,6 +64,12 @@ describe("isKobeSkillInstalled", () => {
     installSkillUnder(home)
     expect(isKobeSkillInstalled({ home, cwd: tempDir() })).toBe(true)
   })
+
+  it("still detects a legacy Kobe-named install", () => {
+    const home = tempDir()
+    installSkillUnder(home, "skill", "kobe")
+    expect(isKobeSkillInstalled({ home, cwd: tempDir() })).toBe(true)
+  })
 })
 
 describe("npxSkillsArgv / npxSkillsCommand", () => {
@@ -67,7 +77,7 @@ describe("npxSkillsArgv / npxSkillsCommand", () => {
     // kobe deliberately owns no agent registry: ~75 agents, each with its own
     // skills dir and symlink rules. Passing an agent here would freeze that
     // list into kobe.
-    expect(npxSkillsArgv({ source: "/bundled" })).toEqual(["skills", "add", "/bundled", "--skill", "kobe", "--global"])
+    expect(npxSkillsArgv({ source: "/bundled" })).toEqual(["skills", "add", "/bundled", "--skill", "rove", "--global"])
     expect(npxSkillsArgv({ source: "/bundled" })).not.toContain("--agent")
   })
 
@@ -96,13 +106,13 @@ describe("npxSkillsArgv / npxSkillsCommand", () => {
       "add",
       "/b",
       "--skill",
-      "kobe",
+      "rove",
       "--global",
       "--agent",
       "cursor",
     ])
     expect(npxSkillsCommand({ source: "/b", agent: ["claude-code", "codex"] })).toBe(
-      "npx skills add /b --skill kobe --global --agent claude-code --agent codex",
+      "npx skills add /b --skill rove --global --agent claude-code --agent codex",
     )
   })
 })
@@ -115,7 +125,8 @@ describe("skillInstallCommand", () => {
 })
 
 describe("skill version / staleness", () => {
-  it("parses the kobe-skill-version marker", () => {
+  it("parses canonical and legacy skill-version markers", () => {
+    expect(parseSkillVersion("<!-- rove-skill-version: 4 -->\n# x")).toBe(4)
     expect(parseSkillVersion("<!-- kobe-skill-version: 3 -->\n# x")).toBe(3)
     expect(parseSkillVersion("no marker here")).toBeNull()
   })
@@ -123,7 +134,11 @@ describe("skill version / staleness", () => {
   it("the repo SKILL.md marker is in lockstep with KOBE_SKILL_VERSION", () => {
     // The whole staleness mechanism hinges on these two agreeing — guard it.
     const repoSkill = join(dirname(fileURLToPath(import.meta.url)), "../../../../.agents/skills/kobe/SKILL.md")
-    expect(parseSkillVersion(readFileSync(repoSkill, "utf8"))).toBe(KOBE_SKILL_VERSION)
+    const source = readFileSync(repoSkill, "utf8")
+    expect(parseSkillVersion(source)).toBe(KOBE_SKILL_VERSION)
+    expect(source).toMatch(/^name: rove$/m)
+    expect(source).toContain("${ROVE_TASK_ID:-}")
+    expect(source).not.toContain("${KOBE_TASK_ID:-}")
   })
 
   it("kobeSkillState: absent → not installed, not stale", () => {
@@ -133,7 +148,7 @@ describe("skill version / staleness", () => {
 
   it("kobeSkillState: current version → fresh", () => {
     const cwd = tempDir()
-    installSkillUnder(cwd, `<!-- kobe-skill-version: ${KOBE_SKILL_VERSION} -->`)
+    installSkillUnder(cwd, `<!-- rove-skill-version: ${KOBE_SKILL_VERSION} -->`)
     expect(kobeSkillState({ home: tempDir(), cwd })).toMatchObject({ installed: true, stale: false })
   })
 

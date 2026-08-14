@@ -1,7 +1,8 @@
 /**
  * Framework-free view model for the Settings → Plugins section: turns a
- * `~/.kobe/plugins.json` entry plus its `kobe-plugin.toml` and the tail of
- * its `log.jsonl` into one displayable row. Pure except for
+ * `~/.kobe/plugins.json` entry plus its `rove-plugin.toml` and the tail of
+ * its `log.jsonl` into one displayable row. Both canonical and legacy
+ * manifest spellings are accepted. Pure except for
  * `readPluginRows`, the thin disk wrapper the React section calls.
  *
  * Registry/manifest/log layout is owned by the daemon
@@ -9,8 +10,7 @@
  */
 
 import { closeSync, openSync, readFileSync, readSync, statSync } from "node:fs"
-import { join } from "node:path"
-import { PLUGIN_MANIFEST_FILENAME, parsePluginManifest } from "@sma1lboy/kobe-daemon/plugins/manifest"
+import { parsePluginManifest, pluginManifestPath } from "@sma1lboy/kobe-daemon/plugins/manifest"
 import { readOutdatedCache } from "@sma1lboy/kobe-daemon/plugins/outdated-cache"
 import { pluginLogPath } from "@sma1lboy/kobe-daemon/plugins/plugin-paths"
 import {
@@ -41,16 +41,16 @@ export interface PluginRowView {
   readonly id: string
   readonly version: string
   readonly enabled: boolean
-  /** `kobe plugin link` install — `source` is then the author's directory. */
+  /** `rove plugin link` install — `source` is then the author's directory. */
   readonly linked: boolean
   /** Linked path, or the `owner/repo` install spec. */
   readonly source: string
-  /** null when `kobe-plugin.toml` is missing or unparsable. */
+  /** null when no supported plugin manifest is present or parsable. */
   readonly declares: PluginDeclares | null
   readonly lastRun: PluginLastRun | null
   /** Declared `[[settings]]` joined with their stored values; [] when none. */
   readonly settings: readonly PluginSettingRowView[]
-  /** From the CLI-written outdated cache (`kobe plugin outdated`); advisory. */
+  /** From the CLI-written outdated cache (`rove plugin outdated`); advisory. */
   readonly updateAvailable: boolean
 }
 
@@ -148,7 +148,8 @@ function readTail(path: string): string | null {
   }
 }
 
-function readTextOrNull(path: string): string | null {
+function readTextOrNull(path: string | null): string | null {
+  if (!path) return null
   try {
     return readFileSync(path, "utf8")
   } catch {
@@ -163,7 +164,7 @@ export function readPluginRows(homeDir?: string): PluginRowView[] {
     pluginRowView(
       outdated,
       entry,
-      readTextOrNull(join(entry.root, PLUGIN_MANIFEST_FILENAME)),
+      readTextOrNull(pluginManifestPath(entry.root)),
       readTail(pluginLogPath(entry.id, homeDir)),
       readPluginSettings(entry.id, homeDir),
     ),

@@ -1,13 +1,13 @@
 /**
- * Call back into Rove through `$KOBE_BIN_PATH` — the portable plugin API.
- * `kobe()` is the raw runner; the named helpers wrap the high-value
+ * Call back into Rove through `$ROVE_BIN_PATH` (with `$KOBE_BIN_PATH` as a
+ * compatibility fallback). `rove()` is the raw runner; named helpers wrap
  * Rove API verbs (full list: `rove api help` / `rove api schema`).
  */
 
 import { execFile } from "node:child_process"
 
-export interface KobeRunOptions {
-  /** Defaults to `process.env.KOBE_BIN_PATH`. */
+export interface RoveRunOptions {
+  /** Defaults to `process.env.ROVE_BIN_PATH`, then `KOBE_BIN_PATH`. */
   readonly binPath?: string
   readonly cwd?: string
   /** Extra env merged over the inherited environment. */
@@ -16,16 +16,22 @@ export interface KobeRunOptions {
   readonly timeoutMs?: number
 }
 
-export interface KobeRunResult {
+/** @deprecated Use RoveRunOptions. */
+export type KobeRunOptions = RoveRunOptions
+
+export interface RoveRunResult {
   readonly code: number
   readonly stdout: string
   readonly stderr: string
 }
 
 /** Run the Rove CLI with `<args…>`; resolves with the exit code (never rejects on non-zero). */
-export function kobe(args: readonly string[], opts: KobeRunOptions = {}): Promise<KobeRunResult> {
-  const bin = opts.binPath ?? process.env.KOBE_BIN_PATH
-  if (!bin) return Promise.reject(new Error("KOBE_BIN_PATH is not set and no binPath was given"))
+/** @deprecated Use RoveRunResult. */
+export type KobeRunResult = RoveRunResult
+
+export function rove(args: readonly string[], opts: RoveRunOptions = {}): Promise<RoveRunResult> {
+  const bin = opts.binPath ?? process.env.ROVE_BIN_PATH ?? process.env.KOBE_BIN_PATH
+  if (!bin) return Promise.reject(new Error("ROVE_BIN_PATH is not set and no binPath was given"))
   return new Promise((resolve, reject) => {
     execFile(
       bin,
@@ -48,31 +54,37 @@ export function kobe(args: readonly string[], opts: KobeRunOptions = {}): Promis
   })
 }
 
+/** Compatibility alias for plugins written against the Kobe-named SDK. */
+export const kobe = rove
+
 /** Run and parse stdout as JSON; throws on non-zero exit or bad JSON. */
-export async function kobeJson<T = unknown>(args: readonly string[], opts: KobeRunOptions = {}): Promise<T> {
-  const res = await kobe(args, opts)
+export async function roveJson<T = unknown>(args: readonly string[], opts: RoveRunOptions = {}): Promise<T> {
+  const res = await rove(args, opts)
   if (res.code !== 0) throw new Error(`Rove command ${args.join(" ")} exited ${res.code}: ${res.stderr.trim()}`)
   return JSON.parse(res.stdout) as T
 }
 
+/** Compatibility alias for plugins written against the Kobe-named SDK. */
+export const kobeJson = roveJson
+
 /** Toast a notification in every attached Rove UI. */
-export function notify(title: string, body?: string, opts?: KobeRunOptions): Promise<KobeRunResult> {
-  return kobe(["api", "notify", "--title", title, ...(body ? ["--body", body] : [])], opts)
+export function notify(title: string, body?: string, opts?: RoveRunOptions): Promise<RoveRunResult> {
+  return rove(["api", "notify", "--title", title, ...(body ? ["--body", body] : [])], opts)
 }
 
 /** Send prompt text into a live engine session. */
-export function dispatch(taskId: string, prompt: string, opts?: KobeRunOptions): Promise<KobeRunResult> {
-  return kobe(["api", "dispatch", "--task-id", taskId, "--prompt", prompt], opts)
+export function dispatch(taskId: string, prompt: string, opts?: RoveRunOptions): Promise<RoveRunResult> {
+  return rove(["api", "dispatch", "--task-id", taskId, "--prompt", prompt], opts)
 }
 
 /** All tasks, as the daemon serializes them. */
-export function listTasks<T = unknown>(opts?: KobeRunOptions): Promise<T> {
-  return kobeJson<T>(["api", "list"], opts)
+export function listTasks<T = unknown>(opts?: RoveRunOptions): Promise<T> {
+  return roveJson<T>(["api", "list"], opts)
 }
 
 /** Open one of this plugin's own `[[panes]]` (qualified id: `you.plugin.pane`). */
-export function openPane(qualifiedPaneId: string, opts?: KobeRunOptions): Promise<KobeRunResult> {
-  return kobe(["plugin", "pane", "open", qualifiedPaneId], opts)
+export function openPane(qualifiedPaneId: string, opts?: RoveRunOptions): Promise<RoveRunResult> {
+  return rove(["plugin", "pane", "open", qualifiedPaneId], opts)
 }
 
 /**
@@ -83,7 +95,7 @@ export function openPane(qualifiedPaneId: string, opts?: KobeRunOptions): Promis
  */
 export async function promptUser(
   title: string,
-  opts: KobeRunOptions & { placeholder?: string; initial?: string; timeoutMs?: number } = {},
+  opts: RoveRunOptions & { placeholder?: string; initial?: string; timeoutMs?: number } = {},
 ): Promise<string | null> {
   const { placeholder, initial, timeoutMs, ...run } = opts
   const args = [
@@ -96,7 +108,7 @@ export async function promptUser(
     ...(timeoutMs ? ["--timeout", String(timeoutMs)] : []),
   ]
   try {
-    const result = await kobeJson<{ value?: string; cancelled?: boolean }>(args, {
+    const result = await roveJson<{ value?: string; cancelled?: boolean }>(args, {
       ...run,
       timeoutMs: (timeoutMs ?? 120_000) + 10_000,
     })

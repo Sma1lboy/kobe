@@ -28,14 +28,14 @@ const MANIFEST = `
 id = "example.probe"
 name = "Probe"
 version = "0.1.0"
-min_kobe_version = "0.1.0"
+min_rove_version = "0.1.0"
 
 [[startup]]
-command = ["sh", "-c", "printf %s \\"$KOBE_PLUGIN_EVENT\\" > started.txt"]
+command = ["sh", "-c", "printf %s \\"$ROVE_PLUGIN_EVENT\\" > started.txt"]
 
 [[events]]
 on = "task.created"
-command = ["sh", "-c", "printf %s \\"$KOBE_PLUGIN_EVENT:$KOBE_PLUGIN_ID:$KOBE_BIN_PATH\\" > event.txt"]
+command = ["sh", "-c", "printf %s \\"$ROVE_PLUGIN_EVENT:$ROVE_PLUGIN_ID:$ROVE_BIN_PATH\\" > event.txt"]
 `
 
 function snapshotEvent(ids: string[]) {
@@ -59,7 +59,7 @@ describe("PluginHost", () => {
   it("runs startup hooks and fires event hooks with the env contract", async () => {
     const home = tmp("kobe-plugin-home-")
     const root = tmp("kobe-plugin-root-")
-    writeFileSync(join(root, "kobe-plugin.toml"), MANIFEST)
+    writeFileSync(join(root, "rove-plugin.toml"), MANIFEST)
     mkdirSync(join(home, ".kobe"), { recursive: true })
     savePluginRegistry(
       {

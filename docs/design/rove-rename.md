@@ -14,6 +14,9 @@ Rove is the canonical product name and `rove` is the canonical CLI command. Prod
 | Product state and config | `~/.rove`, `~/.config/rove/state.json` |
 | New worktrees and branches | `~/.rove/worktrees/…`, `rove/…` |
 | Per-repo init | `.rove/init.sh`, `.rove/init-prompt.md` |
+| Plugin SDK | `@sma1lboy/rove-plugin-sdk` |
+| Plugin authoring | `rove-plugin.toml`, `min_rove_version`, `rove-plugin` topic, `ROVE_PLUGIN_*` env |
+| Agent skill id | `rove` |
 
 ## Compatibility surfaces
 
@@ -21,14 +24,14 @@ Rove is the canonical product name and `rove` is the canonical CLI command. Prod
 |---|---|---|
 | Legacy executable | `kobe` | Existing scripts and global installs keep working |
 | Legacy npm package | `@sma1lboy/kobe` | Published from the same build/version as `@sma1lboy/rove`, so existing global installs keep updating |
-| Plugin SDK package | `@sma1lboy/kobe-plugin-sdk` | Plugin imports are a separate public compatibility contract |
+| Plugin SDK package | `@sma1lboy/kobe-plugin-sdk` | Published from the same SDK artifact/version as the Rove-named package |
 | Existing state and config | `~/.kobe`, `~/.config/kobe` | First Rove launch copies supported product data without overwriting or removing the legacy source |
 | Existing worktrees and branches | `~/.kobe/worktrees/…`, repo-local `.kobe`/`.claude`, `kobe/…` | Task records pin absolute paths and branch names; discovery recognizes every legacy root |
 | Runtime process paths | daemon/PTY sockets, pidfiles, and logs under `.kobe` | Keeps an upgraded client attached to the same daemon and preserves hosted PTYs across upgrades |
-| Environment and hook variables | `KOBE_*` | Plugin, engine-hook, daemon, and automation contracts stay stable; user-supplied variables also accept `ROVE_*` aliases |
+| Environment and hook variables | `KOBE_*` | Engine-hook, daemon, and automation contracts stay stable; plugin commands receive both namespaces and SDK readers prefer `ROVE_*` |
 | Protocol and persisted field names | `kobeVersion`, `minKobeVersion`, related established identifiers | Wire and manifest compatibility |
-| Plugin discovery | `kobe-plugin.toml`, `kobe-plugin` topic | Existing plugins remain discoverable and installable |
-| Agent skill id and install paths | `kobe` | Existing agent configuration finds the upgraded skill in place |
+| Plugin discovery | `kobe-plugin.toml`, `min_kobe_version`, `kobe-plugin` topic | Canonical-first manifest resolution and dual-topic search keep existing plugins discoverable |
+| Agent skill id and install paths | `kobe` | Existing installs are still detected and versioned; new installs use the `rove` id |
 | Repository, docs, and website URLs | Current `…/kobe` URLs | URL migration is independent of the package distribution migration |
 
 New user-facing copy must use Rove/`rove`. New compatibility identifiers should not use `kobe` unless they extend one of the established contracts above. Internal TypeScript symbols may retain `Kobe` when renaming them would create churn without changing a user-visible or serialized contract.
@@ -43,7 +46,8 @@ a late legacy write from leaving the canonical store stale. Neither phase moves
 or deletes the source or overwrites an existing Rove file. Worktrees are not
 copied: existing task records continue pointing at their absolute legacy paths,
 while new worktrees use the canonical root. Plugin directories and daemon/PTY
-runtime files remain under `.kobe` until their dedicated compatibility work.
+runtime files and plugin checkout/config/state directories remain under `.kobe`
+because their absolute paths are part of the running-plugin compatibility contract.
 
 ## Package distribution migration
 
@@ -54,6 +58,17 @@ in its checkout and publishes the identical artifact as `@sma1lboy/kobe`.
 Both packages contain the `rove` and `kobe` bins and use the same version and
 dist-tag. The updater migrates legacy global installs to `@sma1lboy/rove`,
 while users who never run it continue receiving releases through the alias.
+
+## Plugin ecosystem migration
+
+New plugins author `rove-plugin.toml` with `min_rove_version`, use the
+`rove-plugin` GitHub topic, import `@sma1lboy/rove-plugin-sdk`, and receive
+`ROVE_PLUGIN_*` variables. Every established Kobe spelling remains additive:
+the host resolves both manifests with Rove winning, searches both topics,
+injects identical `KOBE_PLUGIN_*` aliases, detects old `kobe` skill installs,
+and publishes the same SDK artifact under both package names. Plugin data is
+not copied or moved, so installed checkouts, config, state, and logs keep their
+stable `.kobe` paths.
 
 ## Visual asset policy
 

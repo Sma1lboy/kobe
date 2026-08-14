@@ -13,13 +13,14 @@ import { spawnSync } from "node:child_process"
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync } from "node:fs"
 import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { join, resolve } from "node:path"
+import { basename, join, resolve } from "node:path"
 import { createInterface } from "node:readline/promises"
 import {
-  PLUGIN_MANIFEST_FILENAME,
+  PLUGIN_MANIFEST_FILENAMES,
   type ParsedPluginManifest,
   currentPluginPlatform,
   parsePluginManifest,
+  pluginManifestPath,
   supportsPlatform,
 } from "@sma1lboy/kobe-daemon/plugins/manifest"
 import { pluginCheckoutDir, pluginConfigDir, pluginStateDir } from "@sma1lboy/kobe-daemon/plugins/plugin-paths"
@@ -39,15 +40,16 @@ function fail(message: string): never {
   throw new PluginCliError(message)
 }
 
-function readManifestAt(root: string): ParsedPluginManifest {
-  const path = join(root, PLUGIN_MANIFEST_FILENAME)
-  let text: string
-  try {
-    text = readFileSync(path, "utf8")
-  } catch {
-    fail(`no ${PLUGIN_MANIFEST_FILENAME} found at ${root}`)
-  }
-  return parsePluginManifest(text)
+interface PluginManifestSnapshot extends ParsedPluginManifest {
+  readonly manifestPath: string
+  readonly manifestSource: string
+}
+
+function readManifestAt(root: string): PluginManifestSnapshot {
+  const path = pluginManifestPath(root)
+  if (!path) fail(`no ${PLUGIN_MANIFEST_FILENAMES.join(" or ")} found at ${root}`)
+  const source = readFileSync(path, "utf8")
+  return { ...parsePluginManifest(source, basename(path)), manifestPath: path, manifestSource: source }
 }
 
 function checkVersionGate(parsed: ParsedPluginManifest): void {
@@ -140,8 +142,11 @@ export async function installPlugin(spec: string, opts: { yes: boolean; ref?: st
     runBuildCommands(parsed, rootInClone)
 
     // Re-read after build: a build that rewrites the manifest voids the preview.
-    const after = readFileSync(join(rootInClone, PLUGIN_MANIFEST_FILENAME), "utf8")
-    if (parsePluginManifest(after).manifest.id !== id) fail("manifest changed during build; aborting")
+    const manifestPath = pluginManifestPath(rootInClone)
+    if (!manifestPath) fail("manifest disappeared during build; aborting")
+    if (manifestPath !== parsed.manifestPath) fail("manifest changed during build; aborting")
+    const after = readFileSync(manifestPath, "utf8")
+    if (after !== parsed.manifestSource) fail("manifest changed during build; aborting")
 
     const checkout = pluginCheckoutDir(id)
     rmSync(checkout, { recursive: true, force: true })

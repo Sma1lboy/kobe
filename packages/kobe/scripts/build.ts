@@ -11,11 +11,11 @@
  * the kobed → kobe bin merge (KOB-136), daemon lifecycle lives at
  * `kobe daemon ...`, so there is no separate `kobed` binary to build.
  *
- * The canonical SKILL.md (`.agents/skills/kobe/SKILL.md`, ~8KB) is COPIED
- * into the tarball. `npx skills add Sma1lboy/kobe` does a `git clone
+ * The canonical Rove SKILL.md is copied from its compatibility source path
+ * into the tarball. `npx skills add Sma1lboy/kobe --skill rove` does a `git clone
  * --depth 1`, which for this repo means 198MB of working tree — unusable
  * on a slow connection for a file this size. Since the user already has
- * kobe installed, `kobe skill install` points the agent-skills CLI at the
+ * Rove installed, `rove skill install` points the agent-skills CLI at the
  * bundled copy instead (a local path, no network). The CLI still owns
  * agent detection, target dirs, and symlinking — kobe never reimplements
  * that registry.
@@ -31,7 +31,7 @@ import { chmod, cp, mkdir, rm } from "node:fs/promises"
 const OUT_FILES = ["./dist/cli/kobe.js", "./dist/cli/rove.js"]
 /** Canonical skill source (repo root) → its home in the tarball. */
 const SKILL_SRC_DIR = "../../.agents/skills/kobe"
-const SKILL_OUT_DIR = "./dist/skills/kobe"
+const SKILL_OUT_DIR = "./dist/skills/rove"
 const WEB_PACKAGE_DIR = "../kobe-web"
 const WEB_DIST_DIR = `${WEB_PACKAGE_DIR}/dist`
 const WEB_OUT_DIR = "./dist/web-ui"
