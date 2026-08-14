@@ -55,13 +55,15 @@ describe("active product copy", () => {
   })
 
   test("current product pages do not publish pre-Rove terminal recordings", () => {
-    // The README's own captures were re-shot as Rove through the browser
-    // `/harness` path (`packages/kobe-web/e2e/hero-*.ts`, docs/HARNESS.md), so
-    // `demo.*`, `workspace.png`, `diff-review.png`, `narrow-sidebar.png` and
-    // `routines.png` are current product renderings and may be published. What
-    // stays barred is every still nobody has re-shot: those still photograph
-    // the kobe-era TUI, wordmark and all.
-    const stale = ["inbox.png", "kanban.png", "new-session-dialog.png"]
+    // Captures re-shot as Rove through the browser `/harness` path
+    // (`packages/kobe-web/e2e/hero-*.ts`, docs/HARNESS.md) are current product
+    // renderings and may be published: `demo.*`, `workspace.png`,
+    // `diff-review.png`, `narrow-sidebar.png`, `routines.png`, and the kanban
+    // set (`kanban.png`, `kanban-story.png`, `kanban.gif`/`.mp4`, shot by
+    // `hero-issues.ts` + `hero-kanban.ts`). What stays barred is every still
+    // nobody has re-shot: those still photograph the kobe-era TUI, wordmark
+    // and all.
+    const stale = ["inbox.png", "new-session-dialog.png"]
     for (const page of ["README.md", "docs/TUI.md"]) {
       const source = read(page)
       for (const asset of stale) {

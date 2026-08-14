@@ -113,6 +113,8 @@ workspace. The chords stay live, so you can hop between pages directly.
 
 ### Kanban (`ctrl+a` `1`)
 
+![The Kanban board — Backlog, In progress and Done for one project, with the card cursor on an in-progress story](assets/kanban.png)
+
 The [issue store](CONCEPTS.md#the-issue-store) as a board, one project at a
 time (`tab` cycles projects). Three columns:
 
@@ -129,6 +131,17 @@ the board. Starting links the issue and flips it to `doing`. `n` creates a
 story, `d` deletes one (the issue record only — a linked task and its
 worktree are never touched). The board refreshes every few seconds, so cards
 moved by agents move on screen too.
+
+![The story detail drawer — editable title and description above the engine, workspace and after-start choices a session would launch with](assets/kanban-story.png)
+
+The board in motion — walking the cards, opening a story, filing a new one
+with `n`, and an agent picking it up (`rove api issue-update --task`) while
+the page is open, which moves the card into In progress on its own:
+
+![Filing a story from the board, then an agent moving its card into In progress](assets/kanban.gif)
+
+Full-quality mp4:
+[kanban.mp4](https://github.com/Sma1lboy/kobe/blob/main/docs/assets/kanban.mp4).
 
 ### Routines (`ctrl+a` `2`)
 
