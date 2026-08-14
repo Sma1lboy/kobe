@@ -55,23 +55,18 @@ describe("active product copy", () => {
   })
 
   test("current product pages do not publish pre-Rove terminal recordings", () => {
-    const readme = read("README.md")
-    expect(readme).not.toContain("docs/assets/demo.gif")
-    expect(readme).not.toContain("docs/assets/demo.mp4")
-    expect(readme).not.toContain("docs/assets/diff-review.png")
-    expect(readme).not.toContain("docs/assets/narrow-sidebar.png")
-    expect(readme).not.toContain("docs/assets/routines.png")
-
-    const tuiDocs = read("docs/TUI.md")
-    for (const asset of [
-      "inbox.png",
-      "diff-review.png",
-      "new-session-dialog.png",
-      "kanban.png",
-      "routines.png",
-      "narrow-sidebar.png",
-    ]) {
-      expect(tuiDocs, `docs/TUI.md still publishes historical ${asset}`).not.toContain(`assets/${asset}`)
+    // The README's own captures were re-shot as Rove through the browser
+    // `/harness` path (`packages/kobe-web/e2e/hero-*.ts`, docs/HARNESS.md), so
+    // `demo.*`, `workspace.png`, `diff-review.png`, `narrow-sidebar.png` and
+    // `routines.png` are current product renderings and may be published. What
+    // stays barred is every still nobody has re-shot: those still photograph
+    // the kobe-era TUI, wordmark and all.
+    const stale = ["inbox.png", "kanban.png", "new-session-dialog.png"]
+    for (const page of ["README.md", "docs/TUI.md"]) {
+      const source = read(page)
+      for (const asset of stale) {
+        expect(source, `${page} still publishes historical ${asset}`).not.toContain(`assets/${asset}`)
+      }
     }
 
     const landing = read("packages/kobe-landing/index.html")
