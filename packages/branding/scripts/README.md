@@ -4,7 +4,9 @@
 > identity, and the direct-PTY capture path below is not an accepted source for
 > current product screenshots. Current visual assets must be captured through
 > the fixed browser `/harness` path in `docs/HARNESS.md`; do not copy replay
-> output into the README, docs, or landing page.
+> output into the README, docs, or landing page. The live equivalent of
+> everything below now lives in `packages/kobe-web/e2e/hero-*.ts` (see
+> [`docs/HARNESS.md` → README and docs assets](../../../docs/HARNESS.md)).
 
 The `quicklook-replay` Remotion composition renders the checked-in terminal
 capture at `src/quicklook/frames.json`. It replays
