@@ -10,7 +10,7 @@
  */
 
 import { spawnSync } from "node:child_process"
-import { chmod, mkdir, readFile, writeFile } from "node:fs/promises"
+import { chmod, mkdir, readFile, symlink, writeFile } from "node:fs/promises"
 import { dirname, join, resolve } from "node:path"
 import { fileURLToPath } from "node:url"
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
@@ -45,9 +45,15 @@ describe("kobe update (behavior)", () => {
 /**
  * Run scripts/update.sh with PATH shims. `kobeBinDir` decides the manager
  * (a path containing `/.bun/` → bun, else npm). Both managers log to
- * `calls.log` instead of installing anything.
+ * `calls.log` instead of installing anything. `linkTo` makes the on-PATH
+ * `kobe` a symlink to that entry file, which is how the script tells a
+ * legacy @sma1lboy/kobe install from a migrated one.
  */
-async function runUpdateScript(base: string, kobeBinDir: string): Promise<{ code: number; out: string; log: string }> {
+async function runUpdateScript(
+  base: string,
+  kobeBinDir: string,
+  linkTo?: string,
+): Promise<{ code: number; out: string; log: string }> {
   const shims = join(base, "shims")
   await mkdir(shims, { recursive: true })
   await mkdir(kobeBinDir, { recursive: true })
@@ -55,8 +61,12 @@ async function runUpdateScript(base: string, kobeBinDir: string): Promise<{ code
 
   // Post-install `kobe -v` must match `npm view` output or the script exits 1
   // (the shadowed-install guard) — keep both at 9.9.9 for the happy path.
-  await writeFile(join(kobeBinDir, "kobe"), `#!/bin/sh\necho "kobe 9.9.9"\n`)
-  await chmod(join(kobeBinDir, "kobe"), 0o755)
+  if (linkTo) {
+    await symlink(linkTo, join(kobeBinDir, "kobe"))
+  } else {
+    await writeFile(join(kobeBinDir, "kobe"), `#!/bin/sh\necho "kobe 9.9.9"\n`)
+    await chmod(join(kobeBinDir, "kobe"), 0o755)
+  }
   for (const mgr of ["npm", "bun"]) {
     await writeFile(
       join(shims, mgr),
@@ -87,11 +97,10 @@ describe("scripts/update.sh manager detection (issue #205)", () => {
     const base = join(env.home, "case-bun")
     const r = await runUpdateScript(base, join(base, ".bun", "bin"))
     expect(r.code).toBe(0)
-    expect(r.out).toContain("██╗  ██╗ ██████╗")
     expect(r.out).toContain("many sessions. one terminal.")
-    expect(r.out).toContain("Thanks for using kobe. Happy building.")
+    expect(r.out).toContain("Thanks for using Rove. Happy building.")
     expect(r.out).toContain("via bun")
-    expect(r.log).toContain("bun install -g @sma1lboy/kobe@latest")
+    expect(r.log).toContain("bun install -g @sma1lboy/rove@latest")
     expect(r.log).not.toContain("npm install")
   })
 
@@ -100,8 +109,36 @@ describe("scripts/update.sh manager detection (issue #205)", () => {
     const r = await runUpdateScript(base, join(base, "npm-global", "bin"))
     expect(r.code).toBe(0)
     expect(r.out).toContain("via npm")
-    expect(r.log).toContain("npm install -g @sma1lboy/kobe@latest")
+    expect(r.log).toContain("npm install -g @sma1lboy/rove@latest")
     expect(r.log).not.toContain("bun install")
+  })
+
+  // The rename migration: an install whose bin resolves into an
+  // @sma1lboy/kobe package dir must be uninstalled BEFORE rove goes in —
+  // both packages own a `kobe` and a `rove` bin, so a plain install over
+  // the top dies with EEXIST.
+  it("a legacy @sma1lboy/kobe install is uninstalled before rove is installed", async () => {
+    const base = join(env.home, "case-migrate")
+    const pkgDir = join(base, "npm-global/lib/node_modules/@sma1lboy/kobe/dist/cli")
+    await mkdir(pkgDir, { recursive: true })
+    const entry = join(pkgDir, "kobe.js")
+    await writeFile(entry, `#!/bin/sh\necho "kobe 9.9.9"\n`)
+    await chmod(entry, 0o755)
+
+    const r = await runUpdateScript(base, join(base, "npm-global", "bin"), entry)
+    expect(r.code).toBe(0)
+    expect(r.out).toContain("kobe is now Rove.")
+    expect(r.log).toContain("npm uninstall -g @sma1lboy/kobe")
+    expect(r.log).toContain("npm install -g @sma1lboy/rove@latest")
+    // Order matters: uninstall first, or npm bails with EEXIST.
+    expect(r.log.indexOf("uninstall")).toBeLessThan(r.log.indexOf("install -g @sma1lboy/rove"))
+  })
+
+  it("a non-legacy install is not uninstalled", async () => {
+    const base = join(env.home, "case-no-migrate")
+    const r = await runUpdateScript(base, join(base, "npm-global", "bin"))
+    expect(r.out).not.toContain("kobe is now Rove.")
+    expect(r.log).not.toContain("uninstall")
   })
 
   it("a post-install PATH still resolving a stale version fails loudly", async () => {
