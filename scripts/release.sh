@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Cut a kobe release from pending changesets.
+# Cut a Rove release from pending changesets.
 #
 # Usage:
 #   scripts/release.sh        # consume .changeset/*.md → version + CHANGELOG → commit + tag + push
@@ -228,7 +228,7 @@ bun install --frozen-lockfile
 bun run lint:fix
 
 echo "──────────────────────────────────────────"
-echo "  kobe $CURRENT  →  $NEW_VERSION  ($TAG)"
+echo "  Rove $CURRENT  →  $NEW_VERSION  ($TAG)"
 echo "──────────────────────────────────────────"
 
 # ── safety: tag must not already exist ────────────────────────────────────────
@@ -249,10 +249,10 @@ echo "$NOTES" | sed 's/^/    /'
 echo ""
 
 # ── commit & tag ──────────────────────────────────────────────────────────────
-# `changeset version` rewrites EVERY bumped workspace package (kobe, the
+# `changeset version` rewrites EVERY bumped workspace package (Rove, the
 # plugin SDK, private internals like kobe-daemon/kobe-web get dependency
 # bumps too) — stage them all. Staging only packages/kobe once tagged a
-# commit that pinned kobe to a daemon version that existed nowhere (0.8.30).
+# commit that pinned Rove to a daemon version that existed nowhere (0.8.30).
 git add packages/*/package.json packages/*/CHANGELOG.md .changeset
 if ! git diff --quiet bun.lock 2>/dev/null; then
   git add bun.lock
