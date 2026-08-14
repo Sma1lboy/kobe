@@ -139,8 +139,17 @@ function overlayRowSpan(row: readonly Chunk[], from: number, to: number): Chunk[
     if (after) out.push({ ...chunk, text: after })
   }
   // Selection reaching past the row's painted cells: show the highlight
-  // on the padding too, like terminals do.
-  if (col < to) out.push({ text: " ".repeat(to - Math.max(col, from)), attributes: ATTR.INVERSE })
+  // on the padding too, like terminals do. When the span STARTS past the
+  // painted cells (a drag anchored in the blank padding right of a short
+  // line, `from > col`), the highlight must begin at `from`, not at the
+  // row's painted width — so emit the `from - col` gap as plain spaces
+  // first, then the inverse block. With `from <= col` the gap is zero and
+  // the inverse block fills `[col, to)` exactly as before.
+  if (col < to) {
+    const gap = from - col
+    if (gap > 0) out.push({ text: " ".repeat(gap) })
+    out.push({ text: " ".repeat(to - Math.max(col, from)), attributes: ATTR.INVERSE })
+  }
   return out
 }
 

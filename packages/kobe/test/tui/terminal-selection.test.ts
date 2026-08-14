@@ -78,6 +78,29 @@ describe("terminal grid selection", () => {
     expect(out[0].map((c) => c.text).join("")).toBe("ab    ")
   })
 
+  it("overlaySelection lands the padding highlight on the selected cells when the span starts past the text", () => {
+    // The drag anchors in the blank padding to the right of a short line
+    // (cols 5-7, past "ab" which paints only cols 0-1). The highlight must
+    // sit on cols 5-7, with cols 2-4 left as unhighlighted padding — not
+    // shifted left onto cols 2-4 (the regression this guards).
+    const short = [row("ab")]
+    const range = { anchor: { row: 0, col: 5 }, head: { row: 0, col: 7 } }
+    const out = overlaySelection(short, range, 0, 10)[0]
+    // Full row is 8 cells: "ab" + three plain spaces + three inverse spaces.
+    expect(out.map((c) => c.text).join("")).toBe("ab      ")
+    expect(displayWidth(out.map((c) => c.text).join(""))).toBe(8)
+    const plain = out
+      .filter((c) => ((c.attributes ?? 0) & ATTR.INVERSE) === 0)
+      .map((c) => c.text)
+      .join("")
+    const inverse = out
+      .filter((c) => ((c.attributes ?? 0) & ATTR.INVERSE) !== 0)
+      .map((c) => c.text)
+      .join("")
+    expect(plain).toBe("ab   ") // "ab" + the 3-cell gap, unhighlighted
+    expect(inverse).toBe("   ") // exactly the 3 selected padding cells
+  })
+
   it("extracts a CJK range by terminal cells in either drag direction", () => {
     const cjk = [row("唯一需要区分的是：")]
     const forward = { anchor: { row: 0, col: 4 }, head: { row: 0, col: 9 } }
