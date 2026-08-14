@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.91
+
+### Patch Changes
+
+- 2a4ebd0: Make `@sma1lboy/rove` the canonical package for installs, workspace commands, update checks, and releases. Every release still publishes the identical build as `@sma1lboy/kobe`, and both `rove` and `kobe` commands remain available.
+- bc284d4: Make Rove the canonical plugin-authoring surface without breaking existing plugins: new manifests use `rove-plugin.toml` and `min_rove_version`, marketplace discovery searches `rove-plugin`, plugin commands receive `ROVE_PLUGIN_*`, and the bundled agent skill installs as `rove`. Legacy Kobe manifests, topics, environment variables, skill paths, and SDK imports remain supported; the SDK now publishes the same artifact as both `@sma1lboy/rove-plugin-sdk` and `@sma1lboy/kobe-plugin-sdk`.
+- 7fd7488: Move new Rove product data, worktrees, branch names, and repo-init conventions to the Rove namespace. First launch copies supported `~/.kobe` and `~/.config/kobe` data without overwriting or deleting it; existing worktrees, branches, runtime processes, plugins, and `.kobe/init.*` files remain compatible.
+
 ## 0.8.90
 
 ### Patch Changes
