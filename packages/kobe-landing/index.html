@@ -196,7 +196,7 @@ h1{font-family:var(--font-display);font-optical-sizing:auto;font-size:clamp(44px
     <div class="hero-row rise" style="animation-delay:.48s">
       <button id="copyBtn" class="copy-cmd">
         <span class="ps">$</span>
-        <span>bun install -g @sma1lboy/kobe</span>
+        <span>bun install -g @sma1lboy/rove</span>
         <span id="copyLabel" class="hint">click to copy</span>
       </button>
       <a class="btn-primary" href="https://github.com/Sma1lboy/kobe#readme" data-i18n="hero.getStarted">Get started ↗</a>
@@ -307,12 +307,12 @@ c  <span class="ok">+96</span>  <span class="del">−88</span>  · 5 files
     <h2 data-i18n="install.title">Spin it up where your code lives.</h2>
     <p data-i18n="install.body">Your laptop, a devbox, a VPS, or any machine you can SSH into. No browser, no VNC, no desktop app. Optimize the one metric that matters: merged code per hour of your attention.</p>
     <figure class="term-frame install-term"><div class="tbar" aria-hidden="true"><i class="r"></i><i class="y"></i><i class="g"></i><span>install</span></div>
-    <pre class="term-out"><span class="ps">$</span> bun install -g @sma1lboy/kobe
+    <pre class="term-out"><span class="ps">$</span> bun install -g @sma1lboy/rove
 <span class="ps">$</span> ssh devbox && cd repo
 <span class="ps">$</span> rove
 <span class="d">3 attempts running. Go do something else.</span></pre></figure>
     <div class="install-actions">
-      <a class="btn-primary" href="https://www.npmjs.com/package/@sma1lboy/kobe" data-i18n="install.npm">Install from npm ↗</a>
+      <a class="btn-primary" href="https://www.npmjs.com/package/@sma1lboy/rove" data-i18n="install.npm">Install from npm ↗</a>
       <a class="btn-quiet" href="https://github.com/Sma1lboy/kobe" data-i18n="install.star">Star on GitHub ↗</a>
     </div>
   </div>
@@ -329,7 +329,7 @@ c  <span class="ok">+96</span>  <span class="del">−88</span>  · 5 files
 
 <!-- FOOTER · dense colophon -->
 <footer class="foot-dense">
-  <p><span class="mark">[Rove]</span> — <span data-i18n="footer.tagline">graph engineering for coding agents, terminal-native.</span> <span data-i18n="footer.colophon">Built with Bun, OpenTUI and React. Set in Fraunces, DM Sans and JetBrains Mono. MIT licensed.</span> <a href="https://github.com/Sma1lboy/kobe">GitHub</a> · <a href="https://www.npmjs.com/package/@sma1lboy/kobe">npm</a> · <a href="/plugins" data-i18n="footer.plugins">plugins</a> · <a href="/changelog" data-i18n="footer.changelog">changelog</a> · <a href="https://github.com/Sma1lboy/kobe/blob/main/docs/KEYBINDINGS.md" data-i18n="footer.keybindings">keybindings</a></p>
+  <p><span class="mark">[Rove]</span> — <span data-i18n="footer.tagline">graph engineering for coding agents, terminal-native.</span> <span data-i18n="footer.colophon">Built with Bun, OpenTUI and React. Set in Fraunces, DM Sans and JetBrains Mono. MIT licensed.</span> <a href="https://github.com/Sma1lboy/kobe">GitHub</a> · <a href="https://www.npmjs.com/package/@sma1lboy/rove">npm</a> · <a href="/plugins" data-i18n="footer.plugins">plugins</a> · <a href="/changelog" data-i18n="footer.changelog">changelog</a> · <a href="https://github.com/Sma1lboy/kobe/blob/main/docs/KEYBINDINGS.md" data-i18n="footer.keybindings">keybindings</a></p>
 </footer>
 
 <script>
@@ -444,7 +444,7 @@ c  <span class="ok">+96</span>  <span class="del">−88</span>  · 5 files
     var timer;
     btn.addEventListener('click', function () {
       try {
-        if (navigator.clipboard) navigator.clipboard.writeText('bun install -g @sma1lboy/kobe');
+        if (navigator.clipboard) navigator.clipboard.writeText('bun install -g @sma1lboy/rove');
       } catch (e) {}
       label.textContent = KOBE_I18N.t('copy.done');
       clearTimeout(timer);

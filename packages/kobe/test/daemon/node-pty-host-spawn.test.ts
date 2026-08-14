@@ -100,7 +100,7 @@ describe("resolveNodePtyHostSpawn", () => {
   })
 
   test("says node is missing rather than letting the spawn fail into a 5s timeout", async () => {
-    // `bun install -g @sma1lboy/kobe` never brings node along, and without
+    // `bun install -g @sma1lboy/rove` never brings node along, and without
     // this the only symptom is a pty host that never answers.
     await expect(resolveNodePtyHostSpawn(win({ exists: diskWith(PACKAGED, ENTRY) }))).rejects.toThrow(
       /no node was found on PATH/,

@@ -1,6 +1,6 @@
 # Releasing Rove
 
-Rove versioning + changelog are managed with [Changesets](https://github.com/changesets/changesets). The published package is `@sma1lboy/kobe` (`packages/kobe`); `packages/branding` is `private` and never published.
+Rove versioning + changelog are managed with [Changesets](https://github.com/changesets/changesets). The canonical package is `@sma1lboy/rove` (`packages/kobe`); the release job republishes that exact build as `@sma1lboy/kobe` for existing installs. `packages/branding` is `private` and never published.
 
 ## The flow
 
@@ -53,7 +53,7 @@ With a green gate, it consumes every pending `.changeset/*.md`:
 
 If CI comes back red, **no tag exists and the version number is not burned**: `package.json` on `main` already carries X.Y.Z, so land the fix on `main` (no new changeset needed) and re-run `scripts/release.sh` — with zero pending changesets and an untagged committed version it enters **resume mode**: waits for CI at the fixed HEAD, then tags the same `vX.Y.Z` there. The same resume path covers answering `N` at the push prompt and a CI run cancelled by a newer main push.
 
-The push triggers `.github/workflows/release.yml`, which gates on **lint + typecheck + unit tests (fast + socket) + build**, waits on the same **behavior** suite `ci.yml`'s PR gate runs, then `npm publish`es and extracts the new `CHANGELOG.md` section as the GitHub release body. npm is the sole distribution channel — standalone binaries were dropped 2026-08-02 (nothing consumed them; `packages/kobe/scripts/compile.ts` still builds one locally on demand). The same publish job also piggyback-publishes **`@sma1lboy/kobe-plugin-sdk`** whenever its (independently changeset-versioned) current version isn't on npm yet — the SDK has no tag of its own; an SDK-only release still rides the next Rove release.
+The push triggers `.github/workflows/release.yml`, which gates on **lint + typecheck + unit tests (fast + socket) + build**, waits on the same **behavior** suite `ci.yml`'s PR gate runs, publishes `@sma1lboy/rove`, then publishes the same files/version/bins as the `@sma1lboy/kobe` compatibility alias and extracts the new `CHANGELOG.md` section as the GitHub release body. Both publish steps are idempotent so a rerun can finish a partially published pair. npm is the sole distribution channel — standalone binaries were dropped 2026-08-02 (nothing consumed them; `packages/kobe/scripts/compile.ts` still builds one locally on demand). The same publish job also piggyback-publishes **`@sma1lboy/kobe-plugin-sdk`** whenever its (independently changeset-versioned) current version isn't on npm yet — the SDK has no tag of its own; an SDK-only release still rides the next Rove release.
 
 ## Style rule — no soft wraps inside bullets or paragraphs
 
@@ -72,4 +72,4 @@ Worktrees are never part of a reset — the gate's cost to the user is daemon/se
 
 ## Prereleases
 
-A prerelease tag (`v0.7.0-experimental.0`) publishes to an npm dist-tag named after the prerelease identifier (`experimental`), so `latest` stays on the stable line while testers opt in with `npm i @sma1lboy/kobe@experimental`. Use Changesets' [prerelease mode](https://github.com/changesets/changesets/blob/main/docs/prereleases.md) (`changeset pre enter experimental` … `changeset pre exit`) to generate those versions.
+A prerelease tag (`v0.7.0-experimental.0`) publishes to an npm dist-tag named after the prerelease identifier (`experimental`), so `latest` stays on the stable line while testers opt in with `npm i @sma1lboy/rove@experimental`. The matching `@sma1lboy/kobe@experimental` alias is published in lockstep. Use Changesets' [prerelease mode](https://github.com/changesets/changesets/blob/main/docs/prereleases.md) (`changeset pre enter experimental` … `changeset pre exit`) to generate those versions.

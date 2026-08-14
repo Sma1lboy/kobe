@@ -201,7 +201,7 @@ bun run typecheck
 bun run build
 # node-pty is optional locally (the suite self-skips without it); on CI it is
 # present and this is the same command the release pipeline runs.
-bun run --filter @sma1lboy/kobe test:behavior
+bun run --filter @sma1lboy/rove test:behavior
 
 # ── consume changesets → bump version + write CHANGELOG ───────────────────────
 bun x changeset version
@@ -264,7 +264,8 @@ echo "✓  Committed $NEW_VERSION — the tag comes only after CI validates this
 echo ""
 echo "Ready to push the release commit → wait for its CI (ubuntu+macos) →"
 echo "then tag $TAG, which triggers:"
-echo "  • npm publish @sma1lboy/kobe@$NEW_VERSION"
+echo "  • npm publish @sma1lboy/rove@$NEW_VERSION"
+echo "  • compatibility publish @sma1lboy/kobe@$NEW_VERSION"
 echo "  • GitHub release with the notes above"
 echo ""
 read -rp "Push now? [y/N] " REPLY

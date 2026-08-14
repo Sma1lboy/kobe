@@ -39,7 +39,7 @@ import {
  * version-check chip so contributors don't see "↑ vX.Y.Z available"
  * every time they `bun run dev` against an older `package.json` than
  * what's published. Intentionally opt-in: the production CLI path
- * never sets it, so `npm i -g @sma1lboy/kobe` users always get the
+ * never sets it, so `npm i -g @sma1lboy/rove` users always get the
  * notification.
  */
 export function isDev(): boolean {

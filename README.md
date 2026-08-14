@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/@sma1lboy/kobe"><img src="https://img.shields.io/npm/v/%40sma1lboy%2Fkobe?style=flat-square&label=npm&color=c96442" alt="npm version" /></a>
+  <a href="https://www.npmjs.com/package/@sma1lboy/rove"><img src="https://img.shields.io/npm/v/%40sma1lboy%2Frove?style=flat-square&label=npm&color=c96442" alt="npm version" /></a>
   <a href="https://github.com/Sma1lboy/kobe/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/Sma1lboy/kobe/ci.yml?branch=main&style=flat-square" alt="build" /></a>
   <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="MIT license" /></a>
 </p>
@@ -50,10 +50,10 @@ Terminal multiplexers let one terminal hold many shells that survive you. Rove d
 Requires [Bun](https://bun.sh) ≥ 1.3.11, git, and at least one engine CLI on `PATH`. macOS, Linux, and Windows.
 
 ```bash
-bun install -g @sma1lboy/kobe
+bun install -g @sma1lboy/rove
 
 # or try it without installing
-bunx @sma1lboy/kobe
+bunx @sma1lboy/rove
 ```
 
 The global package installs both `rove` and `kobe`. `rove` is the canonical
@@ -149,7 +149,7 @@ Tools like Conductor and orca wrap parallel agents in an Electron desktop app. R
 |---|---|---|
 | Runs where your code lives | ✅ any box you can SSH into | local app reaching out remotely |
 | Survives disconnect | ✅ daemon + PTY host on the host machine | depends on the app staying open |
-| Install | `bunx @sma1lboy/kobe` — zero-install trial | download a desktop app |
+| Install | `bunx @sma1lboy/rove` — zero-install trial | download a desktop app |
 | Agent-to-agent orchestration | ✅ `rove api` + companion skill | varies |
 | UI | terminal (TUI) + optional local web dashboard | Electron |
 

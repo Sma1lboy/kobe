@@ -46,7 +46,7 @@ flowchart LR
   WebSocket-attached PTY keyed by a client tab id, kept alive across reconnects
   with a bounded scrollback ring.
 
-The default `@sma1lboy/kobe` package bundles these web assets under
+The canonical `@sma1lboy/rove` package bundles these web assets under
 `dist/web-ui`. `kobe web`
 ([`packages/kobe/src/cli/web-cmd.ts`](../../packages/kobe/src/cli/web-cmd.ts))
 ensures the daemon web transport is available, serves the built SPA from

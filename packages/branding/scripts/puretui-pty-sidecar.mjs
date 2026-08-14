@@ -270,7 +270,7 @@ export function createSidecarController(dependencies) {
     // session embed `kobeCliInvocation()`, which resolves to a bare `kobe`
     // only from a `.js` entry — run from source it bakes the capture host's
     // absolute bun + repo paths into the recording, showing viewers a command
-    // no installed user ever sees. Run `bun --filter @sma1lboy/kobe build`
+    // no installed user ever sees. Run `bun --filter @sma1lboy/rove build`
     // before capturing; source is the fallback so tests still drive it.
     const builtCli = join(kobeDir, "dist", "cli", "kobe.js")
     const cliArgs = existsSync(builtCli) ? [builtCli] : ["--conditions=browser", join(kobeDir, "src", "cli", "kobe.ts")]

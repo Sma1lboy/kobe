@@ -9,8 +9,8 @@
 # `latest` dist-tag and a normal GitHub release; a prerelease tag
 # publishes to a dist-tag named after the prerelease identifier (the
 # `experimental` in `0.6.1-experimental.0`) and marks the GitHub release
-# as a prerelease — so `npm i @sma1lboy/kobe` keeps getting the stable
-# line while testers opt in with `npm i @sma1lboy/kobe@experimental`.
+# as a prerelease — so `npm i @sma1lboy/rove` keeps getting the stable
+# line while testers opt in with `npm i @sma1lboy/rove@experimental`.
 #
 # One job family after the tag lands:
 #
@@ -62,11 +62,11 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Build (kobe package)
+      - name: Build (Rove package)
         run: bun run build
 
-      - name: Behavior tests (kobe package)
-        run: bun run --filter @sma1lboy/kobe test:behavior
+      - name: Behavior tests (Rove package)
+        run: bun run --filter @sma1lboy/rove test:behavior
 
   render-track:
     # Match the required PR render track: real OpenTUI components need Bun's
@@ -228,18 +228,23 @@ jobs:
         env:
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
-      - name: Publish to npm
-        # Workspaces hoist deps to root; `npm publish` still runs
-        # against the package's own dir.
+      - name: Publish canonical @sma1lboy/rove package
+        # Workspaces hoist deps to root; publish from the package directory.
+        # The version check makes a rerun continue to the compatibility alias
+        # after a partial release instead of failing on an existing version.
         working-directory: packages/kobe
-        run: npm publish --access public --provenance --tag "${{ steps.channel.outputs.dist_tag }}"
+        run: |
+          V=$(node -p "require('./package.json').version")
+          if npm view "@sma1lboy/rove@$V" version >/dev/null 2>&1; then
+            echo "@sma1lboy/rove@$V already on npm — skipping"
+          else
+            npm publish --access public --provenance --tag "${{ steps.channel.outputs.dist_tag }}"
+          fi
 
-      - name: Publish the same build as @sma1lboy/rove
-        # The product is Rove; `@sma1lboy/kobe` is the compatibility name
-        # ~10k installs/month already point at. So every release ships BOTH
-        # names from ONE build: same tarball, same version, same `kobe` +
-        # `rove` bins — only the `name` field differs. New users get
-        # `npm i -g @sma1lboy/rove`, existing ones keep updating in place.
+      - name: Publish compatibility alias @sma1lboy/kobe
+        # Existing installs still point at the old package name. Every release
+        # therefore ships BOTH names from ONE build: same files, version, and
+        # `kobe` + `rove` bins; only package.json#name differs.
         #
         # Publishing from a rewritten package.json rather than a second
         # package dir keeps them impossible to skew: there is one source of
@@ -249,15 +254,15 @@ jobs:
         working-directory: packages/kobe
         run: |
           V=$(node -p "require('./package.json').version")
-          if npm view "@sma1lboy/rove@$V" version >/dev/null 2>&1; then
-            echo "@sma1lboy/rove@$V already on npm — skipping"
+          if npm view "@sma1lboy/kobe@$V" version >/dev/null 2>&1; then
+            echo "@sma1lboy/kobe@$V already on npm — skipping"
             exit 0
           fi
           cp package.json package.json.bak
           node -e "
             const fs = require('fs')
             const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'))
-            pkg.name = '@sma1lboy/rove'
+            pkg.name = '@sma1lboy/kobe'
             fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n')
           "
           npm publish --access public --provenance --ignore-scripts --tag "${{ steps.channel.outputs.dist_tag }}"
@@ -265,7 +270,7 @@ jobs:
 
       - name: Publish plugin SDK (piggyback, idempotent)
         # The SDK versions independently via changesets but has no tag of
-        # its own: every kobe release checks whether the SDK's current
+        # its own: every Rove release checks whether the SDK's current
         # version is on npm and publishes it when it isn't. `prepublishOnly`
         # runs the SDK's typecheck + tsc build, so dist is always fresh.
         working-directory: packages/kobe-plugin-sdk
@@ -290,4 +295,3 @@ jobs:
           prerelease: ${{ steps.channel.outputs.prerelease }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-

@@ -12,8 +12,8 @@ surface.
 Needs Bun ≥ 1.3.11, git, and at least one engine CLI on `PATH`.
 
 ```bash
-bun install -g @sma1lboy/kobe   # install
-bunx @sma1lboy/kobe             # try without installing
+bun install -g @sma1lboy/rove   # install
+bunx @sma1lboy/rove             # try without installing
 ```
 
 The installed package exposes both `rove` and `kobe`. `rove` is the canonical
@@ -32,7 +32,7 @@ rove update dry-run    # print the command without running it
 
 rove updates using whichever package manager owns the `rove` on your `PATH`,
 so the new version can't land in a shadowed prefix. Manual fallback:
-`npm install -g @sma1lboy/kobe@latest`.
+`npm install -g @sma1lboy/rove@latest`.
 
 Some versions are marked breaking. Installing across one prints a heads-up,
 and the next launch asks you to run `rove reset` first. Worktrees are never

@@ -215,8 +215,8 @@ jobs:
       - name: Build (kobe package)
         run: bun run build
 
-      - name: Behavior tests (kobe package)
-        run: bun run --filter @sma1lboy/kobe test:behavior
+      - name: Behavior tests (Rove package)
+        run: bun run --filter @sma1lboy/rove test:behavior
 
   render-track:
     # OpenTUI's native renderer runs under Bun, not Vitest's Node worker.

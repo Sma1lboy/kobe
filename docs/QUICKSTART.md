@@ -9,10 +9,10 @@ You need [Bun](https://bun.sh) ≥ 1.3.11, git, and at least one engine CLI
 ## Install
 
 ```bash
-bun install -g @sma1lboy/kobe
+bun install -g @sma1lboy/rove
 
 # or try it without installing
-bunx @sma1lboy/kobe
+bunx @sma1lboy/rove
 ```
 
 ## Your first task
