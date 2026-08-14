@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.93
+
+### Patch Changes
+
+- db4acbd: Point new installs, package metadata, documentation, release links, and website GitHub data at the canonical `Sma1lboy/rove` repository. Existing `Sma1lboy/kobe` links continue to work through GitHub's redirect, while the Kobe CLI, packages, state, plugin repository, and deployed website domains remain compatible.
+
 ## 0.8.92
 
 ### Patch Changes

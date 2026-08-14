@@ -1,6 +1,6 @@
 {
   "name": "@sma1lboy/kobe-daemon",
-  "version": "0.7.13",
+  "version": "0.7.14",
   "description": "Daemon server, protocol, lifecycle, and socket client for Rove.",
   "type": "module",
   "private": true,

@@ -1,5 +1,12 @@
 # @sma1lboy/kobe-daemon
 
+## 0.7.14
+
+### Patch Changes
+
+- Updated dependencies [db4acbd]
+  - @sma1lboy/rove-plugin-sdk@0.1.3
+
 ## 0.7.13
 
 ### Patch Changes
