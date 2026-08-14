@@ -35,6 +35,19 @@ const MONTH_LADDER = ["*", "JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG
 // describe a schedule, and neither is reachable by stepping single days.
 const DOW_LADDER = ["*", "MON-FRI", "SAT,SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"]
 
+/** Cron weekday code → its plural English name, for the restatement. Spelled out
+ *  because mechanically appending "days" to the code mangles four of the seven
+ *  (TUE→"Tuedays", WED→"Weddays", THU→"Thudays", SAT→"Satdays"). */
+const DOW_PLURAL: Readonly<Record<string, string>> = {
+  MON: "Mondays",
+  TUE: "Tuesdays",
+  WED: "Wednesdays",
+  THU: "Thursdays",
+  FRI: "Fridays",
+  SAT: "Saturdays",
+  SUN: "Sundays",
+}
+
 function range(from: number, to: number): string[] {
   const out: string[] = []
   for (let n = from; n <= to; n++) out.push(String(n))
@@ -97,7 +110,8 @@ export function describeCron(expression: string): string | null {
   if (dow === "*") return `every day ${at}`
   if (dow === "MON-FRI") return `weekdays ${at}`
   if (dow === "SAT,SUN") return `weekends ${at}`
-  if (/^[A-Z]{3}$/.test(dow)) return `${dow.charAt(0)}${dow.slice(1).toLowerCase()}days ${at}`
+  const plural = DOW_PLURAL[dow.toUpperCase()]
+  if (plural) return `${plural} ${at}`
   return null
 }
 
