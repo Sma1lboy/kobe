@@ -1,13 +1,13 @@
 ---
 name: release
-description: Autonomously cut a kobe (`@sma1lboy/kobe`) release end-to-end — detect the semver bump from pending changesets (flagging an upstream `minor` you didn't intend), run the release gates, bump/tag/push via `scripts/release.sh`, then poll the GitHub Actions Release workflow with `gh` until npm publish completes, diagnosing CI failures (npm token, registry 404, lint, branch mismatch) instead of leaving them silent. Use when the user says "cut a release", "ship a version", "release kobe", "发版", "release.sh", or "bump the version". Never force-pushes; always verifies the release landed on `main`.
+description: Autonomously cut a Rove (`@sma1lboy/rove`) release end-to-end — detect the semver bump from pending changesets (flagging an upstream `minor` you didn't intend), run the release gates, bump/tag/push via `scripts/release.sh`, then poll the GitHub Actions Release workflow with `gh` until npm publish completes, diagnosing CI failures (npm token, registry 404, lint, branch mismatch) instead of leaving them silent. Use when the user says "cut a release", "ship a version", "release Rove", "release kobe", "发版", "release.sh", or "bump the version". Never force-pushes; always verifies the release landed on `main`.
 metadata:
   internal: true
 ---
 
-# Release kobe
+# Release Rove
 
-Autonomous release driver for `@sma1lboy/kobe`. This is the supervised loop the
+Autonomous release driver for `@sma1lboy/rove`. This is the supervised loop the
 manual flow in [`docs/RELEASING.md`](../../../docs/RELEASING.md) describes — read
 that doc once if anything here is ambiguous; it is the source of truth and this
 skill must never contradict it.
@@ -33,7 +33,7 @@ marked **⚠ ASK** below.
 - **Never force-push.** No `git push -f`, no `--force-with-lease`, no
   `git reset --hard` on a shared branch, no retag-over-existing. If a tag or push
   conflicts, stop and report — recovery is the user's call.
-- **Bump default is `patch`.** Per CLAUDE.md: pre-1.0 kobe ships features as
+- **Bump default is `patch`.** Per AGENTS.md: pre-1.0 Rove ships features as
   patches. A `minor`/`major` only happens when the user *explicitly* said so this
   turn, OR a pending changeset already carries that bump — and the second case is
   exactly the trap to flag (see Step 1).
@@ -58,7 +58,7 @@ gh auth status                            # gh must be authed for CI polling
 `scripts/release.sh` itself refuses a dirty tree (except the files it rewrites),
 but do this first so you fail fast with a clear message instead of mid-script.
 
-If `origin/main` is ahead of HEAD, **stop and surface** — kobe main moves fast
+If `origin/main` is ahead of HEAD, **stop and surface** — Rove main moves fast
 (often several releases/day); releasing from a stale base is how versions
 collide. Let the user decide whether to pull/rebase.
 
@@ -72,7 +72,7 @@ bun run changeset:status                  # shows pending changesets + resulting
 ls .changeset/*.md | grep -v README.md    # raw list
 # read each one — the first line frontmatter is the bump type:
 #   ---
-#   "@sma1lboy/kobe": minor      ← THIS is the bump that file forces
+#   "@sma1lboy/rove": minor      ← THIS is the bump that file forces
 #   ---
 ```
 
@@ -174,15 +174,22 @@ gh run watch <run-id> --exit-status                    # blocks until done; nonz
 # or poll:  gh run view <run-id> --json status,conclusion,jobs
 ```
 
-On success, verify the package actually landed (don't trust the green check alone):
+On success, verify the canonical package and its compatibility alias actually landed (don't trust the green check alone):
 
 ```bash
-npm view @sma1lboy/kobe@<new-version> version          # must echo the new version
+npm view @sma1lboy/rove@<new-version> version          # canonical package; must echo the new version
+npm view @sma1lboy/kobe@<new-version> version          # compatibility alias; must match
+# Every Rove release checks the SDK's current version and publishes either
+# missing package name, even without a new SDK changeset. Always verify both
+# names at the version recorded in packages/kobe-plugin-sdk/package.json:
+npm view @sma1lboy/rove-plugin-sdk@<sdk-version> version
+npm view @sma1lboy/kobe-plugin-sdk@<sdk-version> version
 gh release view v<new-version> --json name -q .name    # GitHub release exists
 ```
 
-Confirm: published version == tag == `packages/kobe/package.json`, release landed
-on `main` (`git log --oneline -1 origin/main` is the `chore: release` commit).
+Confirm: the canonical and compatibility names for both Rove and the SDK report
+their expected versions, the Rove version matches the tag and `packages/kobe/package.json`,
+and the release landed on `main` (`git log --oneline -1 origin/main` is the `chore: release` commit).
 Then report done with the version, the npm dist-tag it went to (`latest` for
 plain semver), and the release URL.
 

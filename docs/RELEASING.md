@@ -16,7 +16,7 @@ This prompts for the bump type (**patch** / **minor** / **major**) and a summary
 
 - The summary is the **user-facing changelog line** — write it in product voice, present tense ("Add X", "Fix Y", or a short narrative). It lands verbatim under the next release.
 - A pure tooling / docs / CI change that doesn't touch the published package needs **no** changeset. If you want to record "intentionally nothing to release", run `bun run changeset -- --empty`.
-- Bump type: `patch` for fixes, `minor` for features, `major` for breaking changes. Rove is pre-1.0, so breaking changes still go `minor` by convention unless we decide otherwise.
+- Bump type: default to `patch` for every change, including features and pre-1.0 breaking changes. Use `minor` or `major` only when the maintainer explicitly requests that bump for the change being released.
 
 ### 2. Cutting a release — automatic (default)
 

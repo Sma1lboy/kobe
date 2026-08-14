@@ -164,11 +164,55 @@ describe("Rove package distribution", () => {
   test("release-note skills target the canonical package and product", () => {
     const changelogSkill = read(".claude/skills/changelog-generator/SKILL.md")
     const recentReleaseSkill = read(".claude/skills/recent-release/SKILL.md")
+    const releasePageAssets = [
+      ".claude/skills/recent-release/assets/template.html",
+      ".claude/skills/recent-release/assets/example.html",
+    ]
 
     expect(changelogSkill).toContain('"@sma1lboy/rove": patch')
     expect(changelogSkill).not.toContain('"@sma1lboy/kobe":')
     expect(recentReleaseSkill).toContain("Recent Release Page (Rove)")
     expect(recentReleaseSkill).toContain("rove-release-notes-zh.html")
+
+    for (const path of releasePageAssets) {
+      const source = read(path)
+      expect(source, `${path} still brands generated pages as Kobe`).toContain("<title>Rove · 近期发版速览</title>")
+      expect(source, `${path} still advertises the compatibility package`).toContain(
+        '<span class="chip">包 <b>@sma1lboy/rove</b></span>',
+      )
+      expect(source, `${path} still prints the compatibility install command`).toContain(
+        '<span class="prompt">npm i -g @sma1lboy/rove&nbsp;&nbsp;·&nbsp;&nbsp;rove</span>',
+      )
+    }
+  })
+
+  test("release guidance verifies the canonical package before compatibility aliases", () => {
+    const releaseSkill = read(".claude/skills/release/SKILL.md")
+    const releasingDocs = read("docs/RELEASING.md")
+
+    expect(releaseSkill).toContain("# Release Rove")
+    expect(releaseSkill).toContain('"@sma1lboy/rove": minor')
+    expect(releaseSkill).not.toContain('"@sma1lboy/kobe": minor')
+    expect(releaseSkill.indexOf("npm view @sma1lboy/rove@<new-version>")).toBeLessThan(
+      releaseSkill.indexOf("npm view @sma1lboy/kobe@<new-version>"),
+    )
+    expect(releaseSkill).toContain("npm view @sma1lboy/rove-plugin-sdk@<sdk-version>")
+    expect(releaseSkill).toContain("npm view @sma1lboy/kobe-plugin-sdk@<sdk-version>")
+    expect(releaseSkill).toContain("Every Rove release checks the SDK's current version")
+    expect(releaseSkill).not.toContain("If this release carried an SDK changeset")
+    expect(releasingDocs).toContain("default to `patch` for every change")
+    expect(releasingDocs).toContain("only when the maintainer explicitly requests that bump")
+    expect(releasingDocs).not.toContain("`minor` for features")
+  })
+
+  test("contributor guidance uses Rove while naming retained compatibility paths explicitly", () => {
+    const contributing = read("CONTRIBUTING.md")
+
+    expect(contributing).toContain("# Contributing to Rove")
+    expect(contributing).toContain("`~/.rove` (production)")
+    expect(contributing).toContain("Won't touch your real `~/.rove` state")
+    expect(contributing).toContain("The `.kobe` runtime path remains a compatibility contract")
+    expect(contributing).toContain("Use `rove daemon restart`")
   })
 
   test("landing pages load their extracted static assets", () => {

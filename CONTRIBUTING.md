@@ -1,6 +1,6 @@
-# Contributing to kobe
+# Contributing to Rove
 
-Thanks for your interest in contributing! kobe is a local-first terminal UI for running many AI coding sessions at once — each task is a git worktree + hosted engine session + branch.
+Thanks for your interest in contributing! Rove is a local-first terminal UI for running many AI coding sessions at once — each task is a git worktree + hosted engine session + branch.
 
 This guide covers the mechanics of contributing. The design rationale lives in `docs/` — when this file and those docs disagree, the docs win.
 
@@ -42,7 +42,7 @@ Run package scripts from the root via `bun --filter @sma1lboy/rove <script>`, or
 
 ### Reference repos (optional but recommended)
 
-kobe deliberately borrows ideas from a set of reference projects cloned into `refs/` (gitignored). If you're touching engine adapters, stream rendering, or status/usage derivation, clone the relevant refs first — see the "Reference repos" section in [`AGENTS.md`](./AGENTS.md) for the list and what each one is for. **Never edit anything inside `refs/`** — it's read-only study material.
+Rove deliberately borrows ideas from a set of reference projects cloned into `refs/` (gitignored). If you're touching engine adapters, stream rendering, or status/usage derivation, clone the relevant refs first — see the "Reference repos" section in [`AGENTS.md`](./AGENTS.md) for the list and what each one is for. **Never edit anything inside `refs/`** — it's read-only study material.
 
 ## Development
 
@@ -50,12 +50,12 @@ Two dev flavours:
 
 | Script | Engine | State directory | Use when |
 |---|---|---|---|
-| `bun run dev` | Real `claude` / `codex` | `~/.kobe` (production) | Touching production-style state. |
-| `bun run dev:sandbox` | Real `claude` / `codex` | `packages/kobe/.dev-sandbox/home` (throwaway) | Day-to-day development. Won't touch your real `~/.kobe/tasks.json`. |
+| `bun run dev` | Real `claude` / `codex` | `~/.rove` (production) | Touching production-style state. |
+| `bun run dev:sandbox` | Real `claude` / `codex` | `packages/kobe/.dev-sandbox/home` (throwaway) | Day-to-day development. Won't touch your real `~/.rove` state. |
 
-The sandbox gets its own home, daemon, and PTY host, so it can coexist with a production kobe. After changing daemon, orchestrator, or engine code, run `bun run dev:sandbox:reset` so a long-lived sandbox process isn't still running old code.
+The sandbox gets its own home, daemon, and PTY host, so it can coexist with production Rove. After changing daemon, orchestrator, or engine code, run `bun run dev:sandbox:reset` so a long-lived sandbox process isn't still running old code.
 
-Debugging the daemon? Read `<KOBE_HOME>/.kobe/daemon.log` first — the daemon's stdout/stderr are redirected there, and errors are tagged by `[subsystem]`. Use `kobe daemon restart` to replace a stale daemon process.
+Debugging the daemon? Read `<KOBE_HOME>/.kobe/daemon.log` first — the daemon's stdout/stderr are redirected there, and errors are tagged by `[subsystem]`. The `.kobe` runtime path remains a compatibility contract. Use `rove daemon restart` to replace a stale daemon process.
 
 ## Checks — run before every PR
 
@@ -98,7 +98,7 @@ bun run changeset
 
 Commit the generated `.changeset/<name>.md` with your change. The summary is the user-facing changelog line — write it in product voice, present tense, as **one long line** (no soft wraps; GitHub renders single newlines as `<br>` in release bodies). Pure tooling/docs/CI changes need no changeset.
 
-Default the bump to `patch` — kobe is pre-1.0 and ships features as patches; a `minor` happens only when a maintainer explicitly calls for it. Full release mechanics are in [`docs/RELEASING.md`](./docs/RELEASING.md) (cutting releases is maintainer-only).
+Default the bump to `patch` — Rove is pre-1.0 and ships features as patches; a `minor` happens only when a maintainer explicitly calls for it. Full release mechanics are in [`docs/RELEASING.md`](./docs/RELEASING.md) (cutting releases is maintainer-only).
 
 ## Work tracking
 
