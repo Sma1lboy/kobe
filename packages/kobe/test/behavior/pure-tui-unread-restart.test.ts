@@ -83,7 +83,9 @@ describe.skipIf(!nodePty)("Pure TUI unread lamp across a restart (behavior)", ()
   beforeAll(async () => {
     env = await makeBehaviorEnv()
     repo = await makeScratchRepo(env)
-    const stateDir = join(env.home, ".config", "kobe")
+    // Even the legacy `kobe` entry reads and writes Rove's canonical state.
+    // The old path is migration input only, not a live mirror.
+    const stateDir = join(env.home, ".config", "rove")
     await mkdir(stateDir, { recursive: true })
     statePath = join(stateDir, "state.json")
     await writeFile(statePath, JSON.stringify({ onboarded: true }))
