@@ -29,6 +29,7 @@ import type { TranscriptActivityPayload } from "@sma1lboy/kobe-daemon/daemon/pro
 import {
   TranscriptActivityCollector,
   type TranscriptActivityEntry,
+  makeTranscriptActivityRunner,
   runTranscriptActivity,
   sameTranscriptActivityEntry,
   trackedWorktrees,
@@ -359,5 +360,57 @@ describe("runTranscriptActivity — single codex tree walk", () => {
     // AFTER the fix: exactly ONE day-dir readdir, and half the stats.
     expect(newSide.counts.treeReaddir).toBe(1)
     expect(newSide.counts.stat).toBe(oldSide.counts.stat / 2)
+  })
+})
+
+/**
+ * The markerless-vendor fallback the production collector wires from the daemon
+ * runtime — previously untested, because every collector test injects its own
+ * `run` and the direct `runTranscriptActivity` test only exercises codex (a
+ * marker vendor). A vendor whose detector reads no completion store
+ * (copilot/custom → `UnknownTurnDetector`) yields no mtime; the injected
+ * `latestTranscriptMtime` reader carries it, and the reader-less default reports
+ * `mtimeMs: 0` rather than pretending to reach a store it has no runtime for.
+ */
+describe("makeTranscriptActivityRunner — markerless fallback", () => {
+  const WT = "/wt"
+  const signal = new AbortController().signal
+  // A vendor WITHOUT completion markers (copilot/custom): the detector reads no
+  // store, so it surfaces no marker and mtime 0.
+  const markerless = {
+    latestActivity: async () => ({ marker: null, mtimeMs: 0 }),
+    supportsCompletionMarkers: () => false,
+  }
+  // A vendor WITH markers: the detector reports its own newest mtime + marker.
+  const withMarkers = {
+    latestActivity: async () => ({ marker: { id: "m1", timestampMs: 42 }, mtimeMs: 100 }),
+    supportsCompletionMarkers: () => true,
+  }
+
+  test("a markerless vendor falls back to the injected latestTranscriptMtime", async () => {
+    const seen: Array<[VendorId, string]> = []
+    const run = makeTranscriptActivityRunner(async (vendor, path) => {
+      seen.push([vendor, path])
+      return 777
+    })
+    const got = await run(WT, "copilot", markerless, signal)
+    expect(got).toEqual({ mtimeMs: 777, completionId: null, completionAt: 0 })
+    expect(seen).toEqual([["copilot", WT]])
+  })
+
+  test("the reader-less default reports mtime 0 for a markerless vendor", async () => {
+    const got = await runTranscriptActivity(WT, "copilot", markerless, signal)
+    expect(got).toEqual({ mtimeMs: 0, completionId: null, completionAt: 0 })
+  })
+
+  test("a marker vendor keeps the detector's mtime and never calls the fallback reader", async () => {
+    let called = false
+    const run = makeTranscriptActivityRunner(async () => {
+      called = true
+      return 999
+    })
+    const got = await run(WT, "claude", withMarkers, signal)
+    expect(got).toEqual({ mtimeMs: 100, completionId: "m1", completionAt: 42 })
+    expect(called).toBe(false)
   })
 })

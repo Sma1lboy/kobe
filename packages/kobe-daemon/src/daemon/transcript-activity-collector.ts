@@ -135,31 +135,44 @@ export type TranscriptActivityRunner = (
   signal: AbortSignal,
 ) => Promise<TranscriptActivityEntry>
 
+/** Reads the newest transcript mtime for a markerless vendor's own store. */
+export type LatestTranscriptMtime = (vendor: VendorId, worktreePath: string) => Promise<number>
+
 /**
- * The real probe: the engine-owned latest completion marker AND the newest
- * transcript mtime — from ONE directory scan via `detector.latestActivity`.
- * Before this the probe made TWO independent walks of the same transcript
- * dir per tick (`latestTranscriptMtime` then `latestCompletion`), each doing
- * its own readdir (+ stats / a codex date-tree walk). The detector already
- * stats the newest file while finding the completion, so it surfaces that
- * mtime for free — one listing per probe.
+ * Build the probe: the engine-owned latest completion marker AND the newest
+ * transcript mtime, from ONE directory scan via `detector.latestActivity`.
+ * Before this the probe made TWO independent walks of the same transcript dir
+ * per tick (`latestTranscriptMtime` then `latestCompletion`), each doing its
+ * own readdir (+ stats / a codex date-tree walk). The detector already stats
+ * the newest file while finding the completion, so it surfaces that mtime for
+ * free — one listing per probe.
  *
  * Vendors whose detector can't read a transcript store (copilot/custom →
- * `UnknownTurnDetector`) yield no mtime, so we fall back to the vendor's own
- * `latestTranscriptMtime` for them (copilot has a real store the detector
- * doesn't read) — a SINGLE walk, exactly as before for those vendors.
- * Best-effort and FILESYSTEM-only — no tmux, no subprocess.
+ * `UnknownTurnDetector`) yield no mtime. When a `latestTranscriptMtime` reader
+ * is supplied — the production probe, wired from the daemon runtime — the probe
+ * falls back to it for those vendors (copilot has a real store the detector
+ * doesn't read), a SINGLE walk exactly as before. Without a reader (the default
+ * {@link runTranscriptActivity}, which has no runtime to reach that store) a
+ * markerless vendor reports `mtimeMs: 0`. Best-effort and FILESYSTEM-only —
+ * no tmux, no subprocess.
  */
-export async function runTranscriptActivity(
-  worktreePath: string,
-  vendor: VendorId,
-  detector: EngineTurnDetector,
-  _signal: AbortSignal,
-): Promise<TranscriptActivityEntry> {
-  const { marker, mtimeMs } = await detector.latestActivity(worktreePath)
-  const resolvedMtime = detector.supportsCompletionMarkers() ? mtimeMs : 0
-  return { mtimeMs: resolvedMtime, completionId: marker?.id ?? null, completionAt: marker?.timestampMs ?? 0 }
+export function makeTranscriptActivityRunner(latestTranscriptMtime?: LatestTranscriptMtime): TranscriptActivityRunner {
+  return async (worktreePath, vendor, detector) => {
+    const { marker, mtimeMs } = await detector.latestActivity(worktreePath)
+    const resolvedMtime = detector.supportsCompletionMarkers()
+      ? mtimeMs
+      : ((await latestTranscriptMtime?.(vendor, worktreePath)) ?? 0)
+    return { mtimeMs: resolvedMtime, completionId: marker?.id ?? null, completionAt: marker?.timestampMs ?? 0 }
+  }
 }
+
+/**
+ * The default probe: no markerless fallback, so a markerless vendor reports
+ * `mtimeMs: 0`. The collector uses this whenever no `run` is injected; the
+ * production {@link startTranscriptActivityCollector} injects the
+ * runtime-aware variant instead.
+ */
+export const runTranscriptActivity: TranscriptActivityRunner = makeTranscriptActivityRunner()
 
 /**
  * The worktree → vendor map the collector tracks: non-archived tasks with a
@@ -337,14 +350,7 @@ export function startTranscriptActivityCollector(
     hasSubscribers,
     createDetector: runtime.createEngineTurnDetector,
     defaultVendor: runtime.defaultTaskVendor,
-    run: async (path, vendor, detector, signal) => {
-      const { marker, mtimeMs } = await detector.latestActivity(path)
-      const resolvedMtime = detector.supportsCompletionMarkers()
-        ? mtimeMs
-        : await runtime.latestTranscriptMtime(vendor, path)
-      void signal
-      return { mtimeMs: resolvedMtime, completionId: marker?.id ?? null, completionAt: marker?.timestampMs ?? 0 }
-    },
+    run: makeTranscriptActivityRunner((vendor, path) => runtime.latestTranscriptMtime(vendor, path)),
   })
   collector.tick()
   const timer = setInterval(() => collector.tick(), tickMs)
