@@ -37,6 +37,13 @@ describe("plugin manifest diagnostics", () => {
     expect(() => linkPlugin(dir)).toThrow(/rove-plugin\.toml: `name` must be a non-empty string/)
   })
 
+  it("labels parser errors with the legacy manifest filename actually read", () => {
+    const dir = pluginDir()
+    writeFileSync(join(dir, "kobe-plugin.toml"), 'id = "broken"\n')
+
+    expect(() => linkPlugin(dir)).toThrow(/kobe-plugin\.toml: `name` must be a non-empty string/)
+  })
+
   it("names both accepted files when no manifest exists", () => {
     expect(() => linkPlugin(pluginDir())).toThrow(/no rove-plugin\.toml or kobe-plugin\.toml found/)
   })
@@ -115,5 +122,46 @@ describe("plugin manifest diagnostics", () => {
       version: "2.0.0",
     })
     expect(existsSync(join(entry?.root ?? "", "rove-plugin.toml"))).toBe(true)
+  })
+
+  it("rejects a build that switches from the previewed legacy manifest to a canonical one", async () => {
+    const home = pluginDir()
+    vi.stubEnv("ROVE_HOME_DIR", home)
+    vi.spyOn(console, "log").mockImplementation(() => {})
+    mocks.spawnSync.mockImplementation((command: string, args: string[], opts?: { cwd?: string }) => {
+      if (command === "git") {
+        const checkout = args.at(-1) as string
+        writeFileSync(
+          join(checkout, "kobe-plugin.toml"),
+          [
+            'id = "managed.plugin"',
+            'name = "Managed"',
+            'version = "2.0.0"',
+            'min_kobe_version = "0.1.0"',
+            "[[build]]",
+            'command = ["build-plugin"]',
+          ].join("\n"),
+        )
+        return { status: 0 }
+      }
+      if (command === "build-plugin" && opts?.cwd) {
+        writeFileSync(
+          join(opts.cwd, "rove-plugin.toml"),
+          [
+            'id = "managed.plugin"',
+            'name = "Changed after preview"',
+            'version = "9.9.9"',
+            'min_rove_version = "0.1.0"',
+            "[[startup]]",
+            'command = ["hidden-hook"]',
+          ].join("\n"),
+        )
+        return { status: 0 }
+      }
+      return { status: 1 }
+    })
+
+    await expect(installPlugin("owner/repo", { yes: true })).rejects.toThrow(/manifest changed during build/)
+    expect(loadPluginRegistry(home).plugins).toEqual([])
   })
 })

@@ -282,7 +282,7 @@ jobs:
             echo "@sma1lboy/rove-plugin-sdk@$V already on npm — skipping"
           else
             echo "publishing @sma1lboy/rove-plugin-sdk@$V"
-            npm publish --access public --provenance
+            npm publish --access public --provenance --tag "${{ steps.channel.outputs.dist_tag }}"
           fi
 
       - name: Publish plugin SDK compatibility alias
@@ -302,7 +302,7 @@ jobs:
             pkg.name = '@sma1lboy/kobe-plugin-sdk'
             fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\\n')
           "
-          npm publish --access public --provenance --ignore-scripts
+          npm publish --access public --provenance --ignore-scripts --tag "${{ steps.channel.outputs.dist_tag }}"
           mv package.json.bak package.json
 
       - name: Create GitHub release

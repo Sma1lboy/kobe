@@ -66,12 +66,22 @@ describe("Rove package distribution", () => {
     const workflow = read(".github/workflows/release.yml")
     const canonicalStep = workflow.indexOf("Publish canonical plugin SDK")
     const compatibilityStep = workflow.indexOf("Publish plugin SDK compatibility alias")
+    const releaseStep = workflow.indexOf("Create GitHub release")
 
     expect(canonicalStep).toBeGreaterThanOrEqual(0)
     expect(compatibilityStep).toBeGreaterThan(canonicalStep)
+    expect(releaseStep).toBeGreaterThan(compatibilityStep)
     expect(workflow).toContain('npm view "@sma1lboy/rove-plugin-sdk@$V"')
     expect(workflow).toContain("pkg.name = '@sma1lboy/kobe-plugin-sdk'")
-    expect(workflow.slice(canonicalStep, compatibilityStep)).toContain("bun run build")
+    const canonicalPublish = workflow.slice(canonicalStep, compatibilityStep)
+    const compatibilityPublish = workflow.slice(compatibilityStep, releaseStep)
+    expect(canonicalPublish).toContain("bun run build")
+    expect(canonicalPublish).toContain(
+      'npm publish --access public --provenance --tag "${{ steps.channel.outputs.dist_tag }}"',
+    )
+    expect(compatibilityPublish).toContain(
+      'npm publish --access public --provenance --ignore-scripts --tag "${{ steps.channel.outputs.dist_tag }}"',
+    )
   })
 
   test("pending changesets version the canonical package", () => {

@@ -10,7 +10,7 @@
  */
 
 import { existsSync, readFileSync } from "node:fs"
-import { join } from "node:path"
+import { basename, join } from "node:path"
 import { PLUGIN_EVENT_NAMES, type PluginEventName } from "@sma1lboy/rove-plugin-sdk/contract"
 import { parse as parseToml } from "smol-toml"
 
@@ -113,7 +113,7 @@ export function pluginManifestPath(root: string): string | null {
 export function readPluginManifest(root: string): ParsedPluginManifest {
   const path = pluginManifestPath(root)
   if (!path) throw new ManifestError(`no ${PLUGIN_MANIFEST_FILENAMES.join(" or ")} found at ${root}`)
-  return parsePluginManifest(readFileSync(path, "utf8"))
+  return parsePluginManifest(readFileSync(path, "utf8"), basename(path))
 }
 
 /** ASCII letters, digits, dot, colon, underscore, hyphen — same as herdr. */
@@ -150,6 +150,20 @@ function fail(message: string): never {
   throw new ManifestError(`rove-plugin.toml: ${message}`)
 }
 
+/** Parse manifest text while preserving the source filename in diagnostics.
+ * Direct callers default to the canonical filename; file readers pass the
+ * actual basename so legacy manifests remain debuggable. */
+export function parsePluginManifest(text: string, filename: string = PLUGIN_MANIFEST_FILENAME): ParsedPluginManifest {
+  try {
+    return parseCanonicalPluginManifest(text)
+  } catch (err) {
+    if (filename !== PLUGIN_MANIFEST_FILENAME && err instanceof ManifestError) {
+      throw new ManifestError(err.message.replace(/^rove-plugin\.toml:/, `${filename}:`))
+    }
+    throw err
+  }
+}
+
 function asString(value: unknown, field: string): string {
   if (typeof value !== "string" || value.length === 0) fail(`\`${field}\` must be a non-empty string`)
   return value
@@ -182,7 +196,7 @@ function asTableArray(value: unknown, field: string): Record<string, unknown>[] 
  * Parse + validate manifest text. Throws with a `rove-plugin.toml:`-prefixed
  * message on a fatal problem; collects non-fatal issues into `warnings`.
  */
-export function parsePluginManifest(text: string): ParsedPluginManifest {
+function parseCanonicalPluginManifest(text: string): ParsedPluginManifest {
   let raw: Record<string, unknown>
   try {
     raw = parseToml(text)
