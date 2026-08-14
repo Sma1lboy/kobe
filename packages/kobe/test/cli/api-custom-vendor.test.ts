@@ -11,6 +11,12 @@
  * Two gates had to agree, and both are pinned here: the spec pre-validator
  * (`validateAgainstSpec`, which runs before any handler) and the accessor
  * (`VerbArgs.vendor`).
+ *
+ * The third gate is DISCOVERY: accepting a custom id at runtime is worthless
+ * when `schema` / `--help` still list only the built-ins — an agent reading
+ * the surface never learns the engine exists. The render layer
+ * (`displayValues` in schema.ts) appends the registered ids at render time;
+ * that visibility is pinned here too.
  */
 
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
@@ -18,6 +24,9 @@ import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { invokeVerb } from "../../src/cli/api-cmd.ts"
+import { verbHelp, verbSchema } from "../../src/cli/api/schema.ts"
+import { findVerb } from "../../src/cli/api/verbs.ts"
+import { ALL_VENDORS } from "../../src/types/vendor.ts"
 import { FakeClient, expectApiError, stubRuntime, taskFixture } from "./api-handler-fixtures.ts"
 
 let home: string
@@ -85,5 +94,30 @@ describe("other verbs reading --vendor", () => {
     const client = new FakeClient({ "task.create": () => ({ taskId: "t9", task: taskFixture({ id: "t9" }) }) })
     await invokeVerb("add", ["--repo", "/repo/x", "--vendor", "pi"], { client, runtime })
     expect((client.requests[0]?.payload as { vendor: string }).vendor).toBe("pi")
+  })
+})
+
+describe("schema / --help discovery", () => {
+  function vendorValues(detail: unknown): string[] {
+    const flags = (detail as { flags: { name: string; values?: string[] }[] }).flags
+    return flags.find((f) => f.name === "vendor")?.values ?? []
+  }
+
+  it("verbSchema lists registered custom engines in --vendor values", () => {
+    writeState({ customEngineIds: ["claudecpa"] })
+    const detail = verbSchema(findVerb("set-vendor")!)
+    expect(vendorValues(detail)).toContain("claudecpa")
+    expect(vendorValues(detail)).toContain("claude")
+  })
+
+  it("--help text shows the custom engine in the enum brace list", () => {
+    writeState({ customEngineIds: ["claudecpa"] })
+    expect(verbHelp(findVerb("add")!)).toMatch(/--vendor \{[^}]*\bclaudecpa\b[^}]*\}/)
+  })
+
+  it("lists only built-ins when no custom engine is registered", () => {
+    writeState({})
+    const detail = verbSchema(findVerb("set-vendor")!)
+    expect(vendorValues(detail)).toEqual([...ALL_VENDORS])
   })
 })

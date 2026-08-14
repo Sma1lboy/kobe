@@ -72,7 +72,9 @@ be given bare (`--force` ⇒ true) or explicitly (`--archived=false`);
 `--task-id` / enum / positive-int values are validated against the verb's
 spec, and unknown flags are rejected (exit 2). `--repo` resolves relative
 paths against `$PWD` (`~` expanded). Engine vendors: `claude`, `codex`,
-`copilot`, `kimi`. `spawn-task` is an alias of `add`.
+`copilot`, `kimi`, plus any user-registered custom engine id — the `schema`
+and `--help` output for `--vendor` lists those too. `spawn-task` is an
+alias of `add`.
 
 ## Discovery
 
