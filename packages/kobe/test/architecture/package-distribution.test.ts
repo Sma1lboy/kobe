@@ -198,6 +198,8 @@ describe("Rove package distribution", () => {
     )
     expect(releaseSkill).toContain("npm view @sma1lboy/rove-plugin-sdk@<sdk-version>")
     expect(releaseSkill).toContain("npm view @sma1lboy/kobe-plugin-sdk@<sdk-version>")
+    expect(releaseSkill).toContain("Every Rove release checks the SDK's current version")
+    expect(releaseSkill).not.toContain("If this release carried an SDK changeset")
     expect(releasingDocs).toContain("default to `patch` for every change")
     expect(releasingDocs).toContain("only when the maintainer explicitly requests that bump")
     expect(releasingDocs).not.toContain("`minor` for features")
@@ -215,11 +217,18 @@ describe("Rove package distribution", () => {
 
   test("the production landing workflow applies Vercel's configured root directory once", () => {
     const workflow = read(".github/workflows/deploy-landing.yml")
+    const landing = json<{ scripts: Record<string, string> }>("packages/kobe-landing/package.json")
+    const readme = read("packages/kobe-landing/README.md")
 
-    expect(workflow).not.toContain("working-directory: packages/kobe-landing")
+    expect(workflow).not.toMatch(/working-directory:\s*packages\/kobe-landing/)
     expect(workflow).toContain('run: vercel pull --yes --environment=production --token="$VERCEL_TOKEN"')
     expect(workflow).toContain('run: vercel build --prod --token="$VERCEL_TOKEN"')
     expect(workflow).toContain('run: vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"')
+    expect(landing.scripts.deploy).toBe("vercel --cwd ../.. --prod")
+    expect(landing.scripts["deploy:preview"]).toBe("vercel --cwd ../..")
+    expect(readme).toContain("so Vercel starts at the monorepo root")
+    expect(readme).toContain('ignoreCommand: "git diff --quiet HEAD^ HEAD -- ."')
+    expect(readme).not.toContain('ignoreCommand: "exit 1"')
   })
 
   test("landing pages load their extracted static assets", () => {

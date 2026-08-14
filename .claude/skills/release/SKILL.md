@@ -179,15 +179,17 @@ On success, verify the canonical package and its compatibility alias actually la
 ```bash
 npm view @sma1lboy/rove@<new-version> version          # canonical package; must echo the new version
 npm view @sma1lboy/kobe@<new-version> version          # compatibility alias; must match
-# If this release carried an SDK changeset, verify both SDK names at the
-# version now recorded in packages/kobe-plugin-sdk/package.json:
+# Every Rove release checks the SDK's current version and publishes either
+# missing package name, even without a new SDK changeset. Always verify both
+# names at the version recorded in packages/kobe-plugin-sdk/package.json:
 npm view @sma1lboy/rove-plugin-sdk@<sdk-version> version
 npm view @sma1lboy/kobe-plugin-sdk@<sdk-version> version
 gh release view v<new-version> --json name -q .name    # GitHub release exists
 ```
 
-Confirm: both package names report the same published version == tag == `packages/kobe/package.json`, release landed
-on `main` (`git log --oneline -1 origin/main` is the `chore: release` commit).
+Confirm: the canonical and compatibility names for both Rove and the SDK report
+their expected versions, the Rove version matches the tag and `packages/kobe/package.json`,
+and the release landed on `main` (`git log --oneline -1 origin/main` is the `chore: release` commit).
 Then report done with the version, the npm dist-tag it went to (`latest` for
 plain semver), and the release URL.
 

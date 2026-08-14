@@ -7,7 +7,7 @@
   "type": "module",
   "scripts": {
     "dev": "python3 -m http.server 4321",
-    "deploy": "vercel deploy --prod",
-    "deploy:preview": "vercel deploy"
+    "deploy": "vercel --cwd ../.. --prod",
+    "deploy:preview": "vercel --cwd ../.."
   }
 }
