@@ -93,7 +93,7 @@ h1{font-family:var(--font-display);font-optical-sizing:auto;font-size:clamp(44px
 .rise{opacity:0;transform:translateY(20px);animation:rise .85s var(--ease-out) forwards}
 @keyframes rise{to{opacity:1;transform:none}}
 
-/* quicklook animation — floats over the hero fade */
+/* quicklook video — floats over the hero fade */
 .quicklook{position:relative;z-index:2;max-width:980px;margin:54px auto 0;padding:0 20px}
 .ql-frame{border-radius:var(--radius-lg);overflow:hidden;background:var(--well);box-shadow:0 40px 90px oklch(35% 0.04 60/.3);border:1px solid oklch(32% 0.024 50)}
 .tbar{display:flex;align-items:center;gap:8px;padding:11px 18px;background:linear-gradient(180deg,oklch(30% 0.022 50),var(--well-2));font-family:var(--font-mono);font-size:11px;color:oklch(68% 0.035 60);border-bottom:1px solid oklch(19% 0.018 50);box-shadow:inset 0 1px 0 oklch(90% 0.04 70/.08)}
@@ -102,6 +102,7 @@ h1{font-family:var(--font-display);font-optical-sizing:auto;font-size:clamp(44px
 .tbar i.y{background:oklch(78% 0.13 85)}
 .tbar i.g{background:oklch(72% 0.14 145)}
 .tbar span{margin-left:8px;letter-spacing:.04em}
+.ql-frame video{display:block;width:100%;aspect-ratio:1280/800;background:var(--well)}
 .ql-frame img{display:block;width:100%}
 .equation{display:flex;justify-content:center;margin-top:26px}
 .equation-inner{display:inline-flex;align-items:center;gap:9px;flex-wrap:wrap;justify-content:center;font-family:var(--font-mono);font-size:12.5px;color:var(--muted);background:oklch(100% 0 0/.55);border:1px solid oklch(100% 0 0/.85);backdrop-filter:blur(12px);border-radius:999px;padding:8px 10px 8px 18px;box-shadow:0 10px 30px oklch(40% 0.04 60/.12)}
@@ -207,7 +208,9 @@ h1{font-family:var(--font-display);font-optical-sizing:auto;font-size:clamp(44px
   <div class="quicklook rise" style="animation-delay:.7s">
     <figure class="ql-frame">
       <div class="tbar" aria-hidden="true"><i class="r"></i><i class="y"></i><i class="g"></i><span>Rove — quick look</span></div>
-      <img src="assets/task-streams.gif" fetchpriority="high" alt="Rove quick look — three isolated coding tasks progressing in parallel">
+      <video src="assets/demo.mp4" poster="assets/demo-poster.png" autoplay muted loop playsinline preload="metadata" fetchpriority="high" aria-label="Rove quick look — two coding tasks running at once, each on its own worktree and branch, reviewed and landed from the terminal">
+        <img src="assets/demo-poster.png" alt="Rove quick look — two coding tasks running at once, each on its own worktree and branch">
+      </video>
     </figure>
     <div class="equation">
       <div class="equation-inner">
