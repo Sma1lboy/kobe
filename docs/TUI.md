@@ -155,6 +155,9 @@ no in-page editing — recreate the routine, or use `rove api routine-update`
 (which also sets prechecks; see [rove api](API.md)). An enabled routine keeps
 the daemon alive so schedules fire with no TUI attached.
 
+Walked through end to end, with the page pictured and the cron and precheck
+rules spelled out: [Routines](ROUTINES.md).
+
 ### GitHub Issues (`ctrl+a` `3`)
 
 A read-only view of the repo's GitHub issues, fetched through the `gh` CLI —

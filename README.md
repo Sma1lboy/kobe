@@ -90,7 +90,7 @@ Full documentation: **[docs.kobe.sma1lboy.me](https://docs.kobe.sma1lboy.me)** �
   <img src="docs/assets/narrow-sidebar.png" alt="Narrow mode — the task list filling a phone-width SSH session" />
 </p>
 
-**Work that runs without you.** Routines are daemon-owned cron prompts: every firing creates a fresh task — worktree, branch, engine session — with the prompt as its first message. A `--precheck` command skips the run when nothing changed, so a nightly schedule doesn't burn a turn on an idle repo. An enabled routine keeps the daemon alive with no TUI attached.
+**Work that runs without you.** Routines are daemon-owned cron prompts: every firing creates a fresh task — worktree, branch, engine session — with the prompt as its first message. A `--precheck` command skips the run when nothing changed, so a nightly schedule doesn't burn a turn on an idle repo. An enabled routine keeps the daemon alive with no TUI attached. Walkthrough: [Routines](docs/ROUTINES.md).
 
 <p align="center">
   <img src="docs/assets/routines.png" alt="The Routines page — scheduled prompts with their cron expressions and next runs" />

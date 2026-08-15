@@ -245,7 +245,8 @@ Scheduled agent tasks (Routines): a cron rule + a prompt + a repo. Every firing 
 **fresh task** (worktree + branch + engine session) with the prompt as its
 first message — a run is an ordinary task you can open and keep talking to.
 An enabled routine keeps the daemon alive so schedules fire with no TUI
-attached. Mechanics: [design/automations.md](./design/automations.md).
+attached. Walkthrough: [Routines](ROUTINES.md). Mechanics:
+[design/automations.md](./design/automations.md).
 
 - `routine-list`: every routine with its next run time.
 - `routine-create --repo PATH --name N --prompt TEXT --schedule CRON
