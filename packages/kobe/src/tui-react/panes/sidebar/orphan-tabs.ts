@@ -20,6 +20,7 @@
  * ordinals, kinds and split state a session key can't.
  */
 
+import { stripEngineStatusPrefix } from "../../../engine/registry"
 import { type TreeTab, parseRowId, tabRowId } from "../../../tui/panes/sidebar/tree-core"
 
 /** One live pty-host session, as this module needs it. */
@@ -39,7 +40,12 @@ export interface LiveSession {
  *
  * The label is the live process title when the host has one, else the tab
  * id, prefixed ⚠ — the row exists because the snapshot does NOT know this
- * session, and that is worth a glance.
+ * session, and that is worth a glance. The title is a RAW OSC string here
+ * (nobody has stripped it — that happens on the mounted-tab path), so the
+ * engine's own status decoration comes off first: kobe draws the state glyph
+ * on this row, and two status languages side by side is what
+ * `stripEngineStatusPrefix` exists to prevent. Vendor-agnostic strip — an
+ * unregistered session has no resolved vendor by construction.
  */
 export function orphanTabsByTask(
   sessions: readonly LiveSession[],
@@ -59,7 +65,7 @@ export function orphanTabsByTask(
     if (tabs.some((tab) => tab.id === tabId)) continue
     tabs.push({
       id: tabId,
-      label: `⚠ ${session.title?.trim() || tabId}`,
+      label: `⚠ ${stripEngineStatusPrefix(session.title?.trim() ?? "", null).trim() || tabId}`,
       // The first unregistered tab of a snapshot-less task reads active; the
       // caller demotes this when merging under a task that has snapshot tabs.
       active: tabs.length === 0,
