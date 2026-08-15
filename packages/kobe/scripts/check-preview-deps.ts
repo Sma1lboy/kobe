@@ -9,8 +9,9 @@
  *   rsvg-convert   optional — SVG → image preview (falls back to XML
  *                  syntax highlight when missing)
  *
- * Skipped on CI (CI env var set) and when KOBE_SKIP_DEP_CHECK=1, so
- * automated jobs don't spam logs with install hints we can't follow.
+ * Skipped on CI (CI env var set) and when ROVE_SKIP_DEP_CHECK=1 (or its
+ * KOBE_* compatibility alias), so automated jobs don't spam logs with
+ * install hints we can't follow.
  */
 
 import { spawn } from "node:child_process"
@@ -61,7 +62,7 @@ const C = {
 }
 
 async function main(): Promise<void> {
-  if (process.env.CI || process.env.KOBE_SKIP_DEP_CHECK === "1") return
+  if (process.env.CI || process.env.ROVE_SKIP_DEP_CHECK === "1" || process.env.KOBE_SKIP_DEP_CHECK === "1") return
   const results = await Promise.all(DEPS.map(async (d) => ({ ...d, present: await hasBin(d.bin, d.versionArg) })))
   const missing = results.filter((r) => !r.present)
   if (missing.length === 0) return
@@ -70,7 +71,7 @@ async function main(): Promise<void> {
   const optionalMissing = missing.filter((m) => !m.required)
 
   console.log("")
-  console.log(`${C.bold}kobe — preview-pane system dependencies${C.reset}`)
+  console.log(`${C.bold}Rove — preview-pane system dependencies${C.reset}`)
   for (const r of results) {
     const mark = r.present ? `${C.green}✓${C.reset}` : r.required ? `${C.red}✗${C.reset}` : `${C.yellow}!${C.reset}`
     const tag = r.required ? "(required)" : "(optional)"
@@ -90,7 +91,9 @@ async function main(): Promise<void> {
     console.log(`${C.dim}\nInstall command:${C.reset}`)
     console.log(`  ${hint}`)
   }
-  console.log(`${C.dim}\nSet KOBE_SKIP_DEP_CHECK=1 to suppress this check.${C.reset}`)
+  console.log(
+    `${C.dim}\nSet ROVE_SKIP_DEP_CHECK=1 to suppress this check (KOBE_SKIP_DEP_CHECK remains supported).${C.reset}`,
+  )
   console.log("")
 }
 

@@ -2,9 +2,14 @@ refs/
 node_modules/
 dist/
 release-bin/
-# Ignore kobe's runtime state under .kobe/ but keep the committed per-repo
-# init convention files (`kobe repo` / state/repo-init.ts) — they're meant
+# Ignore Rove's runtime state under .rove/ but keep the committed per-repo
+# init convention files (`rove repo` / state/repo-init.ts) — they're meant
 # to be version-controlled. Same `/*` + `!` pattern as `.claude/` below.
+.rove/*
+!.rove/init.sh
+!.rove/init-prompt.md
+# The legacy `.kobe/` spelling stays a field-by-field fallback in
+# state/repo-init.ts, so its committed convention files stay tracked too.
 .kobe/*
 !.kobe/init.sh
 !.kobe/init-prompt.md

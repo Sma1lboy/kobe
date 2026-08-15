@@ -4,7 +4,7 @@
 
 ## Why this exists
 
-kobe's own backlog lives in the daemon issue store ([WORK-TRACKING.md](../WORK-TRACKING.md)).
+Rove's own backlog lives in the daemon issue store ([WORK-TRACKING.md](../WORK-TRACKING.md)).
 That is unchanged. But bug reports arrive on GitHub, and acting on one used to
 mean: read the issue in a browser, copy the title, invent a branch name, create
 a task, then paste the issue body back into the engine by hand.
@@ -13,9 +13,9 @@ Four steps of pure transcription. This collapses them into one command.
 
 ## What it is NOT
 
-**Not an import.** A GitHub issue stays GitHub's. kobe never copies it into
+**Not an import.** A GitHub issue stays GitHub's. Rove never copies it into
 `issues.json`, never writes state back, and never tries to keep two lifecycles
-in sync — closing it upstream must not need kobe to notice, and kobe must not
+in sync — closing it upstream must not need Rove to notice, and Rove must not
 present a stale mirror as truth.
 
 The only durable trace a work item leaves is the `linkedWorkItem` stamped on
@@ -105,15 +105,15 @@ the page should say which one you need rather than "could not load".
 ## CLI
 
 ```bash
-kobe api workitem-list --repo . --limit 10
-kobe api workitem-list --repo . --assignee @me --label bug
-kobe api workitem-list --repo . --search "crash on windows" --state all
+rove api workitem-list --repo . --limit 10
+rove api workitem-list --repo . --assignee @me --label bug
+rove api workitem-list --repo . --search "crash on windows" --state all
 
-kobe api workitem-start --repo . --number 362
-kobe api workitem-start --repo . --number 362 --vendor codex --base-branch develop
+rove api workitem-start --repo . --number 362
+rove api workitem-start --repo . --number 362 --vendor codex --base-branch develop
 ```
 
-Full flags: `kobe api schema --group workitems`.
+Full flags: `rove api schema --group workitems`.
 
 ## Not implemented
 

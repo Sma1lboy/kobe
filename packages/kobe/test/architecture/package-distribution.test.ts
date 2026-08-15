@@ -17,6 +17,39 @@ describe("Rove package distribution", () => {
     expect(pkg.bin).toEqual({ kobe: "dist/cli/kobe.js", rove: "dist/cli/rove.js" })
   })
 
+  test("acceptance tooling defaults to the built Rove artifacts while retaining explicit alias coverage", () => {
+    const harness = read("packages/kobe/test/behavior/harness.ts")
+    const visualFixture = read("packages/kobe-web/e2e/visual-fixture.ts")
+    const heroFixture = read("packages/kobe-web/e2e/hero-fixture.ts")
+    const build = read("packages/kobe/scripts/build.ts")
+
+    expect(harness).toContain('DIST_ROVE_CLI = join(PKG_ROOT, "dist/cli/rove.js")')
+    expect(harness).toContain('DIST_KOBE_CLI = join(PKG_ROOT, "dist/cli/kobe.js")')
+    expect(harness).not.toContain('DIST_CLI = join(PKG_ROOT, "dist/cli/kobe.js")')
+    expect(visualFixture).toContain('const ROVE_CLI = join(KOBE_DIR, "dist", "cli", "rove.js")')
+    expect(visualFixture).toContain('const ROVE_SKILL = join(KOBE_DIR, "dist", "skills", "rove", "SKILL.md")')
+    expect(visualFixture).toContain('join(XDG_CONFIG_HOME, "rove")')
+    expect(heroFixture).toContain('join(HERO_CONFIG, "rove")')
+    expect(build).toContain('const SKILL_OUT_DIR = "./dist/skills/rove"')
+  })
+
+  test.each([
+    [".github/workflows/ci.yml", "\n  coverage-cap:"],
+    [".github/workflows/release.yml", "\n  publish:"],
+  ])("%s builds the Rove artifacts before the visual journey", (path, nextJob) => {
+    const workflow = read(path)
+    const start = workflow.indexOf("\n  visual-ground-truth:")
+    const end = workflow.indexOf(nextJob, start)
+    const job = workflow.slice(start, end)
+    const build = job.indexOf("name: Build canonical Rove artifacts")
+    const visual = job.indexOf("name: Visual journey (browser → PTY → real OpenTUI)")
+
+    expect(start, `${path} has no visual-ground-truth job`).toBeGreaterThanOrEqual(0)
+    expect(end, `${path} has no job after visual-ground-truth`).toBeGreaterThan(start)
+    expect(build, `${path} does not build dist/ before visual tests`).toBeGreaterThanOrEqual(0)
+    expect(visual, `${path} has no visual journey step`).toBeGreaterThan(build)
+  })
+
   test("workspace commands address the canonical package name", () => {
     const root = json<{ scripts: Record<string, string> }>("package.json")
     const commands = Object.values(root.scripts)

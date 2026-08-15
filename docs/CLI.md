@@ -111,7 +111,7 @@ rove web [--port <n>]
 ```
 
 Serves the dashboard on `:45174`, plus a sidecar for browser terminal tabs.
-`KOBE_DAEMON_WEB_PORT` sets the port globally (`0`/`off`/`false` disables it).
+`ROVE_DAEMON_WEB_PORT` sets the port globally (`0`/`off`/`false` disables it).
 
 ## completions
 
@@ -287,23 +287,25 @@ without a daemon, use `rove export --json`.
 
 ## Environment variables
 
-Every user-supplied `KOBE_*` variable also accepts the corresponding `ROVE_*`
-name. If both are set, `ROVE_*` wins. The established names below remain valid
-for compatibility; for example, `ROVE_HOME_DIR` takes precedence over
-`KOBE_HOME_DIR`, and `ROVE_OPEN_EDITOR` takes precedence over
-`KOBE_OPEN_EDITOR`.
+`ROVE_*` is the canonical spelling. Every one of these also accepts the
+established `KOBE_*` name as a compatibility alias, and `ROVE_*` wins when both
+are set — `ROVE_HOME_DIR` beats `KOBE_HOME_DIR`, `ROVE_OPEN_EDITOR` beats
+`KOBE_OPEN_EDITOR`, and so on for the whole table.
 
 | Variable | What it does |
 |---|---|
-| `KOBE_HOME_DIR` | Move everything Rove persists somewhere else |
-| `KOBE_OPEN_EDITOR` | Command that opens a worktree in a GUI editor (`code`, `cursor`, …) |
-| `KOBE_DAEMON_WEB_PORT` | Web dashboard port (default 45174; `0`/`off` disables) |
-| `KOBE_DEV=1` | Mark a developer checkout — hides the update chip |
-| `KOBE_DEBUG=1` | Print full startup errors instead of one line |
-| `ROVE_TASK_ID` / `ROVE_TAB_ID` | Set inside engine tabs; how `rove api` verbs resolve the calling task |
-| `KOBE_TASK_ID` / `KOBE_TAB_ID` | Compatibility aliases exported beside the Rove names |
+| `ROVE_HOME_DIR` | Move everything Rove persists somewhere else |
+| `ROVE_OPEN_EDITOR` | Command that opens a worktree in a GUI editor (`code`, `cursor`, …) |
+| `ROVE_DAEMON_WEB_PORT` | Web dashboard port (default 45174; `0`/`off` disables) |
+| `ROVE_DEV=1` | Mark a developer checkout — hides the update chip |
+| `ROVE_DEBUG=1` | Print full startup errors instead of one line |
+| `ROVE_TASK_ID` / `ROVE_TAB_ID` | Set inside tabs Rove opens; how `rove api` verbs resolve the calling task |
 
-`KOBE_OPEN_EDITOR` wins over Rove's auto-detection, and it's separate from the
+The `KOBE_*` aliases stay fully supported: engine hooks and older automation
+keep reading `KOBE_TASK_ID` / `KOBE_TAB_ID`, which Rove exports beside the
+canonical names.
+
+`ROVE_OPEN_EDITOR` wins over Rove's auto-detection, and it's separate from the
 `editor.*` settings, which pick your TTY editor.
 
 ## Where state lives

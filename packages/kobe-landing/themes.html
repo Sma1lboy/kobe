@@ -389,10 +389,10 @@
   <section class="sec">
     <p class="sec-no" data-i18n="write.no">3.0 · Write one</p>
     <h2 data-i18n="write.title">A theme is one JSON file.</h2>
-    <p class="body" data-i18n-html="write.body">Drop any <code>*.json</code> into <code>~/.kobe/themes/</code> and it appears in the picker at next boot. Name it after a bundled theme and yours wins. You don't have to fill every slot — missing ones fall through (<code>borderActive</code> → <code>border</code> → <code>text</code>), so a dozen lines is already a usable theme.</p>
+    <p class="body" data-i18n-html="write.body">Drop any <code>*.json</code> into <code>~/.rove/themes/</code> and it appears in the picker at next boot. Name it after a bundled theme and yours wins. You don't have to fill every slot — missing ones fall through (<code>borderActive</code> → <code>border</code> → <code>text</code>), so a dozen lines is already a usable theme.</p>
 
     <div class="well">
-<pre><span class="c">// ~/.kobe/themes/darkside.json</span>
+<pre><span class="c">// ~/.rove/themes/darkside.json</span>
 {
   <span class="k">"$schema"</span>: <span class="s">"https://raw.githubusercontent.com/sma1lboy/rove/main/packages/kobe/src/tui/context/theme/theme.schema.json"</span>,
   <span class="k">"defs"</span>: { <span class="k">"brand"</span>: <span class="s">"#cc785c"</span> },
@@ -417,7 +417,7 @@
       <p class="step" data-i18n-html="pub.s1">Commit the JSON to a <b>public repo or gist</b>.</p>
       <p class="step" data-i18n-html="pub.s2">Hit <b>Raw</b> on GitHub and copy the URL — it looks like <code>raw.githubusercontent.com/&lt;you&gt;/&lt;repo&gt;/main/&lt;theme&gt;.json</code>.</p>
       <p class="step" data-i18n-html="pub.s3">Tell people to run <code>rove theme add &lt;raw-url&gt;</code>. It validates the JSON before writing and refuses to clobber an existing theme without <code>--force</code>.</p>
-      <p class="step" data-i18n-html="pub.s4">Tag the repo <code>kobe-theme</code> on GitHub so it's findable, and open a PR against this page to get it listed with a preview.</p>
+      <p class="step" data-i18n-html="pub.s4">Tag the repo <code>rove-theme</code> on GitHub so it's findable, and open a PR against this page to get it listed with a preview.</p>
     </div>
 
     <button id="copyBtn" class="copy-cmd">

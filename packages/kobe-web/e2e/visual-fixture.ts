@@ -5,6 +5,8 @@ import { setRoveEnv } from "@sma1lboy/kobe-daemon/compat-env"
 
 const REPO_ROOT = resolve(import.meta.dirname, "../../..")
 export const KOBE_DIR: string = join(REPO_ROOT, "packages", "kobe")
+const ROVE_CLI = join(KOBE_DIR, "dist", "cli", "rove.js")
+const ROVE_SKILL = join(KOBE_DIR, "dist", "skills", "rove", "SKILL.md")
 export const VISUAL_PORT_BASE = Number.parseInt(process.env.KOBE_VISUAL_PORT_BASE ?? "5273", 10)
 export const VISUAL_WEB_PORT = VISUAL_PORT_BASE
 export const VISUAL_DAEMON_PORT = VISUAL_PORT_BASE + 1
@@ -15,7 +17,7 @@ export const VISUAL_HOME = join(VISUAL_ROOT, "home")
 export const VISUAL_REPO = join(VISUAL_ROOT, "fixture-repo")
 
 /** Bump when the fixture shape changes so warm reuse rebuilds. */
-const FIXTURE_VERSION = "3"
+const FIXTURE_VERSION = "4"
 const FIXTURE_MARKER = join(VISUAL_ROOT, "fixture-ok")
 
 // Kanban cards render their `created` date, so the screenshot gate breaks at
@@ -121,8 +123,8 @@ function run(command: string, args: readonly string[], cwd: string = KOBE_DIR): 
   }).trim()
 }
 
-function runKobe(args: readonly string[]): unknown {
-  const output = run("bun", ["--conditions=browser", "./src/cli/kobe.ts", "api", ...args])
+function runRove(args: readonly string[]): unknown {
+  const output = run("bun", [ROVE_CLI, "api", ...args])
   return JSON.parse(output) as unknown
 }
 
@@ -135,11 +137,10 @@ function createdIssueId(value: unknown, title: string): number {
 
 async function seedStartupState(): Promise<void> {
   const packageJson = JSON.parse(await readFile(join(KOBE_DIR, "package.json"), "utf8")) as { version: string }
-  const skillPath = join(REPO_ROOT, ".claude", "skills", "kobe", "SKILL.md")
   let skillVersion: string | undefined
   try {
-    const skill = await readFile(skillPath, "utf8")
-    skillVersion = skill.match(/kobe-skill-version:\s*(\d+)/)?.[1]
+    const skill = await readFile(ROVE_SKILL, "utf8")
+    skillVersion = skill.match(/rove-skill-version:\s*(\d+)/)?.[1]
   } catch {
     skillVersion = undefined
   }
@@ -154,7 +155,7 @@ async function seedStartupState(): Promise<void> {
     savedRepos: [VISUAL_REPO],
   }
   if (skillVersion) state[`skillHintSeen:v${skillVersion}`] = "1"
-  const stateDir = join(XDG_CONFIG_HOME, "kobe")
+  const stateDir = join(XDG_CONFIG_HOME, "rove")
   await mkdir(stateDir, { recursive: true })
   await writeFile(join(stateDir, "state.json"), `${JSON.stringify(state, null, 2)}\n`)
 }
@@ -192,8 +193,8 @@ async function fixtureIsWarm(): Promise<boolean> {
   if (process.env.KOBE_VISUAL_FRESH === "1") return false
   try {
     if ((await readFile(FIXTURE_MARKER, "utf8")).trim() !== FIXTURE_VERSION) return false
-    // `kobe api list` auto-starts the fixture daemon when it idled out.
-    const listed = runKobe(["list"]) as { tasks?: Array<{ title?: unknown }> }
+    // `rove api list` auto-starts the fixture daemon when it idled out.
+    const listed = runRove(["list"]) as { tasks?: Array<{ title?: unknown }> }
     return listed.tasks?.some((task) => task.title === "Visual Fixture") ?? false
   } catch {
     return false
@@ -218,7 +219,7 @@ export default async function setupVisualFixture(): Promise<void> {
   run("git", ["add", "README.md"], VISUAL_REPO)
   run("git", ["commit", "-q", "-m", "fixture"], VISUAL_REPO)
 
-  const added = runKobe([
+  const added = runRove([
     "add",
     "--repo",
     VISUAL_REPO,
@@ -234,19 +235,19 @@ export default async function setupVisualFixture(): Promise<void> {
   const progressTitle = "In progress fixture"
   const doneTitle = "Done fixture"
   createdIssueId(
-    runKobe(["issue-create", "--repo", VISUAL_REPO, "--title", backlogTitle, "--body", "Waiting to start."]),
+    runRove(["issue-create", "--repo", VISUAL_REPO, "--title", backlogTitle, "--body", "Waiting to start."]),
     backlogTitle,
   )
   const progressId = createdIssueId(
-    runKobe(["issue-create", "--repo", VISUAL_REPO, "--title", progressTitle, "--body", "Work is active."]),
+    runRove(["issue-create", "--repo", VISUAL_REPO, "--title", progressTitle, "--body", "Work is active."]),
     progressTitle,
   )
-  runKobe(["issue-update", "--repo", VISUAL_REPO, "--id", String(progressId), "--task", added.taskId])
+  runRove(["issue-update", "--repo", VISUAL_REPO, "--id", String(progressId), "--task", added.taskId])
   const doneId = createdIssueId(
-    runKobe(["issue-create", "--repo", VISUAL_REPO, "--title", doneTitle, "--body", "Work is complete."]),
+    runRove(["issue-create", "--repo", VISUAL_REPO, "--title", doneTitle, "--body", "Work is complete."]),
     doneTitle,
   )
-  runKobe(["issue-set-status", "--repo", VISUAL_REPO, "--id", String(doneId), "--status", "done"])
-  runKobe(["set-active", "--task-id", added.taskId])
+  runRove(["issue-set-status", "--repo", VISUAL_REPO, "--id", String(doneId), "--status", "done"])
+  runRove(["set-active", "--task-id", added.taskId])
   await writeFile(FIXTURE_MARKER, `${FIXTURE_VERSION}\n`)
 }

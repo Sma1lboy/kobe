@@ -1,6 +1,6 @@
 # Keybinding decisions
 
-The reasoning behind kobe's chord placements, newest first within each topic.
+The reasoning behind Rove's chord placements, newest first within each topic.
 Chord placement is an **owner decision** (see the rule in
 [`AGENTS.md`](../../AGENTS.md)); this file is where each resolution and its
 reasoning is recorded so the next agent has the context.
@@ -205,11 +205,11 @@ engine a doomed `gh pr create`.
 
 ## Plugin chords
 
-**2026-07-28 — kobe ships no default plugin chords.** Every plugin chord is
+**2026-07-28 — Rove ships no default plugin chords.** Every plugin chord is
 the user's own placement call, so the catalogue/help surfaces don't list
 them. They register at the workspace-host level with the same open-page
 gating as global rows; a chord that shadows a catalogue binding applies with
-a warning. Fire path is a detached `kobe plugin pane open|action invoke` —
+a warning. Fire path is a detached `rove plugin pane open|action invoke` —
 chord-fired actions have no terminal, so interactive pickers belong in panes.
 
 ## Discoverability surfaces

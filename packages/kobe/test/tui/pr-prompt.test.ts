@@ -1,9 +1,12 @@
 import { execFileSync } from "node:child_process"
-import { mkdtempSync, writeFileSync } from "node:fs"
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { describe, expect, test } from "vitest"
-import { buildPRPrompt, gatherPRPromptState, renderPRPrompt } from "../../src/tui/ops/pr-prompt"
+import { type PRPromptState, buildPRPrompt, gatherPRPromptState, renderPRPrompt } from "../../src/tui/ops/pr-prompt"
+
+/** Pinned git state, so the override tests assert only template selection. */
+const STATE: PRPromptState = { branch: "feature/x", targetBranch: "main", hasUpstream: false, dirtyCount: 0 }
 
 describe("renderPRPrompt", () => {
   test("renders the built-in git state placeholders", () => {
@@ -54,5 +57,48 @@ describe("buildPRPrompt (async git)", () => {
   test("a missing worktree resolves to fallbacks instead of throwing", async () => {
     const state = await gatherPRPromptState(join(tmpdir(), "kobe-pr-prompt-definitely-missing"))
     expect(state).toEqual({ branch: "HEAD", targetBranch: "main", hasUpstream: false, dirtyCount: 0 })
+  })
+})
+
+// The per-repo override moved to the canonical `.rove/` convention spelling
+// (matching `.rove/init.sh`), with `.kobe/` kept as a fallback so repos that
+// already committed one are not silently dropped back to the default.
+describe("per-repo pr-instructions override", () => {
+  function writeInstructions(dir: string, relDir: string, body: string): void {
+    mkdirSync(join(dir, relDir), { recursive: true })
+    writeFileSync(join(dir, relDir, "pr-instructions.md"), body)
+  }
+
+  test("reads the canonical .rove/pr-instructions.md", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "rove-pr-instructions-"))
+    writeInstructions(dir, ".rove", "canonical template for {{branch}}")
+    await expect(buildPRPrompt(dir, STATE)).resolves.toBe("canonical template for feature/x")
+  })
+
+  test("falls back to the legacy .kobe/pr-instructions.md", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "rove-pr-instructions-"))
+    writeInstructions(dir, ".kobe", "legacy template for {{branch}}")
+    await expect(buildPRPrompt(dir, STATE)).resolves.toBe("legacy template for feature/x")
+  })
+
+  test(".rove wins over .kobe when a repo carries both", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "rove-pr-instructions-"))
+    writeInstructions(dir, ".kobe", "legacy")
+    writeInstructions(dir, ".rove", "canonical")
+    await expect(buildPRPrompt(dir, STATE)).resolves.toBe("canonical")
+  })
+
+  // An EMPTY canonical file is a placeholder, not "blank the prompt": it must
+  // not shadow a real legacy template, and with nothing else it defaults.
+  test("an empty .rove file does not shadow the legacy one", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "rove-pr-instructions-"))
+    writeInstructions(dir, ".rove", "")
+    writeInstructions(dir, ".kobe", "legacy")
+    await expect(buildPRPrompt(dir, STATE)).resolves.toBe("legacy")
+  })
+
+  test("no override file falls back to the built-in template", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "rove-pr-instructions-"))
+    await expect(buildPRPrompt(dir, STATE)).resolves.toContain("The user requested a PR.")
   })
 })

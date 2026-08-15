@@ -11,6 +11,7 @@ then `,`. This page is for when you want to edit them by hand.
 | `~/.rove/themes/*.json` | Installed themes | `rove theme add`, or drop files in |
 | `~/.rove/settings/keybindings.yaml` | Keybinding overrides | You only |
 | `<repo>/.rove/init.sh` + `init-prompt.md` | Per-repo worktree setup | You (committed to the repo) |
+| `<repo>/.rove/pr-instructions.md` | Per-repo PR action prompt | You (committed to the repo) |
 
 Setting `ROVE_HOME_DIR` changes the home beneath these paths. `KOBE_HOME_DIR`
 remains a supported fallback; when both are set, `ROVE_HOME_DIR` wins. On first
@@ -243,3 +244,7 @@ A repo can ship two files in its own `.rove/` directory:
 Files committed in the repo win over any per-user override you set with
 `rove repo set`. Legacy `.kobe/init.sh` and `.kobe/init-prompt.md` remain
 field-by-field fallbacks; a `.rove` file wins when both spellings exist.
+
+The PR action also reads `.rove/pr-instructions.md` as its prompt template.
+It falls back to `.kobe/pr-instructions.md`; when both files are present, the
+non-empty `.rove` file wins.

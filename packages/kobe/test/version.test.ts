@@ -13,19 +13,29 @@ import {
   repoSlug,
 } from "../src/version.ts"
 
-const ORIGINAL_KOBE_DEV = process.env.KOBE_DEV
+// The npm version check is suppressed in dev. `isDev()` reads ROVE_DEV first
+// and falls back to KOBE_DEV, and `bun run dev` exports the canonical
+// ROVE_DEV=1 — so a run started from inside a Rove session must clear BOTH,
+// or every assertion below silently exercises the suppressed path.
+const DEV_ENV_KEYS = ["ROVE_DEV", "KOBE_DEV"] as const
+const ORIGINAL_DEV_ENV = DEV_ENV_KEYS.map((key) => [key, process.env[key]] as const)
+
+function clearDevEnv(): void {
+  for (const key of DEV_ENV_KEYS) Reflect.deleteProperty(process.env, key)
+}
+
+function restoreDevEnv(): void {
+  for (const [key, value] of ORIGINAL_DEV_ENV) {
+    if (value === undefined) Reflect.deleteProperty(process.env, key)
+    else process.env[key] = value
+  }
+}
 
 describe("checkLatestVersion", () => {
-  beforeEach(() => {
-    Reflect.deleteProperty(process.env, "KOBE_DEV")
-  })
+  beforeEach(clearDevEnv)
 
   afterEach(() => {
-    if (ORIGINAL_KOBE_DEV === undefined) {
-      Reflect.deleteProperty(process.env, "KOBE_DEV")
-    } else {
-      process.env.KOBE_DEV = ORIGINAL_KOBE_DEV
-    }
+    restoreDevEnv()
     vi.unstubAllGlobals()
   })
 
@@ -55,13 +65,12 @@ describe("checkLatestVersion — dev suppression and the KOBE_FAKE_UPDATE debug 
   const ORIGINAL_FAKE = process.env.KOBE_FAKE_UPDATE
 
   beforeEach(() => {
-    Reflect.deleteProperty(process.env, "KOBE_DEV")
+    clearDevEnv()
     Reflect.deleteProperty(process.env, "KOBE_FAKE_UPDATE")
   })
 
   afterEach(() => {
-    if (ORIGINAL_KOBE_DEV === undefined) Reflect.deleteProperty(process.env, "KOBE_DEV")
-    else process.env.KOBE_DEV = ORIGINAL_KOBE_DEV
+    restoreDevEnv()
     if (ORIGINAL_FAKE === undefined) Reflect.deleteProperty(process.env, "KOBE_FAKE_UPDATE")
     else process.env.KOBE_FAKE_UPDATE = ORIGINAL_FAKE
     vi.unstubAllGlobals()
@@ -82,8 +91,11 @@ describe("checkLatestVersion — dev suppression and the KOBE_FAKE_UPDATE debug 
     expect(fetchMock).not.toHaveBeenCalled()
   })
 
-  it("KOBE_DEV=1 suppresses the check unless force is passed", async () => {
-    process.env.KOBE_DEV = "1"
+  // Canonical name AND the legacy alias, one case each: `bun run dev` now
+  // exports ROVE_DEV, while an older shell (or an installed 0.8.x wrapper)
+  // still carries KOBE_DEV, and both must suppress the update chip.
+  it.each(["ROVE_DEV", "KOBE_DEV"])("%s=1 suppresses the check unless force is passed", async (key) => {
+    process.env[key] = "1"
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({ version: "999.0.0" }), { status: 200 }))
     vi.stubGlobal("fetch", fetchMock)
 
@@ -185,16 +197,10 @@ describe("fetchReleaseNotes", () => {
 })
 
 describe("fetchReleaseSummaries", () => {
-  beforeEach(() => {
-    Reflect.deleteProperty(process.env, "KOBE_DEV")
-  })
+  beforeEach(clearDevEnv)
 
   afterEach(() => {
-    if (ORIGINAL_KOBE_DEV === undefined) {
-      Reflect.deleteProperty(process.env, "KOBE_DEV")
-    } else {
-      process.env.KOBE_DEV = ORIGINAL_KOBE_DEV
-    }
+    restoreDevEnv()
     vi.unstubAllGlobals()
   })
 
@@ -243,16 +249,10 @@ describe("fetchReleaseSummaries", () => {
 })
 
 describe("fetchReleaseNotesRange", () => {
-  beforeEach(() => {
-    Reflect.deleteProperty(process.env, "KOBE_DEV")
-  })
+  beforeEach(clearDevEnv)
 
   afterEach(() => {
-    if (ORIGINAL_KOBE_DEV === undefined) {
-      Reflect.deleteProperty(process.env, "KOBE_DEV")
-    } else {
-      process.env.KOBE_DEV = ORIGINAL_KOBE_DEV
-    }
+    restoreDevEnv()
     vi.unstubAllGlobals()
   })
 

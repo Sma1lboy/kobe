@@ -63,7 +63,7 @@ jobs:
 
             Run the pr-review-toolkit's specialized review agents across this PR's diff and synthesize their findings: code-reviewer (general correctness + project guidelines), silent-failure-hunter (swallowed errors / error handling), pr-test-analyzer (test coverage + quality), type-design-analyzer (type design / invariants), comment-analyzer (comment accuracy), and code-simplifier (simplification opportunities).
 
-            First read `CLAUDE.md` and `packages/kobe/CLAUDE.md`, then ALSO hold this PR to kobe's house rules and flag any violation:
+            First read the repository's real `AGENTS.md`, then ALSO hold this PR to Rove's house rules and flag any violation:
             - No `Co-Authored-By: Claude` / AI / Anthropic / "Generated with Claude Code" attribution anywhere in commits or the PR body.
             - A user-facing change to the published package must ship a Changeset (`.changeset/*.md`); the bump must be `patch` unless the PR explicitly states otherwise — flag stray minor/major.
             - Layout must be flex-first (`flexGrow`/`flexShrink`/`flexBasis`); a hardcoded `width={N}`/`height={N}` needs a documented rationale (sidebar rail, fixed terminal glyph, modal overlay).

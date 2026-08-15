@@ -141,7 +141,7 @@ the page is open, which moves the card into In progress on its own:
 ![Filing a story from the board, then an agent moving its card into In progress](assets/kanban.gif)
 
 Full-quality mp4:
-[kanban.mp4](https://github.com/Sma1lboy/kobe/blob/main/docs/assets/kanban.mp4).
+[kanban.mp4](https://github.com/Sma1lboy/rove/blob/main/docs/assets/kanban.mp4).
 
 ### Routines (`ctrl+a` `2`)
 

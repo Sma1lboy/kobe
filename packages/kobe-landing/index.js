@@ -155,7 +155,7 @@ var KOBE_I18N = (function () {
     engineEl.textContent = engine === 'your own command' ? 'my-cli' : engine;
     var pad = function (s) { return (s + '              ').slice(0, 16); };
     linesEl.innerHTML = ['a', 'b', 'c'].map(function (s) {
-      return '<span class="ok">●</span> ' + pad('kobe/' + slug + '-' + s) + '<span class="d">running</span>';
+      return '<span class="ok">●</span> ' + pad('rove/' + slug + '-' + s) + '<span class="d">running</span>';
     }).join('\n');
   }
 

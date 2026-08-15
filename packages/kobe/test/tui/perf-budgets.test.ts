@@ -2,17 +2,22 @@
  * Deterministic operation-count performance budgets for retained PureTUI
  * hot paths. Wall-clock benchmarks remain local and opt-in.
  *
- * These budgets describe the PRODUCTION path, so `KOBE_DEV` must be pinned
+ * These budgets describe the PRODUCTION path, so the dev flag must be pinned
  * off. Otherwise the dev-only `warnShadowedMatch` diagnostic in
  * `keymap-dispatch` scans the whole binding stack after every hit and the
  * dispatch budget fails — and it fails only on a developer's machine, since
- * `KOBE_DEV=1` is exported by `bun run dev` and inherited by any test run
- * started from inside a kobe session. CI never sees it.
+ * `bun run dev` exports the flag and any test run started from inside a Rove
+ * session inherits it. CI never sees it.
+ *
+ * BOTH namespaces are pinned: `isDev()` reads `ROVE_DEV` first and falls back
+ * to `KOBE_DEV`, and `bun run dev` now exports the canonical `ROVE_DEV=1`, so
+ * silencing only the legacy alias would leave the diagnostic on.
  */
 
 import { beforeAll, describe, expect, test, vi } from "vitest"
 
 beforeAll(() => {
+  vi.stubEnv("ROVE_DEV", "0")
   vi.stubEnv("KOBE_DEV", "0")
   return () => vi.unstubAllEnvs()
 })

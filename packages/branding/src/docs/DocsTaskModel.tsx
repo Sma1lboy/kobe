@@ -22,7 +22,7 @@ const PANELS: Panel[] = [
   {
     label: "worktree",
     lines: [
-      { text: "~/.kobe/worktrees/", color: T.faint, size: 20 },
+      { text: "~/.rove/worktrees/", color: T.faint, size: 20 },
       { text: "app/fix-auth/", color: T.ink2, size: 25 },
     ],
   },
@@ -37,7 +37,7 @@ const PANELS: Panel[] = [
   {
     label: "branch",
     lines: [
-      { text: "kobe/fix-auth", color: T.ink2, size: 25 },
+      { text: "rove/fix-auth", color: T.ink2, size: 25 },
       { text: "clean · ahead 2", color: T.faint, size: 20 },
     ],
   },

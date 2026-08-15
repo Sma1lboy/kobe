@@ -4,7 +4,7 @@
  * idle tasks. Real engine sessions are started separately by `hero-seed.ts`
  * so a re-shoot can reuse the transcripts it already paid for.
  *
- * Nothing here touches the operator's `~/.kobe`; see `hero-env.ts` for why
+ * Nothing here touches the operator's `~/.rove`; see `hero-env.ts` for why
  * `HOME` is the one thing deliberately left alone.
  */
 
@@ -68,7 +68,7 @@ async function seedSettings(): Promise<void> {
   // and never renders — every capture then times out waiting for the sidebar.
   const skillVersion = await builtSkillVersion()
   if (skillVersion) state[`skillHintSeen:v${skillVersion}`] = "1"
-  const dir = join(HERO_CONFIG, "kobe")
+  const dir = join(HERO_CONFIG, "rove")
   await mkdir(HERO_HOME, { recursive: true })
   await mkdir(dir, { recursive: true })
   await writeFile(join(dir, "state.json"), `${JSON.stringify(state, null, 2)}\n`)

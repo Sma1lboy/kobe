@@ -91,7 +91,7 @@ Nothing else should concatenate a worktree root by hand.
 ### Boundary: the orchestrator does not coordinate writes inside a worktree
 
 When multiple ChatTabs share a worktree, it is the **user's** problem
-if two tabs ask Claude to edit the same file at the same time. kobe
+if two tabs ask Claude to edit the same file at the same time. Rove
 does not lock the filesystem, does not stage edits per-tab, does not
 attempt three-way merges. The escape hatch is "open a new task" — that
 gives you a fresh worktree.
@@ -125,7 +125,7 @@ flags. If you want a different model, you want a different task.
 - `tabs` is non-empty. The orchestrator refuses to close the last tab
   on a task; that's why the chat shell always has somewhere to type.
 - `activeTabId` is always a valid id within `tabs`. Persisted so a
-  kobe restart shows the same tab the user last used.
+  Rove restart shows the same tab the user last used.
 - Closing the active tab makes the previous-index tab active (or 0).
 - `Task.sessionId` (deprecated) is a read-only alias for
   `tabs[0]?.sessionId`. Kept for v1 manifest back-compat. Writers

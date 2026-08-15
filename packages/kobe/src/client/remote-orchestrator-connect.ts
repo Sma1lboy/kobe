@@ -119,7 +119,7 @@ export async function performInit(
   const clientHome = homeDir()
   if (isForeignDaemonHome(hello.homeDir, clientHome)) {
     throw new Error(
-      `kobe daemon on this socket serves ${hello.homeDir}, but this client uses ${clientHome}. A sandbox or dev daemon has taken the production socket — stop it (\`kobe daemon stop\`), or unset ROVE_DAEMON_SOCKET_PATH / KOBE_DAEMON_SOCKET_PATH before starting it.`,
+      `Rove daemon on this socket serves ${hello.homeDir}, but this client uses ${clientHome}. A sandbox or dev daemon has taken the production socket — stop it (\`rove daemon stop\`), or unset ROVE_DAEMON_SOCKET_PATH / KOBE_DAEMON_SOCKET_PATH before starting it.`,
     )
   }
   // Capture the daemon's BUILD version (NON-fatal — the protocol is already
