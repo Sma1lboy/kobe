@@ -134,6 +134,19 @@ jobs:
           fi
           echo "ok — changeset(s): $has_changeset"
 
+      # Validate the frontmatter here too, not only inside typecheck-and-test's
+      # package-distribution suite. Same script the pre-commit hook runs, so
+      # local and CI can't drift; running it in THIS job means a bad package
+      # name is reported next to the changeset rule it violates instead of
+      # surfacing as an unrelated architecture-test failure.
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.13
+
+      - name: Changeset frontmatter is valid
+        run: bun scripts/check-changeset.mjs
+
   typecheck-and-test:
     runs-on: ubuntu-latest
     steps:

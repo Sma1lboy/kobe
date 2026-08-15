@@ -1,0 +1,26 @@
+#!/bin/sh
+# Repo-versioned pre-commit hook. Enabled per clone with:
+#
+#     bun run hooks:install     # git config core.hooksPath .githooks
+#
+# Deliberately tiny: a pre-commit hook that runs lint/typecheck/tests makes
+# people reach for --no-verify, and a hook nobody runs protects nothing. The
+# rule for what belongs here: the check must be (a) milliseconds, and (b)
+# guarding a mistake whose blast radius escapes the author — something CI
+# catches only after it has already turned main red for everyone else.
+#
+# Today that is exactly one thing: changeset frontmatter. A stale package
+# name lands green-ish on a PR but fails `typecheck-and-test` on main and on
+# every branch cut from it afterwards (PR #445, 2026-08-15).
+#
+# CI remains the enforcement boundary — this is the fast feedback path, not
+# a replacement for it.
+
+set -e
+
+staged_changesets=$(git diff --cached --name-only --diff-filter=ACMR -- '.changeset/*.md' | grep -v 'README\.md$' || true)
+
+if [ -n "$staged_changesets" ]; then
+  # shellcheck disable=SC2086 # word-splitting the newline list is intended
+  bun scripts/check-changeset.mjs $staged_changesets
+fi
