@@ -66,9 +66,11 @@ function fakeTerminal(pages: {
   text: string
   sinceValid?: boolean
   live?: boolean
-}): { peek: ReadOutputDeps["peekTerminal"]; offsets: Array<number | undefined> } {
+}): { peek: ReadOutputDeps["peekTerminal"]; offsets: Array<number | undefined>; tabs: Array<string | undefined> } {
   const offsets: Array<number | undefined> = []
-  const peek: ReadOutputDeps["peekTerminal"] = async (sinceOffset) => {
+  const tabs: Array<string | undefined> = []
+  const peek: ReadOutputDeps["peekTerminal"] = async (tab, sinceOffset) => {
+    tabs.push(tab)
     offsets.push(sinceOffset)
     return {
       pid: pages.pid,
@@ -78,7 +80,7 @@ function fakeTerminal(pages: {
       live: pages.live ?? true,
     } satisfies TerminalPeekPage
   }
-  return { peek, offsets }
+  return { peek, offsets, tabs }
 }
 
 function deps(history: EngineHistoryReader | null, peekTerminal: ReadOutputDeps["peekTerminal"]): ReadOutputDeps {
@@ -91,6 +93,7 @@ async function read(
     taskId: string
     worktree: string | null
     source: "auto" | "history" | "terminal"
+    tab: string
     cursor: string
     limit: number
   }> = {},
@@ -100,6 +103,7 @@ async function read(
       taskId: over.taskId ?? "t1",
       worktree: over.worktree === undefined ? WORKTREE : over.worktree,
       source: over.source ?? "auto",
+      tab: over.tab,
       cursor: over.cursor,
       limit: over.limit,
     },
@@ -280,6 +284,62 @@ describe("read-output cursor rules", () => {
     expect(decoded).not.toContain(WORKTREE)
     expect(decoded).not.toContain("/")
     expect(JSON.stringify(p)).not.toContain(WORKTREE)
+  })
+})
+
+describe("read-output --tab (tab-precise terminal reads)", () => {
+  it("reads the exact tab without probing history and carries no fallbackReason", async () => {
+    const calls: string[] = []
+    const history = fakeHistory(["s-current"], { "s-current": [msg("hi")] }, calls)
+    const t = fakeTerminal({ pid: 42, offset: 10, text: "tab-3 screen\n" })
+    const p = await read(deps(history, t.peek), { tab: "tab-3" })
+    expect(p.source).toBe("terminal")
+    expect(p.fallbackReason).toBeNull()
+    expect(p.terminal?.tab).toBe("tab-3")
+    expect(p.terminal?.tail).toContain("tab-3 screen")
+    expect(t.tabs).toEqual(["tab-3"])
+    expect(calls).toEqual([])
+  })
+
+  it("--source history --tab is a contradiction: typed BAD_FLAG", async () => {
+    await expectApiError(() => read(deps(null, noTerminal()), { source: "history", tab: "tab-3" }), "BAD_FLAG")
+  })
+
+  it("the cursor pins the tab: same tab pages on, another tab or none is CURSOR_INVALID", async () => {
+    const t1 = fakeTerminal({ pid: 42, offset: 100, text: "one\n" })
+    const p1 = await read(deps(null, t1.peek), { tab: "tab-3" })
+    expect(t1.tabs).toEqual(["tab-3"])
+
+    const t2 = fakeTerminal({ pid: 42, offset: 160, text: "two\n" })
+    const p2 = await read(deps(null, t2.peek), { cursor: p1.cursor ?? undefined, tab: "tab-3" })
+    expect(t2.tabs).toEqual(["tab-3"])
+    expect(t2.offsets).toEqual([100])
+    expect(p2.terminal?.tab).toBe("tab-3")
+
+    await expectApiError(
+      () => read(deps(null, noTerminal()), { cursor: p1.cursor ?? undefined, tab: "tab-4" }),
+      "CURSOR_INVALID",
+    )
+    await expectApiError(() => read(deps(null, noTerminal()), { cursor: p1.cursor ?? undefined }), "CURSOR_INVALID")
+  })
+
+  it("a canonical-tab cursor rejects a later --tab (and vice versa)", async () => {
+    const t1 = fakeTerminal({ pid: 42, offset: 100, text: "one\n" })
+    const p1 = await read(deps(null, t1.peek), { source: "terminal" })
+    expect(t1.tabs).toEqual([undefined])
+    await expectApiError(
+      () => read(deps(null, noTerminal()), { cursor: p1.cursor ?? undefined, tab: "tab-3" }),
+      "CURSOR_INVALID",
+    )
+  })
+
+  it("a history cursor with --tab is CURSOR_INVALID (history is not tab-scoped)", async () => {
+    const history = fakeHistory(["s-current"], { "s-current": [msg("a")] })
+    const p1 = await read(deps(history, noTerminal()))
+    await expectApiError(
+      () => read(deps(history, noTerminal()), { cursor: p1.cursor ?? undefined, tab: "tab-3" }),
+      "CURSOR_INVALID",
+    )
   })
 })
 

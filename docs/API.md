@@ -45,6 +45,7 @@ screen:
 
 ```bash
 rove api read-output --task-id <id>    # paged history, honest terminal fallback
+rove api read-output --task-id <id> --tab tab-3   # one exact tab's terminal
 ```
 
 **Fan in** — compare the attempts, then land one:
@@ -106,12 +107,14 @@ alias of `add`.
   to the spawning agent's chat tab (`send`), not into Rove state.
 - `pty-list` *(offline)*: hosted PTY sessions (key, alive, pid, command,
   live window title). Empty when no PTY host runs.
-- `read-output [--task-id ID] [--source auto|history|terminal] [--cursor C]
-  [--limit N]`: a task's engine output as bounded, cursor-paged JSON —
-  structured history when the engine has it, else a labeled terminal tail
-  (`fallbackReason`). The cursor is pinned to one source/session and returns
-  `SOURCE_CHANGED` if that moved. A dead session's terminal page includes
-  `terminal.exit` (`code`/`signal`/`at`) while the PTY host still runs.
+- `read-output [--task-id ID] [--tab TAB] [--source auto|history|terminal]
+  [--cursor C] [--limit N]`: a task's engine output as bounded, cursor-paged
+  JSON — structured history when the engine has it, else a labeled terminal
+  tail (`fallbackReason`). The cursor is pinned to one source/session/tab and
+  returns `SOURCE_CHANGED` if that moved. `--tab tab-N` reads exactly that
+  tab's hosted terminal session (terminal-only; `TAB_NOT_FOUND` when the tab
+  has no session). A dead session's terminal page includes `terminal.exit`
+  (`code`/`signal`/`at`) while the PTY host still runs.
 - `inspect [--task-id ID]` *(offline)*: diagnostics in one read, across four
   sections — `daemon` (raw per-task/per-tab activity entries), `sessions`
   (PTY inventory joined with a live process-tree walk; dead sessions carry
