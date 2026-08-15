@@ -89,6 +89,23 @@ export function useTreeState(opts: TreeStateOpts): TreeState {
   // Live pty-host inventory, for tasks the snapshot can't answer for.
   const hostSessions = useHostSessions()
 
+  // ptyKey → the host's LIVE OSC title. The host scans every session's
+  // output whether or not anyone attached, so this answers for tabs whose
+  // `TerminalTabs` is not mounted — the ones whose recorded `lastTitle`
+  // only moves when you click into them (owner report: the row's state glyph
+  // is live via the daemon's engine-state channel while its title sat frozen
+  // beside it). Empty titles are dropped: `""` is the host's "child has set
+  // no title yet", not a name, and letting it through would blank a row that
+  // has a perfectly good recorded one.
+  const liveTitles = useMemo<ReadonlyMap<string, string>>(() => {
+    const map = new Map<string, string>()
+    for (const session of hostSessions) {
+      const title = session.title?.trim()
+      if (title) map.set(session.key, title)
+    }
+    return map
+  }, [hostSessions])
+
   // Tab projection. `tasks` identity changes on every daemon snapshot echo,
   // which is also exactly when a tab's live title may have moved — so this
   // recomputing with it is correct, not wasteful.
@@ -109,16 +126,18 @@ export function useTreeState(opts: TreeStateOpts): TreeState {
           // engine-free shell must not resurrect the identity of whatever ran
           // there before (a ctrl+C'd codex kept its tab labelled "codex N"
           // through the old `?? recorded` fallback).
-          const probed = liveEngines.resolve(tabPtyKeyFor(task.id, tab))
+          const ptyKey = tabPtyKeyFor(task.id, tab)
+          const probed = liveEngines.resolve(ptyKey)
           const live = probed === undefined ? tab.liveVendor : probed
           return {
             id: tab.id,
             // `tabTitleStable`, NOT `tabTitle`: for a status-owning engine the
-            // recorded title IS its self-reported status (`⠐ 利用自进化…`), and
-            // the tree has no live stream to refresh it — so the row would
-            // wear a frozen spinner phrase that contradicts the state glyph
-            // right next to it, which kobe derives from daemon activity.
-            label: tabTitleStable(tab, vendor, live),
+            // recorded title IS its self-reported status (`⠐ 利用自进化…`), so
+            // the row would wear a spinner phrase that contradicts the state
+            // glyph right next to it, which kobe derives from daemon activity.
+            // The host's live title rides in as an argument (not painted
+            // directly) so it goes through that same strip.
+            label: tabTitleStable(tab, vendor, live, liveTitles.get(ptyKey)),
             // The active tab carries the task's state glyph (activity is
             // task-scoped; the active tab is the session it describes).
             active: tab.id === known.activeId,
@@ -135,7 +154,7 @@ export function useTreeState(opts: TreeStateOpts): TreeState {
       )
     }
     return map
-  }, [tasks, kv, liveEngines, liveTick])
+  }, [tasks, kv, liveEngines, liveTick, liveTitles])
 
   // Backstop: any LIVE pty session the snapshots don't answer for becomes an
   // explicit unregistered row — tab-granular, so a task whose snapshot lists

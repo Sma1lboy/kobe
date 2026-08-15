@@ -23,6 +23,23 @@ const POLL_MS = 2_000
 const EMPTY: readonly LiveSession[] = []
 
 /**
+ * True when two polls report the same sessions in the same state.
+ *
+ * The poll allocates a fresh array every 2s, and its consumers now include
+ * the tab-title projection — which rebuilds the whole tree when this
+ * changes. Comparing the fields the tree actually reads keeps a quiet host
+ * render-free; a title moving (the point of the projection) still gets
+ * through.
+ */
+function sameSessions(a: readonly LiveSession[], b: readonly LiveSession[]): boolean {
+  if (a.length !== b.length) return false
+  return a.every((s, i) => {
+    const other = b[i] as LiveSession
+    return s.key === other.key && s.alive === other.alive && s.title === other.title
+  })
+}
+
+/**
  * Off under a test runner. `getSharedPtyClient` caches ONE connection per
  * process, and bun-test runs every render file in one process — so a sidebar
  * mounted by any test would connect to whatever socket was current and pin
@@ -46,11 +63,11 @@ export function useHostSessions(enabled = pollingAllowed()): readonly LiveSessio
       try {
         const client = await getSharedPtyClient()
         const { sessions: live = [] } = await client.request<{ sessions?: LiveSession[] }>("pty.list", {})
-        if (!cancelled) setSessions(live)
+        if (!cancelled) setSessions((prev) => (sameSessions(prev, live) ? prev : live))
       } catch {
         // No host / no verb / socket died — report no orphans and retry on
         // the next tick rather than tearing the poll down.
-        if (!cancelled) setSessions(EMPTY)
+        if (!cancelled) setSessions((prev) => (prev.length === 0 ? prev : EMPTY))
       }
     }
     void poll()

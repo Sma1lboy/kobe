@@ -163,8 +163,8 @@ export function meaningfulAutoTitle(autoTitle: string | null | undefined): strin
  * name — but in the tree a lone glyph is not a label, so the caller falls
  * through to the first-prompt summary or the vendor default instead.
  */
-function stableRecordedTitle(tab: TerminalTab, vendor: VendorId): string | null {
-  const recorded = tab.lastTitle?.trim()
+function stableRecordedTitle(raw: string | null | undefined, vendor: VendorId): string | null {
+  const recorded = raw?.trim()
   if (!recorded) return null
   const cleaned = stripEngineStatusPrefix(recorded, vendor)
   // Unchanged AND made only of this engine's glyphs = decoration, not a name.
@@ -196,8 +196,23 @@ function isEngineDecoration(text: string, vendor: VendorId): boolean {
  * display-side, so old snapshots heal without a migration (same approach as
  * `meaningfulAutoTitle`). A manual rename still wins: that is the user's
  * name, not the engine's.
+ *
+ * `liveTitle` is the pty host's CURRENT OSC title for this tab's session,
+ * when the caller has one. `lastTitle` is a recording written only by the
+ * mounted `TerminalTabs`, i.e. only for the selected task — so on every
+ * other row it froze at whatever it said when you last clicked in, beside a
+ * state glyph the daemon keeps live. Passing the live title in here (rather
+ * than painting it directly) is what keeps it subject to the whole rule
+ * below: the same status-prefix strip, the same decoration-only rejection,
+ * and the same manual-rename precedence. Absent → the recorded title, which
+ * is also the flash guard the live probe's ~2s gap needs.
  */
-export function tabTitleStable(tab: TerminalTab, taskVendor: VendorId, liveVendor?: VendorId | null): string {
+export function tabTitleStable(
+  tab: TerminalTab,
+  taskVendor: VendorId,
+  liveVendor?: VendorId | null,
+  liveTitle?: string | null,
+): string {
   // `liveVendor` is tri-state: a vendor = that engine runs in the tab NOW;
   // null = the probe CONFIRMED no engine (a ctrl+C'd tab sitting at its
   // shell prompt); undefined = the probe can't answer, fall back to the pin.
@@ -222,7 +237,12 @@ export function tabTitleStable(tab: TerminalTab, taskVendor: VendorId, liveVendo
   // real claude) that declares nothing. Gating here left exactly those tabs
   // wearing `⠂ …`. What `ownsStatus` still decides is the fallback identity
   // below.
-  const named = vendor ? stableRecordedTitle(tab, vendor) : (tab.lastTitle ?? null)
+  // Live beats recorded — the recording is a snapshot of this same stream,
+  // taken whenever the tab was last mounted. Falling back rather than
+  // replacing keeps the flash guard above intact: a session the host has no
+  // title for yet still shows what it was called.
+  const source = liveTitle?.trim() || tab.lastTitle
+  const named = vendor ? stableRecordedTitle(source, vendor) : (source ?? null)
   if (!vendor || engineEntry(vendor).terminalTitle?.ownsStatus !== true) {
     return tabTitle({ ...tab, lastTitle: named } as TerminalTab, taskVendor)
   }
