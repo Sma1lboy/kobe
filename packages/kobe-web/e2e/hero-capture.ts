@@ -181,7 +181,12 @@ export async function encode(opts: {
   const palette = join(opts.workDir, `${opts.name}-palette.png`)
   const gifScale = `scale=${opts.gifWidth ?? 800}:-1:flags=lanczos`
   const gif = join(opts.outDir, `${opts.name}.gif`)
-  ffmpeg(["-y", ...cut, "-i", source, ...trim, "-vf", `${gifScale},palettegen=max_colors=96`, "-update", "1", palette])
+  // No `trim` on this pass: palettegen emits a SINGLE frame, and an
+  // output-side `-ss` discards it ("Output file is empty, nothing was
+  // encoded") — the palette lands nowhere and the paletteuse pass below then
+  // fails on a missing input. Sampling the whole take costs nothing: the
+  // trimmed head is the same UI in the same colors.
+  ffmpeg(["-y", ...cut, "-i", source, "-vf", `${gifScale},palettegen=max_colors=96`, "-update", "1", palette])
   ffmpeg([
     "-y",
     ...cut,
