@@ -11,19 +11,25 @@ flowchart LR
   D --> G["Git worktree manager"]
   CLI --> P["Standalone PTY Host"]
   TUI --> P
-  WEB --> P
   P --> E["Interactive engine and shell children"]
+  WEB --> BP["Browser PTY sidecar"]
+  BP --> BE["Browser-owned terminal children"]
 ```
 
-The Daemon owns control-plane state. The PTY Host independently owns
-interactive processes. This separation is load-bearing: a GUI exit or daemon
-restart must not end engine sessions.
+The Daemon owns control-plane state. The standalone PTY Host independently owns
+TUI/API interactive processes. The browser dashboard uses its own Node PTY
+sidecar instead. This separation is load-bearing: a TUI exit or daemon restart
+must not end standalone-host sessions.
 
-The product unit is:
+The isolation unit for a managed Task is:
 
 ```text
-Task = git worktree + hosted engine sessions + branch
+Managed task = git worktree + branch + terminal tabs
 ```
+
+The persisted `Task` type also supports `kind: "main"` for a saved repository's
+existing checkout and `kind: "dir"` for a user-owned directory. Those variants
+reuse their directory and do not own a Rove-created worktree or branch.
 
 ## 2. Package map
 
@@ -70,9 +76,22 @@ environment switch.
 The Workspace Host connects as a daemon GUI client and attaches to hosted PTY
 sessions. On exit it detaches local consumers. It does not kill children.
 
+`rove web` connects the frozen browser SPA to the Daemon for shared control
+plane data and starts `packages/kobe-web/pty-server.mjs` for browser-owned
+terminal children. Browser reconnects can reattach while that sidecar remains
+alive, but browser PTYs are not standalone-host sessions and stop with the
+`rove web` sidecar.
+
 The Daemon is refcounted by attached GUI clients and browser streams. A daemon
 idle exit leaves the PTY Host untouched. The PTY Host idle-exits only when it
 owns zero live sessions.
+
+The standalone host periodically freezes bounded terminal rings plus launch
+metadata. After a host restart or reboot, it restores dead session records;
+the first attachment replays the last snapshot and respawns the recorded
+command. This recovery is distinct from a still-live child surviving a TUI or
+daemon restart. Explicit close/archive/reset operations remove their frozen
+records.
 
 Tmux is not a session backend. The CLI retains one quarantined compatibility
 seam solely for upgrades from pre-v0.8: `rove doctor` reports processes still
@@ -81,7 +100,7 @@ pane process groups before stopping that server.
 
 ## 4. Hosted session addressing
 
-Each Terminal Tab uses `<taskId>::<tabId>`. The initial engine tab is
+Each standalone-host Terminal Tab uses `<taskId>::<tabId>`. The initial engine tab is
 deterministically `<taskId>::tab-1`; API liveness, delivery, and teardown use
 the same address.
 
@@ -110,6 +129,8 @@ from creating duplicate children.
   process owner.
 - The PTY Host owns child lifetime and buffered terminal bytes, not Task
   metadata.
+- The browser PTY sidecar owns only browser-created terminal children; it does
+  not attach to or replace standalone-host sessions.
 - React components render and wire events; reusable policy/state belongs in
   framework-free `src/tui/**` modules.
 
@@ -119,7 +140,10 @@ from creating duplicate children.
 - UI/settings state: platform config home, normally
   `~/.config/rove/state.json` (legacy `.config/kobe/state.json` is copied without overwrite)
 - Daemon socket/pid/log: derived from `ROVE_HOME_DIR` (`KOBE_HOME_DIR` fallback) and intentionally retain legacy `.kobe` runtime names
-- PTY Host socket/pid/log: derived independently from the same home
+- PTY Host socket/pid/log plus bounded `pty-sessions/` recovery snapshots and
+  `pty-exits.json` abnormal-exit tails: derived independently from the same home
+- Browser PTYs: process state in the `rove web` Node sidecar; browser tab
+  metadata is not authoritative product state
 - Engine conversation history: engine-owned locations such as
   `~/.claude/projects/**`
 - Plugins: registry `<KOBE_HOME>/.kobe/plugins.json` (CLI-written,

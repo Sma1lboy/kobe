@@ -19,30 +19,42 @@ Engine adapters remain the one pluggability seam for identity, launch argv,
 capabilities, model/effort catalogs, history, completion markers, and telemetry
 normalization. Neutral layers never hard-code vendor UI data.
 
-### 2. The product unit is a Task
+### 2. Managed Tasks are the isolation unit
 
 ```text
-Task = git worktree + hosted engine sessions + branch
+Managed task = git worktree + branch + terminal tabs
 ```
 
-A Task owns one Worktree and may own several Terminal Tabs. Archive is
-non-destructive but stops live hosted sessions. Delete removes the Task and
-Worktree after explicit confirmation; the branch remains unless a separate git
-operation removes it.
+A managed Task owns one Worktree and may own several Terminal Tabs. Project-main
+Tasks reuse the saved repository checkout; directory Tasks reuse a user-owned
+directory. Those two variants do not own a Rove-created worktree or branch.
+
+Archive is non-destructive but stops live hosted sessions for managed and
+directory Tasks; project main cannot be archived. Explicit delete is
+kind-aware: the main row's delete action forgets the saved project while
+keeping its repository and managed Tasks, a directory Task removes only its
+Rove record, and a managed Task removes its Worktree after the dirty-worktree
+safety check before attempting to remove its task branch.
 
 ### 3. Process ownership is explicit
 
 - The Daemon owns Task/Worktree control-plane state.
 - The standalone PTY Host owns interactive child lifetime and output buffers.
+- The `rove web` Node PTY sidecar owns browser-created terminal children only.
 - The Workspace Host attaches and renders; closing it detaches only.
 
-This separation makes engine sessions survive TUI exits and daemon restarts.
-There is one session backend and one launch behavior.
+This separation makes live engine sessions survive TUI exits and daemon
+restarts. The standalone host also freezes bounded terminal state so host
+restarts and reboots can restore the screen and relaunch on attach. TUI/API
+sessions have one standalone-host backend and one launch behavior; the frozen
+browser dashboard's Node PTY sidecar is a separate maintenance boundary.
 
 ### 4. State stays with its natural owner
 
 Engine conversation history stays in engine-owned files. Git state stays in
-git. Rove persists only its Task index and UI/settings manifest. Do not copy
+git. Rove persists its Task index, UI/settings manifest, and bounded Hosted PTY
+recovery/abnormal-exit diagnostics. Those terminal stores preserve viewport
+continuity and crash evidence, not engine conversation history. Do not copy
 derivable engine or repository state into a second database.
 
 ### 5. Terminal-native is a feature

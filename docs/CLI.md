@@ -84,34 +84,56 @@ Options:
 ```bash
 rove add [path]      # save a repo for the new-task picker (defaults to .)
 rove remove [path]   # forget it — files, worktrees, and tasks all stay
-rove adopt [glob]    # import existing git worktrees as tasks
+rove adopt [glob] [--repo <path>] [--vendor <engine>] [--yes]
+                     # list/import existing git worktrees as tasks
 ```
 
 `rove add` needs a real git repo. It creates the project's sidebar row and
 folds in any existing unlinked worktrees as tasks.
 
-`rove adopt` with no glob is a dry run that lists what it would import; pass
-a glob to filter (`rove adopt 'feature-*'`) and `--yes` to actually do it.
+`rove adopt` scans the current repo by default; `--repo <path>` selects another
+one and `--vendor <engine>` chooses the engine recorded on imported tasks. With
+no glob it is a dry run that lists what it would import; pass a glob to filter
+(`rove adopt 'feature-*'`) and `--yes` / `-y` to actually do it.
 
 **Remote projects** (experimental — enable Settings → Dev → Experimental
-first) run their worktrees and engine on another host over SSH:
+first) can register an SSH host and create task worktrees there:
 
 ```bash
 rove add --remote --host <host> --user <user> --path <basePath> \
          [--port N] [--key [path] | --password]
 ```
 
-Auth is either `--key` (ssh-agent when you omit the path) or `--password`,
-which is prompted and stored in your OS keychain — never in `state.json`.
+Auth is either `--key` (ssh-agent when you omit the path) or `--password`.
+Password auth is **macOS-only today**: Rove prompts for it and stores only a
+reference in `state.json`; the secret lives in the macOS keychain. Linux and
+Windows reject `--password`, so use a key or ssh-agent there.
+
+This is not remote-execution parity yet. Remote worktree creation is wired,
+but the current Hosted PTY engine launcher does not wrap the engine command in
+SSH. A remote-only worktree path therefore cannot be treated like a supported
+local engine cwd, and engine launch may fail. Files/diffs and repo init also
+lack full remote parity. Do not use this experiment as a security boundary or
+assume prompts, engine execution, or repository reads are confined to the SSH
+host.
 
 ## web
 
 ```bash
-rove web [--port <n>]
+rove web [--port <n>] [--routes-only] [--no-takeover]
 ```
 
 Serves the dashboard on `:45174`, plus a sidecar for browser terminal tabs.
-`ROVE_DAEMON_WEB_PORT` sets the port globally (`0`/`off`/`false` disables it).
+`--routes-only` starts/verifies only the daemon-hosted HTTP/SSE routes, for a
+separate Vite dev server. Normally Rove may replace an older Rove PTY sidecar
+on `<port + 2>`; `--no-takeover` disables that replacement and never probes or
+kills the prior sidecar.
+
+`ROVE_DAEMON_WEB_PORT` is read when the **daemon starts** (`0`/`off`/`false`
+disables its web transport). It is not a substitute for `rove web --port`:
+`rove web` targets `45174` unless `--port` is present. Neither setting can
+rebind a daemon that is already running; after changing the daemon port, run
+`rove daemon restart`, then pass the same port to `rove web`.
 
 ## completions
 
@@ -171,19 +193,21 @@ no flag clears both.
 ## skill
 
 ```bash
-rove skill install [--project] [--agent NAME]…
+rove skill install [--global|-g | --project|-p] [--agent NAME]…
 rove skill status
-rove skill command [--project] [--agent NAME]…   # print the command without running it
+rove skill command [--global|-g | --project|-p] [--agent NAME]…
+                                                   # print, don't run
 rove skill print                                 # print the SKILL.md itself
 ```
 
 Installs the Rove agent skill — what teaches a coding agent to drive
 `rove api`. Installs are **global** (user-level) by default: the skill
 drives a machine-wide daemon, so one copy per machine keeps one staleness
-lifecycle; `--project` installs into the current project instead. With no
-`--agent` it detects your installed agents and asks. To name them yourself,
-repeat the flag (`--agent claude-code --agent codex`); a comma-joined list
-is rejected rather than silently using only the first.
+lifecycle; `--project` / `-p` installs into the current project instead.
+`--global` / `-g` restates the default explicitly. With no `--agent` it
+detects your installed agents and asks. To name them yourself, repeat the flag
+(`--agent claude-code --agent codex`; `--agent=codex` also works); a
+comma-joined list is rejected rather than silently using only the first.
 
 The skill ships inside the npm package, so nothing is downloaded.
 
@@ -294,9 +318,9 @@ are set — `ROVE_HOME_DIR` beats `KOBE_HOME_DIR`, `ROVE_OPEN_EDITOR` beats
 
 | Variable | What it does |
 |---|---|
-| `ROVE_HOME_DIR` | Move everything Rove persists somewhere else |
+| `ROVE_HOME_DIR` | Move Rove's home-rooted task/runtime data; platform settings and engine-owned history keep their own locations |
 | `ROVE_OPEN_EDITOR` | Command that opens a worktree in a GUI editor (`code`, `cursor`, …) |
-| `ROVE_DAEMON_WEB_PORT` | Web dashboard port (default 45174; `0`/`off` disables) |
+| `ROVE_DAEMON_WEB_PORT` | Daemon web-transport port at daemon startup (default 45174; `0`/`off`/`false` disables). `rove web` itself uses `--port`. |
 | `ROVE_DEV=1` | Mark a developer checkout — hides the update chip |
 | `ROVE_DEBUG=1` | Print full startup errors instead of one line |
 | `ROVE_TASK_ID` / `ROVE_TAB_ID` | Set inside tabs Rove opens; how `rove api` verbs resolve the calling task |

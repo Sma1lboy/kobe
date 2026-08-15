@@ -55,12 +55,12 @@ export const en = {
     keyHintsShow: "Show keyboard hints",
     zen: "Zen mode",
     zenHint:
-      "The `zen` chip (above the file list) and `prefix`+z collapse the ChatTab to the engine pane — hiding the file and terminal panes. Keep this on to leave the Tasks rail visible so you can always get back out.",
+      "The `zen` chip (above the file list) and `prefix`+z hide Files while keeping the Tasks rail and workspace visible. The legacy Keep Tasks value is retained in settings but currently has no layout effect.",
     zenDefaultOn: "Start in zen mode",
-    zenKeepTasks: "Keep Tasks pane in zen mode",
+    zenKeepTasks: "Keep Tasks pane in zen mode (legacy; no effect)",
     editor: "Editor",
     editorHint:
-      "What `e` opens a file with in the file tree (enter stays the read-only preview). `auto` (default) follows $VISUAL / $EDITOR, else auto-detects nvim / vim / emacs / nano. enter on the row below cycles auto / vim / nvim / nano / emacs / custom; if the editor isn't installed it falls back to the preview.",
+      "What enter opens a file with in the file tree. Changed files use the editor's diff mode when supported; if the editor isn't installed Rove falls back to its read-only preview. `auto` (default) follows $VISUAL / $EDITOR, else auto-detects nvim / vim / emacs / nano. Enter on the row below cycles auto / vim / nvim / nano / emacs / custom.",
     editorRow: "editor: < {kind} >  (enter to change)",
     editorCustom: "custom: {cmd}",
     editorCustomUnset: "(unset — enter to edit)",
@@ -170,7 +170,7 @@ export const en = {
       "Daemon wedged or unresponsive? From a shell, run `rove daemon restart`, then relaunch Rove. Hosted engine sessions stay alive across a daemon restart.",
     experimental: "Experimental",
     remoteHint:
-      "Remote projects (SSH): register a project whose git worktrees + engine run on another host over SSH, driven from this local Rove. Unfinished — file/diff panes still degrade for remote. Enables `rove add --remote`.",
+      "Remote projects (SSH): register a project whose git worktrees live on another host, driven from this local Rove. Unfinished — Hosted PTY engine launch over SSH is not implemented, and file/diff panes still degrade. Enables `rove add --remote`.",
     remoteOn: "[x] Remote projects (on)",
     remoteOff: "[ ] Remote projects (off)",
     autoStatusHint:
@@ -235,12 +235,12 @@ export const zh: typeof en = {
     keyHintsShow: "显示键盘提示",
     zen: "禅模式",
     zenHint:
-      "`zen` 标记（文件列表上方）和 `prefix`+z 会把 ChatTab 收起到引擎面板——隐藏文件与终端面板。保持开启可让 Tasks 侧栏始终可见，方便随时退出。",
+      "`zen` 标记（文件列表上方）和 `prefix`+z 会隐藏 Files，同时保留 Tasks 侧栏与 workspace。旧的“禅模式下保留 Tasks 面板”设置仍会保存，但当前不会改变布局。",
     zenDefaultOn: "启动即进入禅模式",
-    zenKeepTasks: "禅模式下保留 Tasks 面板",
+    zenKeepTasks: "禅模式下保留 Tasks 面板（旧设置；当前无效）",
     editor: "编辑器",
     editorHint:
-      "文件树里按 `e` 用什么打开文件（enter 仍是只读预览）。`auto`（默认）跟随 $VISUAL / $EDITOR，否则自动探测 nvim / vim / emacs / nano。在下方一行按 enter 在 auto / vim / nvim / nano / emacs / custom 间循环；编辑器未安装时回退到预览。",
+      "文件树里按 enter 用什么打开文件；修改过的文件会在支持时使用编辑器 diff 模式，编辑器未安装时回退到 Rove 的只读预览。`auto`（默认）跟随 $VISUAL / $EDITOR，否则自动探测 nvim / vim / emacs / nano。在下方一行按 enter 在 auto / vim / nvim / nano / emacs / custom 间循环。",
     editorRow: "编辑器: < {kind} >  (enter 切换)",
     editorCustom: "自定义: {cmd}",
     editorCustomUnset: "(未设置 — enter 编辑)",

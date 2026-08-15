@@ -1,57 +1,86 @@
 # Concepts
 
-Five nouns explain Rove: **Task**, **Worktree**, **Engine**, **Daemon**,
-**PTY host**. Learn those and the rest reads itself.
+Six nouns explain Rove: **Task**, **Worktree**, **Terminal Tab**, **Engine**,
+**Daemon**, and **PTY host**. Learn those and the rest reads itself.
 
 ## Task
 
-A Task is one unit of work you're tracking:
+A Task is one workspace record you're tracking. Rove has three Task kinds:
+
+| Kind | Directory | Git isolation |
+|---|---|---|
+| Project main | A saved repository's existing checkout | Uses the checkout as-is; no Rove-created branch or worktree |
+| Managed task | A Rove-created worktree | Own branch and worktree |
+| Directory task | An existing directory opened with `rove .` | Uses the directory as-is; it need not be a git repository |
+
+For a managed task, the product unit is:
 
 ```text
-Task = git worktree + engine session + branch
+Managed task = git worktree + branch + terminal tabs
 ```
 
-![The Task unit: one worktree, one engine session, and one branch, threaded together](assets/task-model.png)
-
-A Task is a **workspace, not a conversation**. It belongs to one repo, owns
-one worktree on one branch, and holds one or more chat tabs.
+A Task is a **workspace, not a conversation**. Its Terminal Tabs all run in
+the same directory. Only managed tasks get Rove-created branch/worktree
+isolation; project-main and directory tasks deliberately reuse directories you
+already own.
 
 Each Task has a `status` you set yourself — `backlog`, `in_progress`,
-`in_review`, `done`, `error` — and a separate `archived` flag.
+`in_review`, `done`, `canceled`, `error` — and a separate `archived` flag.
 
-**Archiving is safe.** It stops the task's live sessions and moves it to
-Archives. The worktree and the conversation stay. Rove never deletes a
-worktree on its own — not on archive, not on `done`.
+**Archiving a managed or directory Task is safe.** It stops the Task's live
+sessions and moves it to Archives. Its directory and engine-owned conversation
+history stay. Archive, `done`, and `canceled` never delete files. Project-main
+Tasks cannot be archived.
+
+**Delete is explicit and kind-aware.** A project-main Task cannot go through
+Task deletion; pressing `d` on its row instead forgets the saved project and
+synthetic main row while keeping the repository, branches, worktrees, and
+managed Tasks. Deleting a directory Task removes only its Rove record, never
+the directory.
+Deleting a managed Task removes its worktree after the dirty-worktree safety
+check, then attempts to remove its task branch. The separate
+[Worktrees page](WORKTREES.md) is an audit/cleanup tool: removing a directory
+there keeps its Task record and branch so the worktree can be materialized
+again later.
 
 ## Worktree and branch
 
-Every Task gets its own git worktree at
+Every managed Task gets its own git worktree at
 `~/.rove/worktrees/<repo-key>/<task-slug>/`, checked out to the task's
 branch. That's what makes running many tasks at once safe: N tasks means N
 working trees that can't overwrite each other or your main checkout. Edits
 cross over only when you merge.
 
+Project-main and directory Tasks are the exceptions: they point at an existing
+checkout or directory. Use a managed Task when you want isolation.
+
 The worktree outlives everything else. Killing a session, quitting the TUI,
 dropping SSH, restarting the daemon — none of them touch it.
 
-> **One thing to watch:** chat tabs inside the same task share one worktree,
+> **One thing to watch:** Terminal Tabs inside the same managed Task share one worktree,
 > and Rove does not coordinate their writes. Two tabs editing the same file
 > at once will conflict. If you need real isolation, open a new task.
 
-## Chat tabs and engine sessions
+## Terminal Tabs and engine sessions
 
-A Task owns N chat tabs. Each tab is one engine session with its own
-transcript and `sessionId`. Tabs let you ask a side question without
-polluting a long conversation — close the tab when you're done, keep the
-worktree.
+A Task owns N Terminal Tabs. An engine tab runs an engine inside an interactive
+shell and can resume an engine-owned conversation. Other tabs can be shells,
+fixed commands/editors, or read-only file/diff content; those are not engine
+conversations. Splits add more shell leaves inside a tab.
 
-Each tab pins the engine it starts with, so tabs in one task may use different
-engines. Model and permission mode remain task-level; open a different task
-when you need a separate worktree or different task settings.
+Tabs let you ask a side question or open a shell without changing directories.
+Close a tab when you're done; the Task's directory stays. Exiting the engine
+CLI itself returns an engine tab to its shell prompt—the hosted session ends
+only when that wrapping shell exits or Rove explicitly closes it.
 
-Conversation history belongs to the engine, not to Rove (Claude Code keeps
-JSONL transcripts under `~/.claude/projects/**`). That's why a crash never
-loses a transcript.
+Each engine tab may pin its own engine; otherwise it inherits the Task's engine,
+so tabs in one Task can use different vendors. A Task-level reasoning-effort
+choice is forwarded when that engine supports it. The embedded engine CLI owns
+its own model and permission controls.
+
+Conversation history belongs to the engine, not to Rove (Claude Code, for
+example, keeps JSONL transcripts under `~/.claude/projects/**`). Hosted
+terminal output has separate persistence rules; see [Sessions](SESSIONS.md).
 
 ## Engines
 
@@ -74,10 +103,11 @@ flowchart LR
   WEB["rove web / browser"] --> D
   API["rove api"] --> D
   TUI --> P["PTY Host"]
-  WEB --> P
   API --> P
+  WEB --> BP["Browser PTY sidecar"]
   D --> IDX["Task index + worktrees"]
-  P --> E["engine + shell sessions"]
+  P --> E["TUI/API engine + shell sessions"]
+  BP --> BE["browser-owned terminal sessions"]
 ```
 
 - **Daemon** — owns your task list, worktrees, and the issue store. Starts on
@@ -86,6 +116,9 @@ flowchart LR
   (it must stay up to collect engine activity, or the status dots go stale).
 - **PTY host** — owns the running engine and shell processes. Survives both
   the TUI *and* a daemon restart.
+- **Browser PTY sidecar** — a separate Node process started by `rove web` for
+  browser-owned terminals. It is not the standalone PTY host and does not own
+  the TUI's hosted sessions.
 - **The TUI** — just a viewport. Quitting it kills nothing.
 
 Full lifetime rules, and exactly what survives a reboot:
@@ -116,9 +149,10 @@ Issues track *what to do*; the changelog records *what shipped*.
 | Settings | `~/.config/rove/state.json` (open with `rove config`) |
 | Conversation history | engine-owned, e.g. `~/.claude/projects/**` |
 
-Setting `ROVE_HOME_DIR` moves all of it; `KOBE_HOME_DIR` remains a fallback.
-That's how the dev sandbox avoids touching your real `~/.rove` product data or
-`.kobe` compatibility runtime.
+Setting `ROVE_HOME_DIR` moves Rove's home-rooted product data and compatibility
+runtime; `KOBE_HOME_DIR` remains a fallback. It does not relocate platform
+settings or engine-owned conversation stores. That's how the dev sandbox
+avoids touching your real `~/.rove` task data or `.kobe` runtime.
 
 ## Three ways people use it
 
@@ -131,25 +165,32 @@ rove api fan-out --repo "$PWD" \
 ```
 
 Each attempt is its own Task with its own worktree. Workers message their
-outcome back to the spawning agent's chat tab (`rove api send`); compare
+outcome back to the spawning agent's engine tab (`rove api send`); compare
 with `rove api collect`, merge with `rove api land`.
 
 **Over SSH, on the machine your code lives on.** The daemon and PTY host run
-on that machine, so closing your laptop kills nothing. SSH back in, run
-`rove`, everything's still there. Notifications and clipboard ride the SSH
-connection back to your local terminal.
+on that machine, so dropping SSH does not end hosted sessions. SSH back in and
+run `rove` to reattach. Clipboard and terminal notifications depend on the
+attached terminal connection; attention that happens while disconnected stays
+available in Rove's Inbox when you return.
 
-**The web dashboard as a second screen.** `rove web` serves a local dashboard
-(default `http://localhost:45174`) backed by the same daemon, so the TUI and
-the browser always agree.
+**The browser dashboard as a maintenance surface.** `rove web` serves the
+frozen browser SPA (default `http://localhost:45174`). It shares daemon-owned
+Task and issue data with the TUI, but browser terminal tabs belong to the
+browser PTY sidecar and are not the TUI's hosted Terminal Tabs. New product
+surface work belongs in the TUI; `/harness` remains the visual test path.
 
 ## Glossary
 
-- **Task** — one worktree + branch + chat tabs, in one repo.
-- **Worktree** — a git worktree on disk. One per task, never auto-deleted.
-- **Chat tab** — one engine session inside a task. N per task.
+- **Task** — a tracked workspace record: project main, managed worktree, or
+  existing directory.
+- **Worktree** — a git working tree on disk. Rove creates one for each managed
+  Task; project-main and directory Tasks reuse existing directories.
+- **Terminal Tab** — an engine, shell, command/editor, or read-only content
+  surface inside a Task. N per Task.
 - **Engine** — the coding-agent CLI a task runs on.
 - **Daemon** — the background process holding your task list and issues.
-- **PTY host** — the process holding live sessions; survives daemon restarts.
+- **PTY host** — the standalone process holding TUI/API live sessions; survives
+  daemon restarts.
 - **`rove api`** — the headless surface for scripts and agents.
 - **Fan out / fan in** — run N attempts of one prompt, then merge the winner.

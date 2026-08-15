@@ -145,19 +145,18 @@ export const KobeKeymap: readonly KobeBinding[] = [
     keys: [],
     prefixKeys: ["o"],
     category: "Global",
-    description: "Open active task worktree in editor",
+    description: "Open active Task directory in editor",
   },
   {
     // PROPOSED chord (owner picked prefix+m 2026-07-16): global entry into
     // the sidebar's move mode — focuses the sidebar, highlights the current
-    // selection, then j/k reorders it (projects among projects, tasks
-    // within their partition); enter/esc exits.
+    // selection, then j/k reorders saved projects; enter/esc exits.
     id: "task.moveMode",
     scope: "global",
     keys: [],
     prefixKeys: ["m"],
     category: "Global",
-    description: "Reorder tasks/projects (then j/k)",
+    description: "Reorder projects (then j/k)",
   },
   {
     id: "settings.open",

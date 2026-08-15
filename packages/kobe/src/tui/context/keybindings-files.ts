@@ -34,15 +34,15 @@ export const FILES_BINDINGS: readonly KobeBinding[] = [
     hint: { keys: "h/l" },
   },
   {
-    // enter → one-key "just open it": opens the file in the user's
-    // nvim/vim (side-by-side `nvim -d` diff vs HEAD when changed, a plain
-    // editable open otherwise), falling back to our own opentui read-only
-    // preview only when no nvim/vim is installed.
+    // enter → one-key "just open it": opens the file in the configured TTY
+    // editor. Nvim/Vim use a side-by-side diff vs HEAD when the file changed;
+    // other editors open the file normally. Resolution failure falls back to
+    // our own OpenTUI read-only preview.
     id: "files.open",
     scope: "files",
     keys: ["return"],
     category: "Files",
-    description: "Open file in nvim (diff vs HEAD when changed)",
+    description: "Open file in configured editor (diff when supported)",
     hint: { keys: "enter" },
   },
   {

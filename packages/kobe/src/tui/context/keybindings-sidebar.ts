@@ -77,14 +77,14 @@ export const SIDEBAR_BINDINGS: readonly KobeBinding[] = [
     scope: "sidebar",
     keys: ["shift+m"],
     category: "Sidebar",
-    description: "Reorder task (Shift+M, then j/k)",
+    description: "Reorder project (Shift+M, then j/k)",
     hint: { keys: "M" },
   },
   {
-    // Capital P pins / unpins a regular task — an explicit shift+p chord
+    // Capital P pins / unpins a managed task — an explicit shift+p chord
     // (previously keys: ["p"] + an evt.shift gate, which kept the id in
     // FIXED_BINDING_IDS). A mistyped lowercase `p` matches nothing, so it
-    // can't churn the flag. Pinned regular tasks float to the top of the
+    // can't churn the flag. Pinned managed tasks float to the top of the
     // sidebar's flat list, just below the saved-repo "main" rows.
     // `kind: "main"` rows ignore the chord — they're implicitly pinned.
     id: "sidebar.pin",
@@ -197,7 +197,7 @@ export const SIDEBAR_BINDINGS: readonly KobeBinding[] = [
     scope: "sidebar",
     keys: ["o"],
     category: "Tasks pane",
-    description: "Open selected task's worktree in your editor",
+    description: "Open selected Task directory in your editor",
     hint: { keys: "o" },
   },
   {

@@ -8,9 +8,10 @@ contract.
 
 A plugin is **a directory with a `rove-plugin.toml` manifest** plus any argv
 commands your machine can run: Bash, Node, Bun, Python, Rust, a prebuilt
-binary. There is no SDK: the whole `rove` CLI and the daemon socket are the
-plugin API. Rove owns the host surface (install, validation, event dispatch,
-env injection, panes, settings UI, run logs); you own the implementation.
+binary. No SDK is required: the whole `rove` CLI and the daemon socket are the
+plugin API, with an optional TypeScript SDK described below. Rove owns the host
+surface (install, validation, event dispatch, env injection, panes, settings
+UI, run logs); you own the implementation.
 
 ## Quickstart
 
@@ -74,7 +75,7 @@ name = "Example"
 version = "0.1.0"
 min_rove_version = "0.8.24"      # install refuses older Rove versions
 description = "…"                # optional
-platforms = ["macos", "linux"]   # optional; item-level `platforms` overrides
+platforms = ["macos", "linux", "windows"] # optional; item-level override
 
 [[build]]                        # runs at GitHub install (after preview confirm), cwd = checkout
 command = ["npm", "install"]     # self-provision deps INTO the plugin dir; `link` skips build
@@ -113,6 +114,11 @@ action = "greet"                 # your action, invoked with the absolute path
 `command` is always argv: never a shell, no expansion (panes expand only
 `$ROVE_PLUGIN_ROOT`). Unknown event names are warnings (forward compat);
 invalid types/patterns are install-time errors.
+
+The accepted platform tokens are exactly `macos`, `linux`, and `windows`.
+A top-level list applies to the whole plugin; `platforms` on an individual
+build, startup, action, event, or pane replaces that list for that item. With
+no declaration, Rove assumes the command is portable and allows it everywhere.
 
 ## Event catalog
 
@@ -200,7 +206,9 @@ The high-value verbs live under `rove api`: machine-readable list via
 "$ROVE_BIN_PATH" api issue-create --repo <dir> --title "…"     # daemon issue tracker
 "$ROVE_BIN_PATH" api prompt --title "URL?"                     # host input dialog → {value}|{cancelled}
 "$ROVE_BIN_PATH" api read-output --task-id ID                  # structured session reads
-"$ROVE_BIN_PATH" plugin pane open you.example.board            # open your own pane
+"$ROVE_BIN_PATH" plugin pane open you.example.board            # qualified-id form
+"$ROVE_BIN_PATH" plugin pane open --plugin you.example \
+  --entrypoint board                                           # equivalent flag form
 ```
 
 **Socket (advanced):** newline-delimited JSON frames on `ROVE_SOCKET_PATH`

@@ -1,6 +1,6 @@
 /** @jsxImportSource @opentui/react */
 /**
- * The tree sidebar (owner call 2026-08-01): project → worktree → tab, with
+ * The tree sidebar (owner call 2026-08-01): project → Task → Terminal Tab, with
  * the right pane showing nothing but the active session's terminal.
  *
  * Round 2 (same day): the tree keeps the flat sidebar's design language —

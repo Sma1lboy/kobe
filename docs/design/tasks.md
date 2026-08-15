@@ -1,12 +1,15 @@
-# Tasks, Worktrees, and Chat Tabs
+# Tasks, Worktrees, and Chat Tabs (historical)
 
-> Concept doc. The shapes here are the source of truth for how the
-> orchestrator, the sidebar, and the chat pane talk about "what is the
-> user working on right now."
+> **Historical pre-v0.6 design record. Do not use this page as the current
+> product contract.** It predates `kind: "main"` / `kind: "dir"`, Terminal Tab
+> ownership outside `tasks.json`, non-Claude engines, and the standalone PTY
+> architecture. Current vocabulary and behavior live in
+> [`../../CONTEXT.md`](../../CONTEXT.md), [`../CONCEPTS.md`](../CONCEPTS.md),
+> [`../DESIGN.md`](../DESIGN.md), and [`../ARCHITECTURE.md`](../ARCHITECTURE.md).
 >
-> Companions: [`../DESIGN.md`](../DESIGN.md) §2.4 + §10 (data model); worktree
-> path resolution is §2 below (there is no separate DESIGN.md subsection for
-> it). On-disk types: [`packages/kobe/src/types/task.ts`](../../packages/kobe/src/types/task.ts).
+> The material below is kept to explain earlier tradeoffs and migrations, not
+> to prescribe implementation. On-disk current types:
+> [`packages/kobe/src/types/task.ts`](../../packages/kobe/src/types/task.ts).
 
 ---
 

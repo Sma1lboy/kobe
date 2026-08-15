@@ -60,7 +60,9 @@ already dismissed.
 
 ### Editor
 
-Used by the file tree's `e`, `ctrl+a` `o` (open worktree), and `rove config`.
+`editor.kind` and `editor.customCommand` control the file tree's `enter`
+action and `rove config`. Opening an entire worktree (`o` in the sidebar or
+`ctrl+a` `o`) uses the separate GUI/workspace opener described below.
 
 | Key | Type | Default | What it does |
 |---|---|---|---|
@@ -70,8 +72,12 @@ Used by the file tree's `e`, `ctrl+a` `o` (open worktree), and `rove config`.
 In `editor.customCommand`, `{file}` is replaced by the quoted file path. Without
 it, the path is appended.
 
-> Separately, `KOBE_OPEN_EDITOR` picks the GUI editor for opening a whole
-> worktree (`code`, `cursor`, …). These keys are for the TTY editor.
+Set `ROVE_OPEN_EDITOR` to choose the GUI editor for a whole worktree, for
+example `ROVE_OPEN_EDITOR=zed`. `KOBE_OPEN_EDITOR` remains a compatibility
+fallback; when both are set, `ROVE_OPEN_EDITOR` wins. Without either variable,
+Rove tries the `code`, `cursor`, `windsurf`, and `zed` CLIs in that order,
+then the platform opener. These variables do not change the file tree's
+per-file TTY editor.
 
 ### Engines
 
@@ -122,7 +128,10 @@ Toggle with `ctrl+a` `z`.
 | Key | Type | Default | What it does |
 |---|---|---|---|
 | `zen.active` | boolean | `false` | On/off. Persisted, so switching projects keeps you in zen |
-| `zen.keepTasks` | boolean | `true` | Keep the Tasks rail visible |
+
+The current PureTUI always keeps the Tasks rail visible in zen mode because
+the rail also contains the exit affordance. `zen.keepTasks` is a legacy value:
+Settings can still write it, but it currently has no layout effect.
 
 ### Worktree location
 
@@ -145,11 +154,10 @@ discoverable. No restart needed.
 
 ### Sidebar
 
-| Key | Type | Default | What it does |
-|---|---|---|---|
-| `activeSortMode` | `recent` \| `default` | `default` | Task ordering. `recent` reshuffles as you switch tasks |
-
-Hand-edit only today — nothing in the UI writes this key.
+The current tree sidebar follows persisted project/task order and supports
+manual project reordering with `shift+m`. Older state files may contain
+`activeSortMode` and `tasksPane.projectFilter`; the daemon still mirrors those
+compatibility values, but the current PureTUI tree does not consume them.
 
 ### Experimental
 

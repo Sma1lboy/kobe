@@ -51,6 +51,7 @@ const SECTIONS = [
       ['CLI.md', 'cli'],
       ['CONFIGURATION.md', 'configuration'],
       ['ENGINES.md', 'engines'],
+      ['WORKTREES.md', 'worktrees'],
       ['themes.md', 'themes'],
       ['SESSIONS.md', 'sessions'],
     ],

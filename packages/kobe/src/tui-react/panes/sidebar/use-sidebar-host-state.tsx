@@ -47,9 +47,9 @@ export interface SidebarHostState {
    */
   readonly notifyInfo: (message: string) => void
   /**
-   * The Sidebar's local-merge/move request (`m`): select the row and toggle
-   * move mode. Works for regular tasks AND `main` (project) rows — projects
-   * render stored order, so moving a main row reorders the PROJECTS section.
+   * The Sidebar's project-move request (`shift+m`): select a row and toggle
+   * move mode. The tree resolves that row's project and routes j/k through
+   * its synthetic `main` task, reordering the PROJECTS section.
    */
   readonly onLocalMergeRequest: (id: string) => void
 }

@@ -5,8 +5,14 @@ An **engine** is the AI coding CLI a task runs on — `claude`, `codex`,
 interactive CLI inside the task's terminal session.
 
 ```text
-Task = git worktree + engine session + branch
+Managed task = one git worktree + one branch + one or more terminal tabs
 ```
+
+A Task can own several terminal tabs. Each engine tab has its own PTY process
+and conversation, but opening another engine or shell tab does **not** create
+another worktree: ordinary sibling tabs use the same Task directory. Two agents in
+sibling tabs can therefore edit each other's work; create another task when
+you need git-level isolation and a separate branch.
 
 ## Which engines are supported
 
@@ -100,24 +106,29 @@ relaunch fresh.
 
 `ctrl+a` `y` opens the resume picker for the active task.
 
-**Fork.** `ctrl+a` `c` opens a new tab in the *same* worktree, starting from
-the active tab's conversation and diverging from there. Pick the engine, and
-one of two things happens:
+**Continue in a new tab.** `ctrl+a` `c` opens the continuation flow in the
+*same* worktree. What happens depends on the source and destination engines:
 
-*Same engine* → a native fork. The CLI branches its own conversation, so both
-sides keep full context:
+*Same engine* → a native fork only when that CLI can actually branch a
+conversation. The two resulting tabs keep the source context and then diverge:
 
-| Engine | Fork? | How |
+| Engine | Native fork? | How |
 |---|---|---|
 | `claude` | ✓ | `--resume <src> --fork-session` |
 | `codex` | ✓ | `codex fork <src>` |
-| `copilot` | — | `--resume` reopens the same session, it doesn't branch |
-| `kimi` | — | same limitation |
-| custom | — | Rove doesn't know their flags or session store |
+| `copilot` | — | starts a fresh Copilot session with a transcript handoff |
+| `kimi` | — | starts a fresh Kimi session with a transcript handoff |
+| custom | — | refused; Rove doesn't know its session store |
 
-*Different engine* → a handoff. This is the move that saves you when you hit
-a usage limit mid-task. The new engine starts fresh with a first prompt that
-points it at the old session's transcript and asks it to state where the
+Copilot's `--resume` and Kimi's `-S` reopen rather than branch, which would put
+two live processes on one transcript. Rove therefore uses the same transcript
+handoff as a cross-engine continuation: the new tab is a fresh conversation
+that reads where the previous one stopped. A custom engine without a known
+session store is refused instead of silently opening a blank continuation.
+
+*Different built-in engine* → a handoff. This is the move that saves you when
+you hit a usage limit mid-task. The new engine starts fresh with a first prompt
+that points it at the old session's transcript and asks it to state where the
 previous one stopped — that sentence is how you check the handoff landed.
 
 Handoffs work in every direction between the four built-ins — the receiving

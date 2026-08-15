@@ -3,13 +3,15 @@ name: rove
 description: Use when controlling Rove tasks, parallel coding attempts, hosted agent sessions, task lifecycle, or the daemon-owned issue tracker from a shell. Also the ONLY channel for messaging another agent session on this machine — `rove api send`, never a peer/MCP side channel.
 ---
 
-<!-- rove-skill-version: 22 — bump in lockstep with KOBE_SKILL_VERSION (src/lib/skill-install.ts). -->
+<!-- rove-skill-version: 23 — bump in lockstep with KOBE_SKILL_VERSION (src/lib/skill-install.ts). -->
 
 # Rove shell control
 
-Use `rove api` to manage local coding tasks. Each Task owns a git Worktree,
-branch, and Hosted PTY engine sessions. API automation works without an open
-TUI; prompted `send`, `add`, and `fan-out` ensure the canonical engine session.
+Use `rove api` to manage local coding tasks. Managed Tasks created by API
+automation own a git Worktree and branch plus Hosted PTY engine tabs; project
+main and directory Tasks reuse existing directories. API automation works
+without an open TUI; prompted `send`, `add`, and `fan-out` ensure a target
+engine tab.
 
 ## Inside a Rove session, Rove verbs come first
 
@@ -68,9 +70,9 @@ user asks for Rove by name.
 
 | Term | What it is | Isolation it gives | Users also say |
 |---|---|---|---|
-| **Task** | one Worktree + branch + the Terminal Tabs inside it — one sidebar row | its own files AND its own branch | "a task", "a new one", "a separate attempt" |
-| **Worktree** | that task's file tree on disk (`.task.worktreePath`) | — | "workspace", "this checkout", "this branch", "here" |
-| **Terminal Tab** | one engine session inside a task | its own conversation, SAME files | "tab", "chattab", "another chat", "a second agent on this" |
+| **Task** | one tracked workspace record — managed worktree, saved-project main, or existing directory | managed Tasks own files + branch; main/directory Tasks reuse files | "a task", "a new one", "a separate attempt" |
+| **Worktree** | the isolated git working tree a managed Task owns (`.task.worktreePath`) | — | "workspace", "this checkout", "this branch", "here" |
+| **Terminal Tab** | one engine, shell, command, or content surface inside a Task | an engine tab has its own conversation, but every tab uses the SAME Task files | "tab", "chattab", "another chat", "a second agent on this" |
 | **Split** | the tree that divides ONE Terminal Tab into several regions (the `pane-open` verb's unit; a leaf is not called a pane) | none — same session's screen, same files | "split it", "side by side", "put the logs next to it" |
 
 Two of those colloquialisms are traps, so read them as INTENT, not as
@@ -188,7 +190,8 @@ rove api collect --task-ids <id1>,<id2>,<id3> --pretty
 rove api list --pretty
 ```
 
-`.running` means the task's canonical Hosted PTY engine session is alive.
+`.running` means any hosted engine tab on the task is alive; a live shell,
+command, or content tab alone does not count.
 Omitting BOTH `--task-id` and `--tab` inside a task that has a dispatcher
 targets that dispatcher's tab (see the reply rule above); otherwise the
 target is the active task. Omitting only `--tab` targets a live engine tab
@@ -278,10 +281,10 @@ explicit count. Give each task a scoped prompt, report returned IDs, then use
 poll `send` in a tight loop or use it as casual chat; every call is a full
 engine turn.
 
-### Completion flows back through chat (`send`)
+### Completion flows back through an engine tab (`send`)
 
 Outcomes are explicit, never inferred — and they travel as a MESSAGE to the
-spawning agent's chat tab, not as stored state nobody reads.
+spawning agent's engine tab, not as stored state nobody reads.
 
 **Worker side** — a task created from inside another Rove task records its
 dispatcher (the creating task + tab); when the work is finished, a bare
