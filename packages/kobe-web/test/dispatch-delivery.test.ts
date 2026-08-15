@@ -66,6 +66,12 @@ describe("deliverToSession", () => {
     expect(calls).toEqual([{ tabId: "tab-t1", taskId: "t1", text: "hello from dispatcher" }])
   })
 
+  it("an explicit event.tabId bypasses the canonical-tab minting (dispatch --tab)", async () => {
+    const { calls, deps } = spies()
+    expect(await deliverToSession(event({ tabId: "tab-3" }), deps)).toBe(true)
+    expect(calls).toEqual([{ tabId: "tab-3", taskId: "t1", text: "hello from dispatcher" }])
+  })
+
   it("the same `at` never delivers twice (reconnect replay is a no-op)", async () => {
     const { calls, deps } = spies()
     await deliverToSession(event(), deps)

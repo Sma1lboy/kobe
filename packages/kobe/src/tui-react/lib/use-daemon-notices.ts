@@ -48,7 +48,7 @@ function useDaemonTabOpens(orch: RemoteOrchestrator | null): void {
     if (!request || request.at === seenAt.current) return
     seenAt.current = request.at
     if (Date.now() - request.at > STALE_NOTICE_MS) return
-    requestTabOpen(request.taskId, request.argv, request.title, request.placement, request.direction)
+    requestTabOpen(request.taskId, request.argv, request.title, request.placement, request.direction, request.tabId)
   }, [request])
 }
 
@@ -60,7 +60,7 @@ function useDaemonTabCloses(orch: RemoteOrchestrator | null): void {
     if (!request || request.at === seenAt.current) return
     seenAt.current = request.at
     if (Date.now() - request.at > STALE_NOTICE_MS) return
-    requestPaneClose(request.taskId, request.title)
+    requestPaneClose(request.taskId, request.title, request.tabId)
   }, [request])
 }
 

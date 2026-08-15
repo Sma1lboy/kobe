@@ -11,11 +11,11 @@ import { collect, fanOut, feedback } from "./handlers-fanout.ts"
 import { INSPECT_VERB } from "./handlers-inspect.ts"
 import { PANE_CLOSE_VERB, PANE_VERB } from "./handlers-pane.ts"
 import {
+  DISPATCH_VERB,
   add,
   adopt,
   archive,
   deleteTask,
-  dispatch,
   getTask,
   land,
   list,
@@ -203,13 +203,7 @@ export const VERBS: readonly VerbSpec[] = [
     ],
     handler: send,
   },
-  {
-    name: "dispatch",
-    summary:
-      "Route text into a task's live session via the daemon's session.deliver channel. The dispatcher's messenger (docs/design/dispatcher.md); unlike `send`, it requires an already-hosted session.",
-    flags: [F.taskId(true), F.prompt(true, "Text delivered into the task's engine session.")],
-    handler: dispatch,
-  },
+  DISPATCH_VERB,
   {
     name: "note",
     summary:
@@ -334,7 +328,7 @@ export const VERBS: readonly VerbSpec[] = [
   {
     name: "collect",
     summary:
-      "Read-only comparison snapshot of several tasks: identity, branch, lineage (.dispatcher, .groupId), .running, uncommitted .changes, and committed .base (ahead count + diffstat vs the base branch).",
+      "Read-only comparison snapshot of several tasks: identity, branch, lineage (.dispatcher, .groupId), .running, per-tab .tabs (same join as get-task — pick a `send --tab` target without a second hop), uncommitted .changes, and committed .base (ahead count + diffstat vs the base branch).",
     flags: [
       { name: "task-ids", type: "csv", placeholder: "a,b,c", description: "Comma-separated task ids." },
       F.repo(false),

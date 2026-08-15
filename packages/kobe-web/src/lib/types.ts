@@ -123,6 +123,9 @@ export type WorktreeChangeCounts = Record<
 export interface SessionDeliver {
   taskId: string
   text: string
+  /** Exact terminal tab to deliver into (`dispatch --tab`); absent = the
+   *  canonical engine tab. */
+  tabId?: string
   at: number
   source: "note" | "dispatcher"
 }

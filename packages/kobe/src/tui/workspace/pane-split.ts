@@ -3,9 +3,11 @@
  * the currently-focused chattab — the pane joins the tab's split group
  * beside the engine (owner semantics 2026-07-29), exactly herdr's
  * `placement = "split"`. `"tab"` opens a separate self-closing command tab
- * instead. Falls back to a tab when the active tab can't host a split
- * (content tab, or the size gate — min-pane cells from the active leaf's
- * rendered size, depth cap when no size is known — made it a no-op).
+ * instead. An explicit `tabId` (`pane-open --tab`) hosts the split in THAT
+ * tab instead of the focused one. Falls back to a tab when the host tab
+ * can't host a split (content tab, or the size gate — min-pane cells from
+ * the active leaf's rendered size, depth cap when no size is known — made
+ * it a no-op).
  */
 
 import { initialSplit, leaves, removeLeaf, renameLeaf, splitActive } from "./split-core"
@@ -22,15 +24,20 @@ export function openPluginPane(
   direction: PaneDirection = "right",
   /** The active leaf's rendered cells — feeds split-core's size gate. */
   activeSize?: { cols: number; rows: number } | null,
+  /** Explicit host tab (`pane-open --tab`); absent = the focused tab. */
+  tabId?: string,
 ): TabsState {
   if (placement === "tab") return openCommandTab(state, argv, title)
-  const active = state.tabs.find((tab) => tab.id === state.activeId)
-  if (!active || active.kind === "content") return openCommandTab(state, argv, title)
+  const host =
+    tabId === undefined
+      ? state.tabs.find((tab) => tab.id === state.activeId)
+      : state.tabs.find((tab) => tab.id === tabId)
+  if (!host || host.kind === "content") return openCommandTab(state, argv, title)
   // `null` content = the tab's own engine leaf (terminal-tab-split.ts).
-  const base = active.splitTree ?? initialSplit<readonly string[] | null>(null)
+  const base = host.splitTree ?? initialSplit<readonly string[] | null>(null)
   const split = splitActive(base, direction === "down" ? "column" : "row", argv, activeSize)
   if (split === base) return openCommandTab(state, argv, title)
-  return setTabSplit(state, active.id, renameLeaf(split, split.activeLeafId, title))
+  return setTabSplit(state, host.id, renameLeaf(split, split.activeLeafId, title))
 }
 
 /**
@@ -44,11 +51,15 @@ export function openPluginPane(
 export function closePluginPanes(
   state: TabsState,
   title: string,
+  /** Scope the title match to one tab (`pane-close --tab`); absent = all
+   *  tabs of the task. */
+  tabId?: string,
 ): { next: TabsState; closedLeaves: readonly { tabId: string; leafId: string }[]; closedTabIds: readonly string[] } {
   let next = state
   const closedLeaves: { tabId: string; leafId: string }[] = []
   const closedTabIds: string[] = []
   for (const tab of state.tabs) {
+    if (tabId !== undefined && tab.id !== tabId) continue
     if (tab.kind === "content") continue
     if (tab.kind === "command" && tab.title === title) {
       closedTabIds.push(tab.id)

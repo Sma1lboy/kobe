@@ -33,14 +33,34 @@ describe("collect handler", () => {
     const result = (await invokeVerb("collect", ["--task-ids", " a , b "], {
       client,
       runtime: stubRuntime({
-        isTaskRunning: async (id) => id === "a",
+        taskTabs: async (id) => ({
+          tabs: [
+            {
+              id: "tab-1",
+              kind: "engine",
+              title: null,
+              vendor: null,
+              liveVendor: null,
+              lastTitle: null,
+              autoTitle: null,
+              alive: id === "a",
+              exit: null,
+            },
+          ],
+          running: id === "a",
+        }),
         readWorktreeChanges: async () => ({ added: 2, deleted: 1 }),
       }),
-    })) as { tasks: Array<{ taskId: string; running: boolean; changes: unknown }> }
+    })) as {
+      tasks: Array<{ taskId: string; running: boolean; tabs: Array<{ id: string; alive: boolean }>; changes: unknown }>
+    }
     expect(result.tasks.map((task) => [task.taskId, task.running])).toEqual([
       ["a", true],
       ["b", false],
     ])
+    // The per-tab join rides along so a coordinator can pick a `send --tab`
+    // target without a second get-task hop.
+    expect(result.tasks[0].tabs).toEqual([expect.objectContaining({ id: "tab-1", alive: true })])
     expect(result.tasks[0].changes).toEqual({ added: 2, deleted: 1 })
   })
 

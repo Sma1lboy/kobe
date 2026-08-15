@@ -271,6 +271,21 @@ describe("dispatch / note delivery verbs", () => {
     expect(result).toEqual({ ok: true, taskId: "t1", routed: "session.deliver" })
   })
 
+  it("dispatch --tab carries the exact tab through the payload and the result", async () => {
+    const client = new FakeClient({ "session.deliver": () => ({}) })
+    const result = await invokeVerb("dispatch", ["--task-id", "t1", "--tab", "tab-3", "--prompt", "status?"], {
+      client,
+      runtime: stubRuntime(),
+    })
+    expect(client.requests).toEqual([
+      {
+        name: "session.deliver",
+        payload: { taskId: "t1", text: "status?", tabId: "tab-3", source: "dispatcher" },
+      },
+    ])
+    expect(result).toEqual({ ok: true, taskId: "t1", tabId: "tab-3", routed: "session.deliver" })
+  })
+
   it("note files the field note through note.file and returns the daemon's answer", async () => {
     const client = new FakeClient({ "note.file": () => ({ relayed: 2 }) })
     const result = await invokeVerb("note", ["--task-id", "t1", "--text", "bun install fixes the worktree"], {

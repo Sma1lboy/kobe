@@ -153,7 +153,10 @@ export async function collect(ctx: VerbContext): Promise<unknown> {
   const out: unknown[] = []
   for (const taskId of taskIds) {
     const { task } = await daemon.request<{ task: SerializedTask }>("task.get", { taskId })
-    const running = await runtime.isTaskRunning(taskId)
+    // One liveness read serves both `running` and the per-tab list a
+    // coordinator needs to pick a `send --tab tab-N` target without a
+    // second get-task hop (same join as get-task).
+    const { tabs, running } = await runtime.taskTabs(taskId)
     // `changes` is the UNCOMMITTED view; `base` is the committed one (ahead
     // count + diffstat vs the merge-base). Both matter when picking a
     // fan-out winner: an attempt that commits its work reads +0/−0 here.
@@ -173,6 +176,7 @@ export async function collect(ctx: VerbContext): Promise<unknown> {
       // round's parent is programmatically discoverable.
       ...(task.dispatcher ? { dispatcher: task.dispatcher } : {}),
       running,
+      tabs,
       changes,
       base,
     })

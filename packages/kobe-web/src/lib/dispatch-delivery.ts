@@ -75,7 +75,9 @@ export async function deliverToSession(
     send ??= terminal.sendPtyText
   }
   try {
-    const tabId = ensureTab(event.taskId)
+    // An explicit tab (`dispatch --tab`) addresses that exact session key —
+    // bypassing the registry's canonical-tab minting is the point.
+    const tabId = event.tabId ?? ensureTab(event.taskId)
     await send(tabId, event.taskId, event.text)
     return true
   } catch (err) {
