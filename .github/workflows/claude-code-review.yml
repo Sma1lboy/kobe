@@ -17,7 +17,12 @@ name: Claude Code Review
 # are NOT skippable — they are fast, and they are what protects a release.
 on:
   pull_request:
-    types: [opened, synchronize, ready_for_review, reopened]
+    # No `synchronize` — re-reviewing every push is the "review unless
+    # necessary" case this gate exists to avoid. One pass at open/reopen/
+    # ready_for_review is enough; re-request manually (comment
+    # `skip-review:` off, then re-open or push a no-op amend) if a later
+    # revision genuinely needs another look.
+    types: [opened, ready_for_review, reopened]
     paths-ignore:
       - "**/*.md"
       - ".changeset/**"
