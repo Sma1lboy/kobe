@@ -52,19 +52,23 @@ export function useTabRequests(io: TabRequestIO): void {
         if (s.activeId !== tabId && s.tabs.some((tab) => tab.id === tabId)) updateRef.current(selectTab(s, tabId))
       }
       // Plugin panes (`tab.open`): split the focused chattab (default) or
-      // open a separate command tab — pane-split.ts owns the policy.
+      // open a separate command tab — pane-split.ts owns the policy. An
+      // explicit tabId hosts the split in THAT tab instead of the focused one.
       const open = takeTabOpen(taskId)
       if (open) {
         const size = activeLeafSizeRef.current()
-        updateRef.current(openPluginPane(stateRef.current, open.argv, open.title, open.placement, open.direction, size))
+        updateRef.current(
+          openPluginPane(stateRef.current, open.argv, open.title, open.placement, open.direction, size, open.tabId),
+        )
       }
       // Pane-close (`tab.close` — the inverse of tab.open): prune matching
       // titled leaves (state first, then release), close whole matching
-      // command tabs via the normal close path.
+      // command tabs via the normal close path. tabId scopes the title
+      // match to one tab.
       const paneClose = takePaneClose(taskId)
       if (paneClose) {
         const prev = stateRef.current
-        const { next, closedLeaves, closedTabIds } = closePluginPanes(prev, paneClose.title)
+        const { next, closedLeaves, closedTabIds } = closePluginPanes(prev, paneClose.title, paneClose.tabId)
         if (next !== prev) updateRef.current(next)
         for (const { tabId: id, leafId } of closedLeaves) {
           const tab = prev.tabs.find((x) => x.id === id)

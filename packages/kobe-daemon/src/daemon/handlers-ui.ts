@@ -26,6 +26,7 @@ export const UI_HANDLERS: readonly DaemonRequestHandler[] = [
       // (the SPA via /pty/send) owns the actual paste.
       const taskId = requireString(payload, "taskId")
       const text = requireString(payload, "text")
+      const tabId = optionalString(payload, "tabId")
       const source = optionalString(payload, "source")
       if (source !== undefined && source !== "note" && source !== "dispatcher") {
         throw new Error('source must be "note" or "dispatcher"')
@@ -34,6 +35,7 @@ export const UI_HANDLERS: readonly DaemonRequestHandler[] = [
       ctx.bus.publish("session.deliver", {
         taskId,
         text,
+        ...(tabId !== undefined ? { tabId } : {}),
         at: Date.now(),
         source: source ?? "dispatcher",
       })
@@ -119,10 +121,12 @@ export const UI_HANDLERS: readonly DaemonRequestHandler[] = [
       if (!ctx.orch.getTask(taskId)) throw new Error(`task not found: ${taskId}`)
       const placement = optionalString(payload, "placement")
       const direction = optionalString(payload, "direction")
+      const tabId = optionalString(payload, "tabId")
       ctx.bus.publish("tab.open", {
         taskId,
         argv,
         title,
+        ...(tabId !== undefined ? { tabId } : {}),
         ...(placement === "tab" || placement === "split" ? { placement } : {}),
         ...(direction === "right" || direction === "down" ? { direction } : {}),
         at: Date.now(),
@@ -138,8 +142,14 @@ export const UI_HANDLERS: readonly DaemonRequestHandler[] = [
       // broadcast — the daemon validates, the TUI owns the actual close.
       const taskId = requireString(payload, "taskId")
       const title = requireString(payload, "title")
+      const tabId = optionalString(payload, "tabId")
       if (!ctx.orch.getTask(taskId)) throw new Error(`task not found: ${taskId}`)
-      ctx.bus.publish("tab.close", { taskId, title, at: Date.now() })
+      ctx.bus.publish("tab.close", {
+        taskId,
+        title,
+        ...(tabId !== undefined ? { tabId } : {}),
+        at: Date.now(),
+      })
       return { ok: true }
     },
   },

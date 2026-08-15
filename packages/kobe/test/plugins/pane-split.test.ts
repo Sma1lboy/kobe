@@ -56,6 +56,29 @@ describe("openPluginPane", () => {
     expect(next.tabs).toHaveLength(withContent.tabs.length + 1)
     expect(next.tabs.find((t) => t.id === next.activeId)?.kind).toBe("command")
   })
+
+  it("explicit tabId hosts the split in that tab, not the focused one", () => {
+    // Focus a command tab; the split must still land in tab-1 (pane-open --tab).
+    const state = openPluginPane(initialTabs(), ARGV, "shell", "tab")
+    expect(state.activeId).toBe("tab-2")
+    const next = openPluginPane(state, ARGV, "logs", "split", "right", null, "tab-1")
+    expect(next.tabs).toHaveLength(state.tabs.length) // no new tab
+    const host = next.tabs.find((t) => t.id === "tab-1")
+    const tree = host?.kind === "engine" || host?.kind === "command" ? host.splitTree : null
+    expect(tree).toBeTruthy()
+    const ls = leaves((tree as NonNullable<typeof tree>).root)
+    expect(ls).toHaveLength(2)
+    expect(ls[1]).toMatchObject({ content: ARGV, title: "logs" })
+    // The focused command tab is untouched.
+    expect(next.tabs.find((t) => t.id === "tab-2")).toMatchObject({ kind: "command" })
+  })
+
+  it("an unknown tabId falls back to a command tab like any un-splittable host", () => {
+    const state = initialTabs()
+    const next = openPluginPane(state, ARGV, "lazygit", "split", "right", null, "tab-9")
+    expect(next.tabs).toHaveLength(state.tabs.length + 1)
+    expect(next.tabs.find((t) => t.id === next.activeId)?.kind).toBe("command")
+  })
 })
 
 describe("closePluginPanes", () => {
@@ -83,5 +106,18 @@ describe("closePluginPanes", () => {
     expect(untouched.closedLeaves).toEqual([])
     expect(untouched.closedTabIds).toEqual([])
     void next
+  })
+
+  it("tabId scopes the title match to one tab (pane-close --tab)", () => {
+    // "fx" panes in BOTH tabs; the scoped close touches only tab-1's.
+    let state = openPluginPane(initialTabs(), ARGV, "fx")
+    state = openPluginPane(state, ARGV, "other", "tab") // focus moves to tab-2
+    state = openPluginPane(state, ARGV, "fx", "split", "right", null, "tab-2")
+    const scoped = closePluginPanes(state, "fx", "tab-1")
+    expect(scoped.closedLeaves.every((c) => c.tabId === "tab-1")).toBe(true)
+    expect(scoped.closedTabIds).toEqual([])
+    const tab2 = scoped.next.tabs.find((t) => t.id === "tab-2")
+    const tree2 = tab2?.kind === "engine" || tab2?.kind === "command" ? tab2.splitTree : null
+    expect(leaves((tree2 as NonNullable<typeof tree2>).root).map((l) => l.title ?? null)).toContain("fx")
   })
 })

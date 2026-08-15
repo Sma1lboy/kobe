@@ -169,6 +169,13 @@ describe("daemon handler registry", () => {
       const { ctx: ctx2 } = fakeCtx({ getTask: () => undefined })
       await expect(dispatch("tab.close", { taskId: "nope", title: "t" }, ctx2)).rejects.toThrow(/task not found/)
     })
+
+    it("carries an explicit tabId through (pane-close --tab)", async () => {
+      const { ctx, rec } = fakeCtx({ getTask: () => TASK })
+      await dispatch("tab.close", { taskId: "t1", title: "demo", tabId: "tab-3" }, ctx)
+      const event = rec.published[0] as { payload: Record<string, unknown> }
+      expect(event.payload.tabId).toBe("tab-3")
+    })
   })
 
   describe("tab.open", () => {
@@ -199,6 +206,26 @@ describe("daemon handler registry", () => {
       const [down, bogus] = rec.published as { payload: Record<string, unknown> }[]
       expect(down.payload.direction).toBe("down")
       expect(bogus.payload.direction).toBeUndefined()
+    })
+
+    it("carries an explicit tabId through (pane-open --tab)", async () => {
+      const { ctx, rec } = fakeCtx({ getTask: () => TASK })
+      await dispatch("tab.open", { taskId: "t1", argv: ["x"], title: "t", tabId: "tab-3" }, ctx)
+      const event = rec.published[0] as { payload: Record<string, unknown> }
+      expect(event.payload.tabId).toBe("tab-3")
+    })
+  })
+
+  describe("session.deliver", () => {
+    it("publishes with an explicit tabId and rejects an unknown task", async () => {
+      const { ctx, rec } = fakeCtx({ getTask: (id: string) => (id === "t1" ? TASK : undefined) })
+      const result = await dispatch("session.deliver", { taskId: "t1", text: "hi", tabId: "tab-2" }, ctx)
+      expect(result).toEqual({ ok: true })
+      const event = rec.published[0] as { channel: string; payload: Record<string, unknown> }
+      expect(event.channel).toBe("session.deliver")
+      expect(event.payload).toMatchObject({ taskId: "t1", text: "hi", tabId: "tab-2", source: "dispatcher" })
+      const { ctx: ctx2 } = fakeCtx({ getTask: () => undefined })
+      await expect(dispatch("session.deliver", { taskId: "nope", text: "x" }, ctx2)).rejects.toThrow(/task not found/)
     })
   })
 

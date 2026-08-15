@@ -118,6 +118,7 @@ let pendingTabOpen: {
   taskId: string
   argv: readonly string[]
   title: string
+  tabId?: string
   placement?: "split" | "tab"
   direction?: "right" | "down"
 } | null = null
@@ -128,8 +129,9 @@ export function requestTabOpen(
   title: string,
   placement?: "split" | "tab",
   direction?: "right" | "down",
+  tabId?: string,
 ): void {
-  pendingTabOpen = { taskId, argv, title, placement, direction }
+  pendingTabOpen = { taskId, argv, title, placement, direction, tabId }
   for (const listener of tabActivationListeners) listener()
 }
 
@@ -139,19 +141,19 @@ export function requestTabOpen(
  * mounted TerminalTabs; matching is by pane label, so only titled
  * split-leaves / command tabs (the ones tab.open creates) are affected.
  */
-let pendingPaneClose: { taskId: string; title: string } | null = null
+let pendingPaneClose: { taskId: string; title: string; tabId?: string } | null = null
 
-export function requestPaneClose(taskId: string, title: string): void {
-  pendingPaneClose = { taskId, title }
+export function requestPaneClose(taskId: string, title: string, tabId?: string): void {
+  pendingPaneClose = { taskId, title, tabId }
   for (const listener of tabActivationListeners) listener()
 }
 
 /** Consume a pending pane-close for this task, or null. */
-export function takePaneClose(taskId: string): { title: string } | null {
+export function takePaneClose(taskId: string): { title: string; tabId?: string } | null {
   if (pendingPaneClose?.taskId !== taskId) return null
-  const title = pendingPaneClose.title
+  const { title, tabId } = pendingPaneClose
   pendingPaneClose = null
-  return { title }
+  return { title, tabId }
 }
 
 /**
@@ -216,9 +218,13 @@ export function takeUnclaimedTabAdopt(): { taskId: string; tabIds: readonly stri
 }
 
 /** Consume a pending tab-open for this task, or null. */
-export function takeTabOpen(
-  taskId: string,
-): { argv: readonly string[]; title: string; placement?: "split" | "tab"; direction?: "right" | "down" } | null {
+export function takeTabOpen(taskId: string): {
+  argv: readonly string[]
+  title: string
+  tabId?: string
+  placement?: "split" | "tab"
+  direction?: "right" | "down"
+} | null {
   if (pendingTabOpen?.taskId !== taskId) return null
   const request = pendingTabOpen
   pendingTabOpen = null

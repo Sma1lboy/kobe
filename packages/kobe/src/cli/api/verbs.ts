@@ -207,7 +207,17 @@ export const VERBS: readonly VerbSpec[] = [
     name: "dispatch",
     summary:
       "Route text into a task's live session via the daemon's session.deliver channel. The dispatcher's messenger (docs/design/dispatcher.md); unlike `send`, it requires an already-hosted session.",
-    flags: [F.taskId(true), F.prompt(true, "Text delivered into the task's engine session.")],
+    flags: [
+      F.taskId(true),
+      F.prompt(true, "Text delivered into the task's engine session."),
+      {
+        name: "tab",
+        type: "string",
+        required: false,
+        placeholder: "TAB",
+        description: "Deliver into exactly this tab (e.g. tab-3) instead of the canonical engine tab.",
+      },
+    ],
     handler: dispatch,
   },
   {
@@ -334,7 +344,7 @@ export const VERBS: readonly VerbSpec[] = [
   {
     name: "collect",
     summary:
-      "Read-only comparison snapshot of several tasks: identity, branch, lineage (.dispatcher, .groupId), .running, uncommitted .changes, and committed .base (ahead count + diffstat vs the base branch).",
+      "Read-only comparison snapshot of several tasks: identity, branch, lineage (.dispatcher, .groupId), .running, per-tab .tabs (same join as get-task — pick a `send --tab` target without a second hop), uncommitted .changes, and committed .base (ahead count + diffstat vs the base branch).",
     flags: [
       { name: "task-ids", type: "csv", placeholder: "a,b,c", description: "Comma-separated task ids." },
       F.repo(false),

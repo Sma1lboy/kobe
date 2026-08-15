@@ -15,9 +15,15 @@ import { ApiError, type VerbSpec } from "./types.ts"
 export const PANE_VERB: VerbSpec = {
   name: "pane-open",
   summary:
-    "Open a terminal pane in a task's workspace: split the focused tab (default) or open a separate command tab, optionally running a command. Broadcast over the daemon's tab.open channel — an attached TUI showing the task performs the split. Task defaults to $ROVE_TASK_ID, then the active task.",
+    "Open a terminal pane in a task's workspace: split the focused tab (default, or --tab's tab) or open a separate command tab, optionally running a command. Broadcast over the daemon's tab.open channel — an attached TUI showing the task performs the split. Task defaults to $ROVE_TASK_ID, then the active task.",
   flags: [
     F.taskId(false),
+    {
+      name: "tab",
+      type: "string",
+      placeholder: "TAB",
+      description: "Host tab for the split (e.g. tab-3) instead of the focused tab (split placement only).",
+    },
     {
       name: "command",
       type: "string",
@@ -58,10 +64,12 @@ export const PANE_VERB: VerbSpec = {
     const command = ctx.args.str("command")
     const argv = command ? ["sh", "-lc", command] : [process.env.SHELL || "sh"]
     const title = ctx.args.str("title") ?? (command ? (command.trim().split(/\s+/)[0] ?? "shell") : "shell")
+    const tabId = ctx.args.str("tab")
     return simpleRpc(ctx, "tab.open", {
       taskId,
       argv,
       title,
+      ...(tabId !== undefined ? { tabId } : {}),
       placement: ctx.args.str("placement") ?? "split",
       direction: ctx.args.str("direction") ?? "right",
     })
@@ -81,6 +89,12 @@ export const PANE_CLOSE_VERB: VerbSpec = {
       placeholder: "TEXT",
       description: "Pane label to close — the --title the pane was opened with (engine panes are never closed).",
     },
+    {
+      name: "tab",
+      type: "string",
+      placeholder: "TAB",
+      description: "Scope the title match to one tab (e.g. tab-3) instead of every tab of the task.",
+    },
   ],
   handler: async (ctx) => {
     const client = daemonOf(ctx)
@@ -88,6 +102,11 @@ export const PANE_CLOSE_VERB: VerbSpec = {
     if (!taskId) {
       throw new ApiError("no target task: pass --task-id (no $ROVE_TASK_ID, no active task)", "TASK_NOT_FOUND")
     }
-    return simpleRpc(ctx, "tab.close", { taskId, title: ctx.args.str("title") })
+    const tabId = ctx.args.str("tab")
+    return simpleRpc(ctx, "tab.close", {
+      taskId,
+      title: ctx.args.str("title"),
+      ...(tabId !== undefined ? { tabId } : {}),
+    })
   },
 }

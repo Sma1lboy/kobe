@@ -99,8 +99,9 @@ alias of `add`.
   task, when one did — the lineage read for a fan-out round's parent.
 - `collect [--task-ids a,b,c] [--repo PATH]`: read-only comparison
   snapshot of several tasks: identity, branch, lineage (`.dispatcher`,
-  `.groupId`), `.running`, uncommitted `.changes`, and committed `.base`
-  (ahead count + diffstat vs base).
+  `.groupId`), `.running`, per-tab `.tabs` (the same join as `get-task` —
+  pick a `send --tab` target without a second hop), uncommitted `.changes`,
+  and committed `.base` (ahead count + diffstat vs base).
 - `digest --repo PATH [--since-days N]`: the repo's recent agent work —
   tasks touched in the window plus routine outcomes by status. Default
   window 7 days. Task outcomes are deliberately absent: completion travels
@@ -173,10 +174,11 @@ placeholder branch to a descriptive name. Prompts into existing sessions
   task with no live session at all auto-starts its canonical engine tab, in
   the task's worktree — `started: true` in the result marks that fresh
   session (vs. delivery into an existing one).
-- `dispatch --task-id ID --prompt TEXT`: route text into a task's live
-  session via the daemon's `session.deliver` channel; requires an
+- `dispatch --task-id ID --prompt TEXT [--tab TAB]`: route text into a
+  task's live session via the daemon's `session.deliver` channel; requires an
   already-hosted session (the dispatcher's messenger; see
-  [design/dispatcher.md](./design/dispatcher.md)).
+  [design/dispatcher.md](./design/dispatcher.md)). `--tab tab-N` delivers
+  into exactly that tab instead of the canonical engine tab.
 - `note --task-id ID --text TEXT`: file a one-line field note (a resolved,
   repo-level gotcha). Appended to the repo's durable note store — every
   future worktree session on this repo starts with it in its system prompt —
@@ -185,21 +187,23 @@ placeholder branch to a descriptive name. Prompts into existing sessions
   first. Returns `{ notes }`.
 - `set-active [--task-id ID] [--none]`: set (or clear) the shared active
   task every Tasks pane highlights.
-- `pane-open [--task-id ID] [--command CMD] [--direction right|down]
-  [--placement split|tab] [--title TEXT]`: open a terminal pane in a task's
-  workspace — split the focused tab (default, tmux-style beside/below the
-  active pane) or open a separate command tab. `--command` runs via
+- `pane-open [--task-id ID] [--tab TAB] [--command CMD] [--direction
+  right|down] [--placement split|tab] [--title TEXT]`: open a terminal pane
+  in a task's workspace — split the focused tab (default, tmux-style
+  beside/below the active pane; `--tab tab-N` hosts the split in that tab
+  instead) or open a separate command tab. `--command` runs via
   `sh -lc` and the pane closes when it exits; omit it for an interactive
   shell. Broadcast over the daemon's `tab.open` channel, so an attached TUI
   showing the task performs the split (headless, nothing happens). Task
   defaults to `$ROVE_TASK_ID` (or its Kobe alias), then the active task. How far splits can go
   is decided by the terminal's size: a split that would shrink any pane
   below the minimum usable size (20×6 cells) falls back to a tab.
-- `pane-close [--task-id ID] --title TEXT`: the inverse — close every pane
-  (split leaf / command tab) in the task whose label matches `--title`, the
-  title it was opened with. Engine panes are never closed. Broadcast over
-  the daemon's `tab.close` channel; an attached TUI performs the close
-  (headless, nothing happens).
+- `pane-close [--task-id ID] --title TEXT [--tab TAB]`: the inverse — close
+  every pane (split leaf / command tab) in the task whose label matches
+  `--title`, the title it was opened with; `--tab tab-N` scopes the match to
+  one tab. Engine panes are never closed. Broadcast over the daemon's
+  `tab.close` channel; an attached TUI performs the close (headless, nothing
+  happens).
 
 ## edit
 

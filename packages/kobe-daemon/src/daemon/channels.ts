@@ -288,6 +288,9 @@ export interface NoticeEventPayload {
 export interface SessionDeliverPayload {
   readonly taskId: string
   readonly text: string
+  /** Exact terminal tab to deliver into (`dispatch --tab`); absent = the
+   *  canonical engine tab. */
+  readonly tabId?: string
   /** Publish time (ms epoch) — the consumer-side dedupe key. */
   readonly at: number
   readonly source: "note" | "dispatcher"
@@ -308,6 +311,8 @@ export interface TabOpenPayload {
   /** Argv the pane's PTY spawns verbatim (no shell wrap on this side). */
   readonly argv: readonly string[]
   readonly title: string
+  /** Host tab for the split (`pane-open --tab`); absent = the focused tab. */
+  readonly tabId?: string
   /** `split` (default) joins the focused chattab's split group; `tab` opens a separate tab. */
   readonly placement?: "split" | "tab"
   /** Split orientation: `right` (default) lays the new pane beside the
@@ -323,6 +328,9 @@ export interface TabClosePayload {
   /** Pane label to close — matches the `title` split leaves / command tabs
    *  were opened with (`tab.open`); engine leaves are never closed. */
   readonly title: string
+  /** Scope the title match to one tab (`pane-close --tab`); absent = all
+   *  tabs of the task. */
+  readonly tabId?: string
   /** Publish time (ms epoch) — the consumer-side dedupe key. */
   readonly at: number
 }

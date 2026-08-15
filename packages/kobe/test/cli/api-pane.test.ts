@@ -48,6 +48,20 @@ describe("pane-open handler", () => {
     expect(bare.requestNames).toEqual([])
   })
 
+  it("--tab scopes both verbs' payloads to one tab", async () => {
+    const client = new FakeClient({ "tab.open": () => ({ ok: true }), "tab.close": () => ({ ok: true }) })
+    await invokeVerb("pane-open", ["--task-id", "t9", "--tab", "tab-3", "--command", "btop"], {
+      client,
+      runtime: stubRuntime(),
+    })
+    expect(client.requests[0].payload).toMatchObject({ taskId: "t9", tabId: "tab-3" })
+    await invokeVerb("pane-close", ["--task-id", "t9", "--tab", "tab-3", "--title", "btop"], {
+      client,
+      runtime: stubRuntime(),
+    })
+    expect(client.requests[1].payload).toEqual({ taskId: "t9", title: "btop", tabId: "tab-3" })
+  })
+
   it("rejects an out-of-range --direction before any RPC", async () => {
     const client = new FakeClient()
     await expectApiError(

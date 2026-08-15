@@ -227,8 +227,14 @@ export async function dispatch(ctx: VerbContext): Promise<unknown> {
   const daemon = daemonOf(ctx)
   const taskId = ctx.args.require("task-id")
   const text = ctx.args.require("prompt")
-  await daemon.request("session.deliver", { taskId, text, source: "dispatcher" })
-  return { ok: true, taskId, routed: "session.deliver" }
+  const tabId = ctx.args.str("tab")
+  await daemon.request("session.deliver", {
+    taskId,
+    text,
+    ...(tabId !== undefined ? { tabId } : {}),
+    source: "dispatcher",
+  })
+  return { ok: true, taskId, ...(tabId !== undefined ? { tabId } : {}), routed: "session.deliver" }
 }
 
 export async function note(ctx: VerbContext): Promise<unknown> {
