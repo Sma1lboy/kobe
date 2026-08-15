@@ -13,8 +13,8 @@
 | Routines                     |
 |                              |
 | kobe ─────────────────────── |
-|▌ feat/bravo                2 |
-|   · tests                  3 |
+|▌ feat/bravo                  |
+|   · tests                    |
 |                              |
 |                              |
 |                              |

@@ -13,8 +13,8 @@
 | Routines                     |
 |                              |
 | kobe ─────────────────────── |
-|▌ feat/alpha                2 |
-|   · review                 3 |
+|▌ feat/alpha                  |
+|   · review                   |
 |                              |
 |                              |
 |                              |
