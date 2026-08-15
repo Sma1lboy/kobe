@@ -21,7 +21,6 @@ import { sweepBar } from "../../../tui/lib/progress-bar"
 import { spinnerFrameSnapshot, subscribeSpinnerFrame } from "../../../tui/lib/spinner-frame-store"
 import { currentBranch, pollCurrentBranch } from "../../../tui/panes/sidebar/git-head"
 import type { SidebarRow } from "../../../tui/panes/sidebar/groups"
-import { taskJumpDigit } from "../../../tui/panes/sidebar/jump-digits"
 import { spacedTitle } from "../../../tui/panes/sidebar/labels"
 import {
   type SidebarRowView,
@@ -396,20 +395,9 @@ export function ProjectRowCard(props: { row: SidebarRow; shared: SidebarRowCardS
  * nothing rather than a digit that jumps somewhere else. Keyed on the flat
  * index directly so the tree's rows (no SidebarRow wrapper) share it.
  */
-export function JumpDigit(props: { flatIndex: number; dim: boolean }) {
-  const { theme } = useTheme()
-  const digit = taskJumpDigit(props.flatIndex)
-  if (digit === null) return null
-  return (
-    <text
-      fg={props.dim ? theme.textMuted : theme.accent}
-      attributes={TextAttributes.DIM}
-      wrapMode="none"
-      flexShrink={0}
-    >
-      {digit}
-    </text>
-  )
+// ponytail: ctrl+<digit> jump chord still works, just no longer printed on the row.
+export function JumpDigit(_props: { flatIndex: number; dim: boolean }) {
+  return null
 }
 
 export function TaskRowCard(props: { row: SidebarRow; shared: SidebarRowCardSharedProps }) {
