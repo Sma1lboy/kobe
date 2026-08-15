@@ -176,8 +176,13 @@ export function hasLiveEngineTab(
  * Seed `terminalTabs.<taskId>` with the canonical first engine tab when the
  * task has none. No-op when a snapshot already exists, and never throws — a
  * sidebar-visibility nicety must not fail an otherwise-good session start.
+ *
+ * `sessionId` is the conversation id the launch pinned (`withClaudeSessionId`)
+ * — recording it (with `spawned`, the conversation provably started: the
+ * caller only passes it after a successful delivery) makes a later
+ * dead-reattach `--resume` this conversation, matching a TUI-spawned tab.
  */
-export function publishCliTabSnapshot(taskId: string): void {
+export function publishCliTabSnapshot(taskId: string, sessionId?: string | null): void {
   if (!taskId) return
   try {
     const key = terminalTabsKey(taskId)
@@ -186,10 +191,43 @@ export function publishCliTabSnapshot(taskId: string): void {
     // one engine tab `tab-1`, active — matching the PTY key the CLI launch
     // path uses (`engineSessionKey` → `<taskId>::tab-1`), so the tree's row
     // and the live process agree on which tab this is.
-    patchStateFile({ [key]: initialTabs() })
+    const seeded = initialTabs()
+    patchStateFile({
+      [key]: sessionId
+        ? {
+            ...seeded,
+            tabs: seeded.tabs.map((t): TerminalTab => (t.kind === "engine" ? { ...t, sessionId, spawned: true } : t)),
+          }
+        : seeded,
+    })
   } catch {
     // Unreadable/unwritable state.json: the session is still fine, the tree
     // just won't list its tab until the TUI opens the task.
+  }
+}
+
+/**
+ * Record a CLI-spawned EXTRA tab's pinned session id after its session
+ * actually started (the `send --tab new` twin of {@link publishCliTabSnapshot}'s
+ * sessionId). mintCliTab runs BEFORE the spawn — it deliberately leaves the
+ * id unset so a failed start never claims a resumable conversation that
+ * does not exist (claude errors hard on `--resume` of a missing id).
+ */
+export function markCliTabSession(taskId: string, tabId: string, sessionId: string): void {
+  try {
+    const key = terminalTabsKey(taskId)
+    const existing = loadStateFile()[key] as TabsState | undefined
+    if (!existing || !Array.isArray(existing.tabs)) return
+    patchStateFile({
+      [key]: {
+        ...existing,
+        tabs: existing.tabs.map(
+          (t): TerminalTab => (t.id === tabId && t.kind === "engine" ? { ...t, sessionId, spawned: true } : t),
+        ),
+      },
+    })
+  } catch {
+    // Same best-effort contract as the snapshot writers above.
   }
 }
 

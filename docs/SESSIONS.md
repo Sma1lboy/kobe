@@ -1,7 +1,8 @@
 # Sessions: what survives what
 
-Short answer: **quitting Rove stops nothing.** Only a reboot or an explicit
-`rove reset` ends your running sessions.
+Short answer: **quitting Rove stops nothing.** A reboot ends the running
+processes but restores their screens and relaunches them on attach; only an
+explicit `rove reset` starts truly fresh.
 
 ## What survives
 
@@ -10,14 +11,19 @@ Short answer: **quitting Rove stops nothing.** Only a reboot or an explicit
 | Quit the TUI | ✓ | ✓ | ✓ | ✓ |
 | Drop your SSH connection | ✓ | ✓ | ✓ | ✓ |
 | `rove daemon restart` | ✓ | ✓ | ✓ | ✓ |
-| Reboot, or `rove reset` | — | — | ✓ | ✓ resumable |
+| Reboot, or the pty-host dies | — relaunched on attach | ✓ restored | ✓ | ✓ resumable |
+| `rove reset` | — | — | ✓ | ✓ resumable |
 
 ![The TUI detaches while the engine process, scrollback ring, and task list stay lit below](assets/detach-survives.png)
 
 The first three rows are the whole point: the TUI is a viewport, and the
-daemon is replaceable. The last row is the hard boundary — nothing keeps
-processes alive across a reboot, and raw terminal output is never written to
-disk. Your *conversations* still come back, because the engine wrote them.
+daemon is replaceable. The fourth row is the freeze/restore contract: nothing
+keeps processes alive across a reboot, but the PTY host persists every
+session's metadata and scrollback to disk, so the next boot puts your screen
+back and relaunches the session's command when you look at it. Your
+*conversations* come back either way, because the engine wrote them. The last
+row is the hard boundary — `rove reset` is the deliberate teardown, and it
+wipes the frozen sessions too.
 
 ## Why: three processes, three lifetimes
 
@@ -58,7 +64,14 @@ flowchart TB
   scrollback. It's deliberately a *separate* process from the daemon, so a
   daemon restart never kills a running engine. Like the tmux server, it exits
   on its own only after sitting at zero live sessions. `rove reset` is the
-  explicit teardown.
+  explicit teardown. While it runs, it freezes every session (metadata +
+  scrollback ring) to `<home>/.kobe/pty-sessions/` — throttled to one write
+  per few seconds while streaming, immediately on exit, and in full at
+  shutdown. A host that comes back up (after a crash, a reboot, an idle-exit)
+  thaws each record into a dead *restored* session: reattaching replays the
+  old screen and respawns the command in place. Closing a tab, archiving a
+  task, or `rove reset` deletes the record instead — an intentional end is
+  never resurrected.
 
 ## Detaching and reattaching
 
@@ -86,8 +99,9 @@ local to each one.
 Two buffers, both bounded:
 
 - **What a reattach replays** — the PTY host keeps ~512 KiB of recent output
-  per session, in memory only. When the host ends (reboot, `rove reset`), it's
-  gone.
+  per session. The live copy is in memory, but the host also freezes it to
+  disk (see above), so a host restart or reboot restores it with the session.
+  Only `rove reset` throws it away.
 - **How far you can scroll** — `terminal.scrollbackRows` in Settings →
   General → Terminal, default 1000 rows. Applies to terminals started after
   the change.
@@ -128,8 +142,10 @@ your TUI is attached to.
 
 Stated plainly so this page doesn't overpromise:
 
-- **Surviving a reboot with processes intact.** Tasks, worktrees, and
-  conversations come back from disk; running processes and scrollback don't.
+- **Surviving a reboot with processes intact.** Tasks, worktrees, scrollback,
+  and conversations come back from disk, and sessions relaunch on attach —
+  but the processes themselves die with the machine; any in-flight execution
+  state inside them is gone.
 - **Attaching from another machine.** The sockets are local only. Running the
   TUI over SSH works because both ends are on the same host; there's no
   native remote attach.

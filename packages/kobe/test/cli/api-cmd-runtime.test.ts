@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   readWorktreeChanges: vi.fn(),
   submitFeedback: vi.fn(),
   interactiveEngineCommand: vi.fn(),
+  withClaudeSessionId: vi.fn((argv: readonly string[]) => ({ argv, sessionId: null })),
   ensurePtyHost: vi.fn(),
   deliverHostedPrompt: vi.fn(),
   closePtyHost: vi.fn(),
@@ -49,6 +50,7 @@ vi.mock("../../src/lib/feedback.ts", () => ({
 
 vi.mock("../../src/engine/interactive-command.ts", () => ({
   interactiveEngineCommand: mocks.interactiveEngineCommand,
+  withClaudeSessionId: mocks.withClaudeSessionId,
 }))
 
 vi.mock("../../src/engine/session-launch.ts", () => ({

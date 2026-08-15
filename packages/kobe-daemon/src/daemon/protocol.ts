@@ -346,6 +346,13 @@ export interface PtyOpenResult {
    *  warm-shell adoption) — the client's cue that `initialInput` may be
    *  typed. False on reattach; absent from pre-warm hosts. */
   readonly created?: boolean
+  /** True when THIS open respawned a freeze-restored corpse in place:
+   *  `replay` is the pre-restart scrollback and the child is brand new
+   *  (the caller's launch spec won — e.g. the TUI's engine `--resume`).
+   *  Distinct from `created` because the spawn spec was NOT swallowed by
+   *  a live session: a prompt embedded in the launch argv DID ride it,
+   *  so the caller must not also paste it. Absent from pre-freeze hosts. */
+  readonly respawned?: boolean
   /** Monotonic per-session byte offset at attach time (total bytes the
    *  child has ever written). A client that detaches records it and asks
    *  the next `pty.open` for only the delta via `sinceOffset`; absent
