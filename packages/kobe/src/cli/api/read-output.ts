@@ -44,8 +44,6 @@ import { findEngineKey, listSessions, openPtyHost } from "./pty-delivery.ts"
 import {
   type Cursor,
   DEFAULT_PAGE_MESSAGES,
-  decodeCursor,
-  encodeCursor,
   type FallbackReason,
   type HistoryCursor,
   MAX_PAGE_MESSAGES,
@@ -55,6 +53,8 @@ import {
   type TerminalPeekPage,
   boundedTail,
   buildHistoryPage,
+  decodeCursor,
+  encodeCursor,
 } from "./read-output-page.ts"
 import { resolveActiveTaskId } from "./runtime.ts"
 import { ApiError, type VerbContext, type VerbSpec } from "./types.ts"
