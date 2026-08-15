@@ -25,6 +25,13 @@
  *     (session ids are flat vendor tokens, terminal identity is a pid).
  *   - Strictly read-only: never spawns, attaches, resizes, or mutates
  *     task/engine lifecycle (terminal reads go through `pty.peek`).
+ *
+ * Tab precision (2026-08-16): the default terminal read resolves the
+ * task's CANONICAL engine tab; `--tab tab-N` reads exactly that hosted
+ * session instead (the API's smallest unit is one tab, same as
+ * `send --tab`). A tab read is terminal-only — history is
+ * worktree-scoped and cannot resolve to a tab — and the cursor pins
+ * the tab alongside the pid, so paged reads can't silently hop tabs.
  */
 
 import type { PtyPeekResult, PtySessionExit, SerializedTask } from "@sma1lboy/kobe-daemon/daemon/protocol"
@@ -75,6 +82,8 @@ export interface ReadOutputEnvelope {
     /** How the session died when `live` is false — null while alive or
      *  when the host predates exit records. */
     readonly exit?: PtySessionExit | null
+    /** The exact tab read (`--tab`); absent for the canonical engine tab. */
+    readonly tab?: string
   }
   /** Opaque next-page cursor; null when there is nothing to page. */
   readonly cursor: string | null
@@ -91,6 +100,8 @@ type TerminalCursor = {
   pid: number | null
   off: number
   fr: FallbackReason | null
+  /** The tab a `--tab` read is pinned to; absent for canonical-tab reads. */
+  tab?: string
 }
 type Cursor = HistoryCursor | TerminalCursor
 
@@ -114,7 +125,9 @@ export function decodeCursor(raw: string, taskId: string): Cursor {
     ((c.src === "history" &&
       typeof (c as HistoryCursor).sid === "string" &&
       typeof (c as HistoryCursor).idx === "number") ||
-      (c.src === "terminal" && typeof (c as TerminalCursor).off === "number"))
+      (c.src === "terminal" &&
+        typeof (c as TerminalCursor).off === "number" &&
+        ((c as TerminalCursor).tab === undefined || typeof (c as TerminalCursor).tab === "string")))
   if (!shapeOk) throw new ApiError("invalid cursor (unknown version or shape)", "CURSOR_INVALID")
   if (c.task !== taskId) {
     throw new ApiError(`cursor belongs to task ${c.task}, not ${taskId}`, "CURSOR_TASK_MISMATCH")
@@ -212,8 +225,10 @@ export interface TerminalPeekPage {
 export interface ReadOutputDeps {
   /** The engine adapter's transcript reader; null = engine ships none. */
   readonly history: EngineHistoryReader | null
-  /** Bounded ring peek of the task's live engine pane; null = no host / no session. */
-  peekTerminal(sinceOffset?: number): Promise<TerminalPeekPage | null>
+  /** Bounded ring peek of one hosted session; `tab` selects the exact tab
+   *  (`undefined` = the task's canonical engine tab). null = no host / no
+   *  session. */
+  peekTerminal(tab: string | undefined, sinceOffset?: number): Promise<TerminalPeekPage | null>
 }
 
 export interface ReadOutputInput {
@@ -221,6 +236,8 @@ export interface ReadOutputInput {
   /** Task worktree (null when not materialized — history is then missing). */
   readonly worktree: string | null
   readonly source: ReadSourceArg
+  /** Exact terminal tab to read (`tab-N`); implies a terminal-only read. */
+  readonly tab?: string
   readonly cursor?: string
   readonly limit?: number
 }
@@ -232,6 +249,12 @@ function sourceChanged(detail: string): ApiError {
 export async function readTaskOutput(input: ReadOutputInput, deps: ReadOutputDeps): Promise<ReadOutputEnvelope> {
   const limit = Math.min(Math.max(input.limit ?? DEFAULT_PAGE_MESSAGES, 1), MAX_PAGE_MESSAGES)
 
+  // A tab read IS a terminal read: history is worktree-scoped, so there is
+  // no per-tab history to serve. --source history + --tab is a contradiction.
+  if (input.tab && input.source === "history") {
+    throw new ApiError("--tab reads one terminal tab; --source history is task/worktree-scoped", "BAD_FLAG")
+  }
+
   if (input.cursor) {
     const cursor = decodeCursor(input.cursor, input.taskId)
     if (input.source !== "auto" && input.source !== cursor.src) {
@@ -240,12 +263,21 @@ export async function readTaskOutput(input: ReadOutputInput, deps: ReadOutputDep
         "CURSOR_INVALID",
       )
     }
+    if (input.tab && cursor.src !== "terminal") {
+      throw new ApiError(`cursor is pinned to source "${cursor.src}" but --tab reads a terminal tab`, "CURSOR_INVALID")
+    }
+    if (cursor.src === "terminal" && (cursor.tab ?? null) !== (input.tab ?? null)) {
+      throw new ApiError(
+        `cursor is pinned to tab ${cursor.tab ?? "canonical"} — pass the same --tab or restart without the cursor`,
+        "CURSOR_INVALID",
+      )
+    }
     return cursor.src === "history"
       ? continueHistory(input, deps, cursor, limit)
       : continueTerminal(input, deps, cursor)
   }
 
-  if (input.source === "terminal") return firstTerminalPage(input, deps, null)
+  if (input.tab || input.source === "terminal") return firstTerminalPage(input, deps, null)
 
   const first = await tryFirstHistoryPage(input, deps, limit)
   if (typeof first !== "string") return first
@@ -341,12 +373,12 @@ async function firstTerminalPage(
   deps: ReadOutputDeps,
   fallbackReason: FallbackReason | null,
 ): Promise<ReadOutputEnvelope> {
-  const t = await deps.peekTerminal()
+  const t = await deps.peekTerminal(input.tab)
   if (!t) {
     return {
       taskId: input.taskId,
       source: "terminal",
-      terminal: { tail: [], truncated: false, live: false },
+      terminal: { tail: [], truncated: false, live: false, tab: input.tab },
       cursor: null,
       fallbackReason,
       warnings: ["no live terminal session for this task"],
@@ -356,8 +388,16 @@ async function firstTerminalPage(
   return {
     taskId: input.taskId,
     source: "terminal",
-    terminal: { tail, truncated, live: t.live, exit: t.exit ?? null },
-    cursor: encodeCursor({ v: 1, task: input.taskId, src: "terminal", pid: t.pid, off: t.offset, fr: fallbackReason }),
+    terminal: { tail, truncated, live: t.live, exit: t.exit ?? null, tab: input.tab },
+    cursor: encodeCursor({
+      v: 1,
+      task: input.taskId,
+      src: "terminal",
+      pid: t.pid,
+      off: t.offset,
+      fr: fallbackReason,
+      tab: input.tab,
+    }),
     fallbackReason,
     warnings: [],
   }
@@ -368,7 +408,7 @@ async function continueTerminal(
   deps: ReadOutputDeps,
   cursor: TerminalCursor,
 ): Promise<ReadOutputEnvelope> {
-  const t = await deps.peekTerminal(cursor.off)
+  const t = await deps.peekTerminal(cursor.tab, cursor.off)
   if (!t) throw sourceChanged("the terminal session is gone")
   if (t.pid !== cursor.pid) throw sourceChanged("the terminal session restarted (new process)")
   const warnings = t.sinceValid ? [] : ["scrollback trimmed — there is a gap before this page"]
@@ -377,8 +417,8 @@ async function continueTerminal(
   return {
     taskId: input.taskId,
     source: "terminal",
-    terminal: { tail, truncated, live: t.live, exit: t.exit ?? null },
-    cursor: encodeCursor({ v: 1, task: input.taskId, src: "terminal", pid: t.pid, off: t.offset, fr }),
+    terminal: { tail, truncated, live: t.live, exit: t.exit ?? null, tab: cursor.tab },
+    cursor: encodeCursor({ v: 1, task: input.taskId, src: "terminal", pid: t.pid, off: t.offset, fr, tab: cursor.tab }),
     fallbackReason: fr,
     warnings,
   }
@@ -386,26 +426,44 @@ async function continueTerminal(
 
 // ── Real deps + the verb ─────────────────────────────────────────────────────
 
-/** Read-only ring peek of the task's hosted engine pane via `pty.peek`.
- *  Never spawns the host or a session; an old host without the verb (or
- *  any RPC hiccup) reads as "no terminal data". */
+/** Read-only ring peek of one hosted session via `pty.peek`. Never spawns
+ *  the host or a session; an old host without the verb (or any RPC hiccup)
+ *  reads as "no terminal data".
+ *
+ *  `tab` selects the exact session key `<taskId>::<tab>`; an explicit tab
+ *  whose key the host doesn't know is a typed TAB_NOT_FOUND, not an empty
+ *  read. Without it, the canonical engine tab: findEngineKey only matches
+ *  ALIVE sessions; a dead engine's retained scrollback (how it died) is
+ *  still worth reading, so fall back to the deterministic engine-tab key
+ *  the TUI always mints first. */
 async function peekTaskTerminal(
   taskId: string,
   vendor: VendorId | undefined,
+  tab: string | undefined,
   sinceOffset?: number,
 ): Promise<TerminalPeekPage | null> {
   const host = await openPtyHost()
   if (!host) return null
   try {
-    const engineBin = vendor ? interactiveEngineCommand(vendor)[0] : undefined
-    const sessions = await listSessions(host.rpc)
-    // findEngineKey only matches ALIVE sessions; a dead engine's retained
-    // scrollback (how it died) is still worth reading, so fall back to the
-    // deterministic engine-tab key the TUI always mints first.
-    const key = findEngineKey(sessions, taskId, engineBin) ?? sessions.find((s) => s.key === `${taskId}::tab-1`)?.key
+    let key: string | undefined
+    if (tab) {
+      key = `${taskId}::${tab}`
+    } else {
+      const engineBin = vendor ? interactiveEngineCommand(vendor)[0] : undefined
+      const sessions = await listSessions(host.rpc)
+      key = findEngineKey(sessions, taskId, engineBin) ?? sessions.find((s) => s.key === `${taskId}::tab-1`)?.key
+    }
     if (!key) return null
     const res = await host.rpc.request<PtyPeekResult>("pty.peek", { key, sinceOffset })
-    if (!res.exists) return null
+    if (!res.exists) {
+      if (tab) {
+        throw new ApiError(
+          `tab ${tab} has no hosted session on task ${taskId} — see \`rove api pty-list\` for live tabs`,
+          "TAB_NOT_FOUND",
+        )
+      }
+      return null
+    }
     return {
       pid: res.pid,
       offset: res.offset,
@@ -414,7 +472,8 @@ async function peekTaskTerminal(
       live: res.alive,
       exit: res.exit ?? null,
     }
-  } catch {
+  } catch (err) {
+    if (err instanceof ApiError) throw err
     return null
   } finally {
     host.close()
@@ -433,15 +492,17 @@ async function handleReadOutput(ctx: VerbContext): Promise<unknown> {
   }
   const { task } = await daemon.request<{ task: SerializedTask }>("task.get", { taskId })
   const vendor = task.vendor as VendorId | undefined
+  const tab = ctx.args.str("tab")
   const deps: ReadOutputDeps = {
     history: vendor && supportsStructuredHistory(vendor) ? engineEntry(vendor).history : null,
-    peekTerminal: (sinceOffset) => peekTaskTerminal(taskId, vendor, sinceOffset),
+    peekTerminal: (tabId, sinceOffset) => peekTaskTerminal(taskId, vendor, tabId, sinceOffset),
   }
   const envelope = await readTaskOutput(
     {
       taskId,
       worktree: task.worktreePath ?? null,
       source: ctx.args.enumOf<ReadSourceArg>("source") ?? "auto",
+      tab,
       cursor: ctx.args.str("cursor"),
       limit: ctx.args.int("limit"),
     },
@@ -454,13 +515,20 @@ async function handleReadOutput(ctx: VerbContext): Promise<unknown> {
 export const READ_OUTPUT_VERB: VerbSpec = {
   name: "read-output",
   summary:
-    "Read a task's engine output as bounded, cursor-paged JSON: the engine's own structured history when available, else a labeled terminal tail (typed fallbackReason). Read-only; the cursor stays pinned to one source/session (SOURCE_CHANGED when it moved).",
+    "Read a task's engine output as bounded, cursor-paged JSON: the engine's own structured history when available, else a labeled terminal tail (typed fallbackReason). --tab tab-N reads one exact terminal tab. Read-only; the cursor stays pinned to one source/session/tab (SOURCE_CHANGED when it moved).",
   flags: [
     {
       name: "task-id",
       type: "string",
       placeholder: "ID",
       description: "Target task id (defaults to the active task).",
+    },
+    {
+      name: "tab",
+      type: "string",
+      placeholder: "TAB",
+      description:
+        "Read exactly this terminal tab's hosted session (e.g. tab-3) instead of the canonical engine tab. Terminal-only read; cannot combine with --source history.",
     },
     {
       name: "source",
