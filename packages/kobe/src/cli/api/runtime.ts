@@ -9,6 +9,7 @@
 import type { PtySessionExit } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import { interactiveEngineCommand, withClaudeSessionId } from "../../engine/interactive-command.ts"
 import { buildEngineSessionLaunch } from "../../engine/session-launch.ts"
+import { trustEngineWorktree } from "../../engine/trust-worktree.ts"
 import type { DaemonRpc } from "../daemon-session.ts"
 import {
   deliverHostedPrompt,
@@ -62,6 +63,9 @@ async function deliverHosted(target: PromptTarget, worktree: string, prompt: str
       interactiveEngineCommand(target.vendor, target.modelEffort),
       target.vendor,
     )
+    // Pre-trust the worktree in the vendor's first-run store (issue #28) —
+    // a hosted session can't answer a trust dialog.
+    trustEngineWorktree(target.vendor, worktree)
     const launch = buildEngineSessionLaunch({
       task: { id: target.id, kind: target.kind, vendor: target.vendor, repo: target.repo },
       worktreePath: worktree,

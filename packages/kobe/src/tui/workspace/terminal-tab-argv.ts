@@ -11,6 +11,7 @@ import {
   type EngineSessionProtocolGates,
   buildEngineSessionLaunch,
 } from "@/engine/session-launch"
+import { trustEngineWorktree } from "@/engine/trust-worktree"
 import { forkSessionArgv } from "../../engine/interactive-command"
 import type { TabSpawn } from "./terminal-tab-spawn"
 import type { EngineTab, TabsState, TerminalTab } from "./terminal-tabs-core"
@@ -85,6 +86,9 @@ export function engineTabSpawnFor(
   // task's first tab: its id, worktree, and tab identity — so activity,
   // hooks, and a dead-reattach resume all belong to the story's task.
   const ref = tab.ptyTask
+  // Pre-trust the worktree in the vendor's first-run store (issue #28) — a
+  // hosted session can't answer a trust dialog. The tab's pinned vendor wins.
+  trustEngineWorktree(tab.vendor ?? opts.task.vendor, ref?.worktree ?? opts.worktreePath)
   const launch = buildEngineSessionLaunch({
     task: ref ? { ...opts.task, id: ref.id, kind: "task" } : opts.task,
     worktreePath: ref?.worktree ?? opts.worktreePath,

@@ -14,6 +14,7 @@ import {
 } from "../engine/hosted-session.ts"
 import { interactiveEngineCommand } from "../engine/interactive-command.ts"
 import { buildEngineSessionLaunch } from "../engine/session-launch.ts"
+import { trustEngineWorktree } from "../engine/trust-worktree.ts"
 import { TaskDeletingError } from "../orchestrator/errors.ts"
 import type { PromptDeliveryIntent } from "../state/repo-init.ts"
 import type { VendorId } from "../types/task.ts"
@@ -90,6 +91,8 @@ export async function startTaskSessionWithPromptAdapter(
 }
 
 function taskEngineLaunch(task: SerializedTask, worktreePath: string, promptIntent: PromptDeliveryIntent) {
+  // Pre-trust the worktree in the vendor's first-run store (issue #28).
+  trustEngineWorktree(task.vendor, worktreePath)
   return buildEngineSessionLaunch({
     task: { id: task.id, kind: task.kind, vendor: task.vendor, repo: task.repo },
     worktreePath,
