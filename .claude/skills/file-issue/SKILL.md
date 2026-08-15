@@ -1,6 +1,6 @@
 ---
 name: file-issue
-description: Turn a rough idea, a bug, or a batch of unsolved problems into well-structured GitHub issue(s) and file them with `gh`, auto-classifying type + labels from the content (recommend, then confirm) and following kobe's conventions (beginner-friendly framing, concrete file pointers, an acceptance checklist, zero AI/Anthropic attribution). Handles single, batch, and "file the unsolved problems" modes. Use when the user says "file an issue", "open a GitHub issue", "draft a good first issue", "batch these as issues", "上报 issue", "提个 issue", "报个 bug", "把没解决的发上去", or wants to hand low-priority tasks to outside contributors. Distinct from the daemon-owned internal issue store (`kobe api issue-*`); this skill is for outward-facing GitHub issues.
+description: Turn a rough idea, a bug, or a batch of unsolved problems into well-structured GitHub issue(s) and file them with `gh`, auto-classifying type + labels from the content (recommend, then confirm) and following Rove's conventions (beginner-friendly framing, concrete file pointers, an acceptance checklist, zero AI/Anthropic attribution). Handles single, batch, and "file the unsolved problems" modes. Use when the user says "file an issue", "open a GitHub issue", "draft a good first issue", "batch these as issues", "上报 issue", "提个 issue", "报个 bug", "把没解决的发上去", or wants to hand low-priority tasks to outside contributors. Distinct from the daemon-owned internal issue store (`rove api issue-*`); this skill is for outward-facing GitHub issues.
 metadata:
   internal: true
 ---
@@ -14,7 +14,7 @@ one-line stub.
 
 ## Scope boundary (read first)
 
-kobe tracks its own work in the **daemon-owned issue store** (`kobe api issue-*`, the
+Rove tracks its own work in the **daemon-owned issue store** (`rove api issue-*`, the
 web Issues page) — see [`docs/WORK-TRACKING.md`](../../../docs/WORK-TRACKING.md). That
 is the default for internal backlog.
 
@@ -63,7 +63,7 @@ git remote -v                                   # confirm origin is the intended
 gh label list --limit 60                         # use ONLY labels that already exist
 ```
 
-kobe's relevant labels: `good first issue`, `enhancement`, `bug`, `documentation`,
+Rove's relevant labels: `good first issue`, `enhancement`, `bug`, `documentation`,
 `help wanted`, `question`. Do **not** invent labels — if a needed label is missing,
 surface it and let the user create it (`gh label create`), don't guess a substitute.
 
@@ -95,7 +95,7 @@ The issue's shape also drives the body template (Step 3):
 - **good first issue** — self-contained, low-risk, *meaningful* (a mini-project a
   contributor can own end-to-end), not a micro-cleanup. Good signals: greenfield
   feature with no existing infra (e.g. i18n, shell completions), a self-contained new
-  subcommand (`kobe doctor`), or a repeatable visual contribution (a new theme).
+  subcommand (`rove doctor`), or a repeatable visual contribution (a new theme).
   **Anti-signal:** "add a unit test for X" / "extract a constant" — too small to be
   worth an external contributor's onboarding cost; the user has rejected these. Aim for
   tasks that touch 1–3 files but deliver a complete, satisfying chunk of value.
@@ -169,7 +169,7 @@ For a **bug**, lead instead with:
 ```
 
 Style: terse, concrete, second-person imperative for scope steps. Reference code as
-`file_path:line` so it's clickable. Link kobe docs with repo-relative paths
+`file_path:line` so it's clickable. Link Rove docs with repo-relative paths
 (`docs/ARCHITECTURE.md`).
 
 ## Step 4 — Confirm, then file
