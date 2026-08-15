@@ -27,6 +27,9 @@ const assetsOutDir = join(packageDir, 'public/docs-assets');
 
 const repoBlob = 'https://github.com/Sma1lboy/rove/blob/main/';
 
+/** docs/assets/… paths referenced by synced pages, relative to assets/. */
+const referencedAssets = new Set();
+
 /**
  * The sidebar, as ordered sections of `[docs/ source file, site slug]`.
  * This is the single source of truth: PAGES (what gets synced) is derived
@@ -95,6 +98,10 @@ function rewriteTarget(target) {
     path = path.slice('./'.length);
   }
 
+  // Linked media and downloads live beside images in docs/assets/. Keep the
+  // source repo-relative, but serve the docs site from its own static tree.
+  if (path.startsWith('assets/')) return `${rewriteAssetTarget(path)}${anchor}`;
+
   // Links between synced pages → site paths.
   const slug = PAGE_BY_LOWER_NAME.get(basename(path).toLowerCase());
   if (slug && !path.includes('/')) return `/docs/${slug}${anchor}`;
@@ -122,7 +129,7 @@ function rewriteTarget(target) {
  * on GitHub). For the site they are rewritten to `/docs-assets/foo.png` and
  * the referenced files are copied into public/docs-assets/ below.
  */
-function rewriteImageTarget(target) {
+function rewriteAssetTarget(target) {
   if (/^(?:[a-z][a-z0-9+.-]*:|\/|#)/i.test(target)) return target;
   const path = target.startsWith('./') ? target.slice('./'.length) : target;
   if (path.startsWith('assets/')) {
@@ -132,8 +139,24 @@ function rewriteImageTarget(target) {
   return target;
 }
 
-/** docs/assets/… paths referenced by synced pages, relative to assets/. */
-const referencedAssets = new Set();
+function rewriteImageTarget(target) {
+  return rewriteAssetTarget(target);
+}
+
+/** Raw MDX media attributes are invisible to Markdown link rewriting. */
+function rewriteMediaTargets(markdown) {
+  let inFence = false;
+  return markdown
+    .split('\n')
+    .map((line) => {
+      if (/^\s*```/.test(line)) inFence = !inFence;
+      if (inFence) return line;
+      return line.replace(/\b(src|poster)=(['"])([^'"]+)\2/g, (_match, attribute, quote, target) => {
+        return `${attribute}=${quote}${rewriteAssetTarget(target)}${quote}`;
+      });
+    })
+    .join('\n');
+}
 
 function rewriteLinks(markdown) {
   return (
@@ -184,7 +207,7 @@ function toMdxPage(markdown, sourceFile) {
     '',
   ].join('\n');
 
-  return `${frontmatter}${rewriteAutolinks(rewriteLinks(body))}`;
+  return `${frontmatter}${rewriteAutolinks(rewriteMediaTargets(rewriteLinks(body)))}`;
 }
 
 await mkdir(docsOutDir, { recursive: true });
@@ -212,8 +235,8 @@ const meta = {
 await writeFile(join(docsOutDir, 'meta.json'), `${JSON.stringify(meta, null, 2)}\n`, 'utf8');
 console.log('wrote content/docs/meta.json');
 
-// Copy referenced docs/assets/ files into public/docs-assets/ so the
-// rewritten /docs-assets/… image paths resolve on the static site.
+// Copy referenced docs/assets/ files into public/docs-assets/ so rewritten
+// image, video, and download paths resolve on the static site.
 for (const asset of [...referencedAssets].sort()) {
   const out = join(assetsOutDir, asset);
   await mkdir(dirname(out), { recursive: true });

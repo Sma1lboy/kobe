@@ -140,8 +140,10 @@ the page is open, which moves the card into In progress on its own:
 
 ![Filing a story from the board, then an agent moving its card into In progress](assets/kanban.gif)
 
-Full-quality mp4:
-[kanban.mp4](https://github.com/Sma1lboy/rove/blob/main/docs/assets/kanban.mp4).
+<video controls playsInline preload="metadata" poster="assets/kanban.png" style={{ width: "100%" }}>
+  <source src="assets/kanban.mp4" type="video/mp4" />
+  Your browser cannot play this video. [Download the full-quality MP4](assets/kanban.mp4).
+</video>
 
 ### Routines (`ctrl+a` `2`)
 

@@ -44,8 +44,10 @@ change:
 
 ![Walking the routines, pausing one, and composing a new one as the cron preview follows each cell](assets/routines.gif)
 
-Full-quality mp4:
-[routines.mp4](https://github.com/Sma1lboy/rove/blob/main/docs/assets/routines.mp4).
+<video controls playsInline preload="metadata" poster="assets/routines.png" style={{ width: "100%" }}>
+  <source src="assets/routines.mp4" type="video/mp4" />
+  Your browser cannot play this video. [Download the full-quality MP4](assets/routines.mp4).
+</video>
 
 ### From the CLI
 
