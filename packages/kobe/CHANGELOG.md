@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.97
+
+### Patch Changes
+
+- 660b584: Embed the Kanban and Routines MP4 demos directly in the public docs site, with local download fallbacks.
+
 ## 0.8.96
 
 ### Patch Changes
