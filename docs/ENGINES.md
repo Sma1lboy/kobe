@@ -43,6 +43,19 @@ Codex accepts `none`, `low`, `medium`, `high`, `xhigh`, passed as
 `-c model_reasoning_effort=<level>`. Other engines have no effort flag Rove
 can drive; a selected effort is ignored there rather than passed through.
 
+### Workspace trust
+
+Claude, Codex, and Kimi each gate a first launch in a never-seen directory
+behind a trust dialog — and every task worktree is such a directory, so a
+hosted session can't answer it (Kimi's dialog even exits the process when a
+pasted first message lands on "Don't trust"). Before spawning an engine into
+a Rove-created worktree, Rove writes the vendor's own trust record for that
+path — `~/.claude.json` `projects[<path>].hasTrustDialogAccepted`,
+`~/.codex/config.toml` `[projects."<path>"] trust_level = "trusted"`, or
+`~/.kimi-code/workspace-trust/` — merging into existing entries, never
+clobbering. This only ever fires for worktrees Rove itself created from a
+repo you already work in; your own directories are untouched.
+
 ### Custom launch commands
 
 Override any engine's launch command in Settings → Engines, or by hand in

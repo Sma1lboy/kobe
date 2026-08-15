@@ -43,9 +43,11 @@ import {
 import { claudeCapabilities, claudeIdentity } from "./claude-code-local/capabilities.ts"
 import { ClaudeHookAdapter } from "./claude-code-local/hook-adapter.ts"
 import { fetchClaudeQuotaUsage } from "./claude-code-local/quota.ts"
+import { trustClaudeWorktree } from "./claude-code-local/trust.ts"
 import { codexCapabilities, codexIdentity } from "./codex-local/capabilities.ts"
 import { CodexHookAdapter } from "./codex-local/hook-adapter.ts"
 import { fetchCodexQuotaUsage } from "./codex-local/quota.ts"
+import { trustCodexWorktree } from "./codex-local/trust.ts"
 import {
   EMPTY_HISTORY,
   claudeHistoryReader,
@@ -54,6 +56,7 @@ import {
   kimiHistoryReader,
 } from "./history-readers.ts"
 import { type EngineHookAdapter, NoopHookAdapter } from "./hook-adapter.ts"
+import { trustKimiWorktree } from "./kimi-local/trust.ts"
 import { ClaudeTurnDetector, CodexTurnDetector, type EngineTurnDetector, UnknownTurnDetector } from "./turn-detector.ts"
 
 /**
@@ -198,6 +201,15 @@ export interface EngineRegistryEntry {
    * shell and prompt delivery refuses with ENGINE_NOT_RUNNING.
    */
   readonly processNames?: readonly string[]
+  /**
+   * Pre-trust a Rove-created worktree in the vendor's first-run trust
+   * store (issue #28). Every vendor gates a never-seen directory behind a
+   * modal trust dialog; hosted sessions can't answer one (kimi's even
+   * EXITS when the pasted first message's Enter lands on "Don't trust").
+   * Called before a hosted spawn; must be idempotent and merge-preserving.
+   * Absent = the vendor has no gate kobe knows how to pre-answer.
+   */
+  readonly trustWorktree?: (worktreePath: string) => void
 }
 
 // The per-vendor readers live in `history-readers.ts` (file-size cap);
@@ -218,6 +230,7 @@ const BUILTIN_ENGINES: Record<"claude" | "codex" | "copilot" | "kimi", EngineReg
     createTurnDetector: () => new ClaudeTurnDetector(),
     capabilities: claudeCapabilities,
     identity: claudeIdentity,
+    trustWorktree: trustClaudeWorktree,
     terminalTitle: {
       ownsStatus: true,
       // `${prefix} ${title}` where prefix is ✳ at rest and cycles through
@@ -242,6 +255,7 @@ const BUILTIN_ENGINES: Record<"claude" | "codex" | "copilot" | "kimi", EngineReg
     createTurnDetector: () => new CodexTurnDetector(),
     capabilities: codexCapabilities,
     identity: codexIdentity,
+    trustWorktree: trustCodexWorktree,
     // Codex's default is activity + project-name, which makes every tab in
     // one repo say "kobe". Keep its native activity state, but ask Codex to
     // pair it with the thread title it already owns in its local store.
@@ -280,6 +294,7 @@ const BUILTIN_ENGINES: Record<"claude" | "codex" | "copilot" | "kimi", EngineReg
     // The installed Mach-O binary rewrites its process title to `kimi-co`
     // after launch, so a live kimi session's argv[0] never reads `kimi`.
     processNames: ["kimi-co"],
+    trustWorktree: trustKimiWorktree,
     history: kimiHistoryReader,
     detectAccount: (deps) => detectKimiAccount(deps),
     createHookAdapter: () => new NoopHookAdapter("kimi"),
