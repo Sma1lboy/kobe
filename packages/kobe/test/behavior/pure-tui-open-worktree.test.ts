@@ -8,7 +8,7 @@
 import { chmod, mkdir, readFile, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
-import { type BehaviorEnv, DIST_CLI, loadNodePty, makeBehaviorEnv, makeScratchRepo, runKobe } from "./harness.ts"
+import { type BehaviorEnv, DIST_ROVE_CLI, loadNodePty, makeBehaviorEnv, makeScratchRepo, runRove } from "./harness.ts"
 
 // Shared loader: skips when node-pty is missing OR cannot spawn here (a
 // sandboxed shell denies posix_spawnp) — see harness.ts.
@@ -71,7 +71,7 @@ describe.skipIf(!nodePty)("Pure TUI open-worktree keys (behavior)", () => {
     const codeShim = join(env.bin, "code")
     await writeFile(codeShim, `#!/bin/sh\nprintf '%s\\n' "$1" >> "${marker}"\n`)
     await chmod(codeShim, 0o755)
-    const add = runKobe(["add", repo], env)
+    const add = runRove(["add", repo], env)
     expect(add.code).toBe(0)
   })
 
@@ -81,7 +81,7 @@ describe.skipIf(!nodePty)("Pure TUI open-worktree keys (behavior)", () => {
 
   it("opens the selected worktree with sidebar o and global ctrl+a then o", async () => {
     if (!nodePty) throw new Error("unreachable: suite is skipped without node-pty")
-    const child = nodePty.spawn("bun", [DIST_CLI], {
+    const child = nodePty.spawn("bun", [DIST_ROVE_CLI], {
       cols: 140,
       rows: 40,
       cwd: repo,

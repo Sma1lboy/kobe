@@ -5,7 +5,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
-import { type BehaviorEnv, DIST_CLI, loadNodePty, makeBehaviorEnv } from "./harness.ts"
+import { type BehaviorEnv, DIST_ROVE_CLI, loadNodePty, makeBehaviorEnv } from "./harness.ts"
 
 // node-pty is a native addon; CI's linux runner has no prebuild for it, so a
 // top-level import fails the whole suite before skip logic can run. The
@@ -28,7 +28,7 @@ describe.skipIf(!nodePty)("Rove outer terminal title (behavior)", () => {
 
   it("publishes rove as the terminal title on pure-TUI boot", async () => {
     if (!nodePty) throw new Error("unreachable: suite is skipped without node-pty")
-    const child = nodePty.spawn("bun", [DIST_CLI], {
+    const child = nodePty.spawn("bun", [DIST_ROVE_CLI], {
       cols: 120,
       rows: 35,
       cwd: env.home,

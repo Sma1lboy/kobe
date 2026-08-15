@@ -14,7 +14,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises"
 import { join } from "node:path"
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
-import { type BehaviorEnv, DIST_CLI, loadNodePty, makeBehaviorEnv, makeScratchRepo, runKobe } from "./harness.ts"
+import { type BehaviorEnv, DIST_ROVE_CLI, loadNodePty, makeBehaviorEnv, makeScratchRepo, runRove } from "./harness.ts"
 
 const nodePty = await loadNodePty()
 
@@ -37,7 +37,7 @@ describe.skipIf(!nodePty)("Pure TUI adopts unregistered live sessions (behavior)
 
     // `--prompt` takes the headless launch path: worktree + hosted engine
     // session under `<taskId>::tab-1`, plus the snapshot the CLI writes.
-    const add = runKobe(["api", "add", "--repo", repo, "--prompt", "hello"], env)
+    const add = runRove(["api", "add", "--repo", repo, "--prompt", "hello"], env)
     expect(add.code, add.stderr).toBe(0)
     taskId = (JSON.parse(add.stdout) as { task: { id: string } }).task.id
   }, 120_000)
@@ -52,7 +52,7 @@ describe.skipIf(!nodePty)("Pure TUI adopts unregistered live sessions (behavior)
 
     const deadline = Date.now() + 30_000
     while (Date.now() < deadline) {
-      const sessions = JSON.parse(runKobe(["api", "pty-list"], env).stdout) as {
+      const sessions = JSON.parse(runRove(["api", "pty-list"], env).stdout) as {
         sessions?: { key: string; alive?: boolean }[]
       }
       if (sessions.sessions?.some((s) => s.key === `${taskId}::tab-1` && s.alive)) break
@@ -76,7 +76,7 @@ describe.skipIf(!nodePty)("Pure TUI adopts unregistered live sessions (behavior)
     // must not pin a shared client inside bun-test), and this child inherits
     // vitest's markers. It is a real TUI in its own process, so clear them.
     const { VITEST, NODE_ENV, BUN_TEST, ...tuiEnv } = env.env as Record<string, string>
-    const child = nodePty.spawn("bun", [DIST_CLI], {
+    const child = nodePty.spawn("bun", [DIST_ROVE_CLI], {
       cols: 140,
       rows: 40,
       cwd: repo,

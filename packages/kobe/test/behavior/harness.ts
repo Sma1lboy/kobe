@@ -1,7 +1,7 @@
 /**
  * Behavior-suite harness for the built CLI. Every run gets a disposable
- * HOME/XDG tree, PATH-first kobe and engine shims, and isolated daemon/PTY
- * host paths derived from that home.
+ * HOME/XDG tree, PATH-first Rove (plus the Kobe compatibility alias) and
+ * engine shims, and isolated daemon/PTY host paths derived from that home.
  */
 
 import { execFileSync, spawnSync } from "node:child_process"
@@ -19,8 +19,8 @@ import {
 } from "@sma1lboy/kobe-daemon/daemon/paths"
 
 const PKG_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..")
-export const DIST_CLI = join(PKG_ROOT, "dist/cli/kobe.js")
 export const DIST_ROVE_CLI = join(PKG_ROOT, "dist/cli/rove.js")
+export const DIST_KOBE_CLI = join(PKG_ROOT, "dist/cli/kobe.js")
 
 export interface BehaviorEnv {
   readonly home: string
@@ -30,17 +30,20 @@ export interface BehaviorEnv {
 }
 
 export function requireDistBuild(): void {
-  if (!existsSync(DIST_CLI) || !existsSync(DIST_ROVE_CLI)) {
-    throw new Error("behavior suite needs the built kobe and rove entries under dist/cli — run `bun run build` first")
+  if (!existsSync(DIST_ROVE_CLI) || !existsSync(DIST_KOBE_CLI)) {
+    throw new Error(
+      "behavior suite needs the built rove entry and kobe compatibility alias under dist/cli — run `bun run build` first",
+    )
   }
 }
 
 function teardownIsolationError(env: NodeJS.ProcessEnv, home: string): string | undefined {
-  if (env.HOME !== home || env.USERPROFILE !== home || env.KOBE_HOME_DIR !== home) {
-    return "HOME/KOBE_HOME_DIR no longer match the disposable home"
+  if (env.HOME !== home || env.USERPROFILE !== home || env.ROVE_HOME_DIR !== home || env.KOBE_HOME_DIR !== home) {
+    return "HOME/ROVE_HOME_DIR/KOBE_HOME_DIR no longer match the disposable home"
   }
   const unexpected = Object.keys(env).filter(
-    (key) => (key.startsWith("KOBE_") && key !== "KOBE_HOME_DIR") || key.startsWith("ROVE_"),
+    (key) =>
+      (key.startsWith("KOBE_") && key !== "KOBE_HOME_DIR") || (key.startsWith("ROVE_") && key !== "ROVE_HOME_DIR"),
   )
   if (unexpected.length > 0) return `unexpected controls: ${unexpected.sort().join(", ")}`
   return undefined
@@ -59,10 +62,10 @@ export async function makeBehaviorEnv(): Promise<BehaviorEnv> {
     [bin, xdgConfig, xdgData, xdgState, xdgCache, xdgRuntime].map((dir) => mkdir(dir, { recursive: true })),
   )
 
-  await writeFile(join(bin, "kobe"), `#!/bin/sh\nexec bun ${DIST_CLI} "$@"\n`)
-  await chmod(join(bin, "kobe"), 0o755)
   await writeFile(join(bin, "rove"), `#!/bin/sh\nexec bun ${DIST_ROVE_CLI} "$@"\n`)
   await chmod(join(bin, "rove"), 0o755)
+  await writeFile(join(bin, "kobe"), `#!/bin/sh\nexec bun ${DIST_KOBE_CLI} "$@"\n`)
+  await chmod(join(bin, "kobe"), 0o755)
   // The idle loop must keep the shim's OWN name in `ps`. `exec sleep 600`
   // replaced the process image, so the tab's tree read as `sleep` with no
   // `claude` anywhere — and the delivery foreground gate (engineProcessIn)
@@ -100,6 +103,7 @@ export async function makeBehaviorEnv(): Promise<BehaviorEnv> {
     TERM: "xterm-256color",
     COLORTERM: "truecolor",
     PATH: `${bin}:${inherited.PATH ?? ""}`,
+    ROVE_HOME_DIR: home,
     KOBE_HOME_DIR: home,
   }
 
@@ -127,7 +131,7 @@ export interface CliResult {
 }
 
 export function runKobe(args: readonly string[], env: BehaviorEnv, opts?: { input?: string }): CliResult {
-  const result = spawnSync("bun", [DIST_CLI, ...args], {
+  const result = spawnSync("bun", [DIST_KOBE_CLI, ...args], {
     env: env.env,
     input: opts?.input ?? "",
     encoding: "utf8",

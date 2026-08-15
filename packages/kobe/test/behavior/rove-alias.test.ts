@@ -58,6 +58,7 @@ describe("rove CLI compatibility entry", () => {
   })
 
   test("ROVE_HOME_DIR wins and resolves the canonical config path", () => {
+    const originalRoveHome = behavior.env.ROVE_HOME_DIR
     const originalLegacyHome = behavior.env.KOBE_HOME_DIR
     behavior.env.KOBE_HOME_DIR = join(behavior.home, "legacy-home")
     behavior.env.ROVE_HOME_DIR = join(behavior.home, "rove-home")
@@ -66,14 +67,16 @@ describe("rove CLI compatibility entry", () => {
       expect(result.code).toBe(0)
       expect(result.stdout.trim()).toBe(join(behavior.home, "rove-home", ".config", "rove", "state.json"))
     } finally {
+      behavior.env.ROVE_HOME_DIR = originalRoveHome
       behavior.env.KOBE_HOME_DIR = originalLegacyHome
-      Reflect.deleteProperty(behavior.env, "ROVE_HOME_DIR")
     }
   })
 
   test("the public wrapper migrates client state without racing daemon-owned stores", () => {
+    const originalRoveHome = behavior.env.ROVE_HOME_DIR
     const originalLegacyHome = behavior.env.KOBE_HOME_DIR
     const migrationHome = join(behavior.home, "migration-home")
+    behavior.env.ROVE_HOME_DIR = migrationHome
     behavior.env.KOBE_HOME_DIR = migrationHome
     mkdirSync(join(migrationHome, ".kobe"), { recursive: true })
     mkdirSync(join(migrationHome, ".config", "kobe"), { recursive: true })
@@ -93,11 +96,13 @@ describe("rove CLI compatibility entry", () => {
       expect(existsSync(join(migrationHome, ".rove", "tasks.json"))).toBe(false)
       expect(existsSync(join(migrationHome, ".rove", "worktrees"))).toBe(false)
     } finally {
+      behavior.env.ROVE_HOME_DIR = originalRoveHome
       behavior.env.KOBE_HOME_DIR = originalLegacyHome
     }
   })
 
   test("the kobe compatibility alias installs ROVE_* precedence before loading the CLI", () => {
+    const originalRoveHome = behavior.env.ROVE_HOME_DIR
     const originalLegacyHome = behavior.env.KOBE_HOME_DIR
     behavior.env.KOBE_HOME_DIR = join(behavior.home, "legacy-home")
     behavior.env.ROVE_HOME_DIR = join(behavior.home, "rove-home")
@@ -106,8 +111,8 @@ describe("rove CLI compatibility entry", () => {
       expect(result.code).toBe(0)
       expect(result.stdout.trim()).toBe(join(behavior.home, "rove-home", ".config", "rove", "state.json"))
     } finally {
+      behavior.env.ROVE_HOME_DIR = originalRoveHome
       behavior.env.KOBE_HOME_DIR = originalLegacyHome
-      Reflect.deleteProperty(behavior.env, "ROVE_HOME_DIR")
     }
   })
 })

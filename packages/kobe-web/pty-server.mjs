@@ -199,7 +199,7 @@ wss.on("connection", (ws, req) => {
 // Bind loopback by default — a PTY is an arbitrary shell/engine in the
 // worktree, so it must never listen on all interfaces. KOBE_WEB_HOST overrides.
 server.listen(PORT, HOST, () => {
-  process.stdout.write(`kobe pty-server listening on ${HOST}:${PORT} (daemon-web :${DAEMON_WEB_PORT})\n`)
+  process.stdout.write(`Rove PTY server listening on ${HOST}:${PORT} (daemon-web :${DAEMON_WEB_PORT})\n`)
 })
 
 const shutdown = () => {

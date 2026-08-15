@@ -19,7 +19,7 @@ import { join } from "node:path"
 import { Terminal } from "@xterm/headless"
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
 import { SIDEBAR_WIDTH } from "../../src/tui/panes/sidebar/view-core.ts"
-import { type BehaviorEnv, DIST_CLI, loadNodePty, makeBehaviorEnv, makeScratchRepo, runKobe } from "./harness.ts"
+import { type BehaviorEnv, DIST_ROVE_CLI, loadNodePty, makeBehaviorEnv, makeScratchRepo, runRove } from "./harness.ts"
 
 const nodePty = await loadNodePty()
 
@@ -58,7 +58,7 @@ describe.skipIf(!nodePty)("Pure TUI unread lamp across a restart (behavior)", ()
     // This child would inherit vitest's markers, and the host-session poll is
     // off under a test RUNNER — it is a real TUI in its own process.
     const { VITEST, NODE_ENV, BUN_TEST, ...tuiEnv } = env.env as Record<string, string>
-    const child = nodePty.spawn("bun", [DIST_CLI], { cols: COLS, rows: ROWS, cwd: repo, env: tuiEnv })
+    const child = nodePty.spawn("bun", [DIST_ROVE_CLI], { cols: COLS, rows: ROWS, cwd: repo, env: tuiEnv })
     const data = child.onData((chunk: string) => term.write(chunk))
     try {
       return await run(() => {
@@ -83,8 +83,8 @@ describe.skipIf(!nodePty)("Pure TUI unread lamp across a restart (behavior)", ()
   beforeAll(async () => {
     env = await makeBehaviorEnv()
     repo = await makeScratchRepo(env)
-    // Even the legacy `kobe` entry reads and writes Rove's canonical state.
-    // The old path is migration input only, not a live mirror.
+    // Rove reads and writes its canonical state; the old path is migration
+    // input only, not a live mirror.
     const stateDir = join(env.home, ".config", "rove")
     await mkdir(stateDir, { recursive: true })
     statePath = join(stateDir, "state.json")
@@ -93,24 +93,31 @@ describe.skipIf(!nodePty)("Pure TUI unread lamp across a restart (behavior)", ()
     // `--prompt` takes the headless launch path: worktree + hosted engine
     // session under `<taskId>::tab-1`, plus the snapshot the TUI renders from.
     // Explicit short branch: the rail row is LABELLED by it, and an
-    // auto-generated `kobe/<slug>-<id>` is long enough to be truncated there.
-    branch = "kobe/pin"
-    const add = runKobe(["api", "add", "--repo", repo, "--branch", branch, "--prompt", "hello"], env)
+    // auto-generated `rove/<slug>-<id>` is long enough to be truncated there.
+    branch = "rove/pin"
+    const add = runRove(["api", "add", "--repo", repo, "--branch", branch, "--prompt", "hello"], env)
     expect(add.code, add.stderr).toBe(0)
     taskId = (JSON.parse(add.stdout) as { task: { id: string } }).task.id
 
     await poll(() => {
-      const sessions = JSON.parse(runKobe(["api", "pty-list"], env).stdout) as {
+      const sessions = JSON.parse(runRove(["api", "pty-list"], env).stdout) as {
         sessions?: { key: string; alive?: boolean }[]
       }
       return sessions.sessions?.some((s) => s.key === `${taskId}::tab-1` && s.alive) === true
     }, 30_000)
 
-    // The turn the user is about to read. An engine tab passes `KOBE_TAB_ID`
-    // to its hooks, so the daemon records this completion against tab-1.
-    const hook = runKobe(["hook", "turn-complete", "--engine", "claude-code-local"], {
+    // The turn the user is about to read. An engine tab passes canonical IDs
+    // plus the compatibility aliases, so the daemon records this completion
+    // against tab-1.
+    const hook = runRove(["hook", "turn-complete", "--engine", "claude-code-local"], {
       ...env,
-      env: { ...env.env, KOBE_TASK_ID: taskId, KOBE_TAB_ID: "tab-1" },
+      env: {
+        ...env.env,
+        ROVE_TASK_ID: taskId,
+        ROVE_TAB_ID: "tab-1",
+        KOBE_TASK_ID: taskId,
+        KOBE_TAB_ID: "tab-1",
+      },
     })
     expect(hook.code, hook.stderr).toBe(0)
   }, 120_000)

@@ -17,6 +17,22 @@ describe("Rove package distribution", () => {
     expect(pkg.bin).toEqual({ kobe: "dist/cli/kobe.js", rove: "dist/cli/rove.js" })
   })
 
+  test("acceptance tooling defaults to the built Rove artifacts while retaining explicit alias coverage", () => {
+    const harness = read("packages/kobe/test/behavior/harness.ts")
+    const visualFixture = read("packages/kobe-web/e2e/visual-fixture.ts")
+    const heroFixture = read("packages/kobe-web/e2e/hero-fixture.ts")
+    const build = read("packages/kobe/scripts/build.ts")
+
+    expect(harness).toContain('DIST_ROVE_CLI = join(PKG_ROOT, "dist/cli/rove.js")')
+    expect(harness).toContain('DIST_KOBE_CLI = join(PKG_ROOT, "dist/cli/kobe.js")')
+    expect(harness).not.toContain('DIST_CLI = join(PKG_ROOT, "dist/cli/kobe.js")')
+    expect(visualFixture).toContain('const ROVE_CLI = join(KOBE_DIR, "dist", "cli", "rove.js")')
+    expect(visualFixture).toContain('const ROVE_SKILL = join(KOBE_DIR, "dist", "skills", "rove", "SKILL.md")')
+    expect(visualFixture).toContain('join(XDG_CONFIG_HOME, "rove")')
+    expect(heroFixture).toContain('join(HERO_CONFIG, "rove")')
+    expect(build).toContain('const SKILL_OUT_DIR = "./dist/skills/rove"')
+  })
+
   test("workspace commands address the canonical package name", () => {
     const root = json<{ scripts: Record<string, string> }>("package.json")
     const commands = Object.values(root.scripts)

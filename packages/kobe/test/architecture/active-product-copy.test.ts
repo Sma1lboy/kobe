@@ -48,10 +48,28 @@ const STALE_CLAIMS: Array<[path: string, phrases: string[]]> = [
   ["docs/design/remote-projects.md", ["phases 1–6 done"]],
 ]
 
+/** Rename leaks on active harness/web/CI surfaces, scoped to definite stale copy. */
+const STALE_RENAME_COPY: Array<[path: string, phrases: string[]]> = [
+  ["packages/kobe-web/index.html", ["<title>kobe-web</title>"]],
+  ["packages/kobe-web/pty-server.mjs", ["kobe pty-server listening"]],
+  ["packages/kobe/scripts/check-preview-deps.ts", ["kobe — preview-pane system dependencies"]],
+  [".github/workflows/claude-code-review.yml", ["`CLAUDE.md` and `packages/kobe/CLAUDE.md`", "kobe's house rules"]],
+  [
+    "packages/kobe-web/e2e/visual-fixture.ts",
+    ["./src/cli/kobe.ts", 'join(XDG_CONFIG_HOME, "kobe")', '"skills", "kobe", "SKILL.md"', "/kobe-skill-version:"],
+  ],
+  ["packages/kobe-web/e2e/hero-fixture.ts", ['join(HERO_CONFIG, "kobe")']],
+]
+
 describe("active product copy", () => {
   test.each(STALE_CLAIMS)("%s makes no retired claim", (path, phrases) => {
     const source = read(path)
     for (const stale of phrases) expect(source, `${path} still claims "${stale}"`).not.toContain(stale)
+  })
+
+  test.each(STALE_RENAME_COPY)("%s makes no active Kobe-first claim", (path, phrases) => {
+    const source = read(path)
+    for (const stale of phrases) expect(source, `${path} still contains ${stale}`).not.toContain(stale)
   })
 
   test("current product pages do not publish pre-Rove terminal recordings", () => {

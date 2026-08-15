@@ -47,7 +47,7 @@ async function seedSettings(): Promise<void> {
     defaultVendor: "claude",
     "engineCommand.claude": CLAUDE_COMMAND,
   }
-  const dir = join(HERO_CONFIG, "kobe")
+  const dir = join(HERO_CONFIG, "rove")
   await mkdir(HERO_HOME, { recursive: true })
   await mkdir(dir, { recursive: true })
   await writeFile(join(dir, "state.json"), `${JSON.stringify(state, null, 2)}\n`)

@@ -5,7 +5,7 @@
 
 import { existsSync } from "node:fs"
 import { afterAll, beforeAll, describe, expect, it } from "vitest"
-import { type BehaviorEnv, makeBehaviorEnv, makeScratchRepo, runKobe } from "./harness.ts"
+import { type BehaviorEnv, makeBehaviorEnv, makeScratchRepo, runRove } from "./harness.ts"
 
 interface AddResult {
   taskId: string
@@ -25,7 +25,7 @@ interface GetTaskResult {
   running: boolean
 }
 
-describe("kobe api hosted PTY lifecycle (behavior)", () => {
+describe("rove api hosted PTY lifecycle (behavior)", () => {
   let env: BehaviorEnv
   let repo: string
   let taskId = ""
@@ -42,7 +42,7 @@ describe("kobe api hosted PTY lifecycle (behavior)", () => {
   })
 
   it("add --prompt materializes a worktree and auto-starts the canonical engine session", () => {
-    const result = runKobe(["api", "add", "--repo", repo, "--prompt", "hello from behavior", "--pretty"], env)
+    const result = runRove(["api", "add", "--repo", repo, "--prompt", "hello from behavior", "--pretty"], env)
     expect(result.code).toBe(0)
     const added = JSON.parse(result.stdout) as AddResult
     taskId = added.taskId
@@ -55,21 +55,21 @@ describe("kobe api hosted PTY lifecycle (behavior)", () => {
     expect(session).toBe(`${taskId}::tab-1`)
     expect(existsSync(worktreePath)).toBe(true)
 
-    const listed = runKobe(["api", "pty-list", "--pretty"], env)
+    const listed = runRove(["api", "pty-list", "--pretty"], env)
     expect(listed.code).toBe(0)
     const sessions = (JSON.parse(listed.stdout) as PtyListResult).sessions
     expect(sessions).toContainEqual(expect.objectContaining({ key: session, alive: true }))
   }, 30_000)
 
   it("send reuses the canonical session and archive tears it down", () => {
-    const sent = runKobe(["api", "send", "--task-id", taskId, "--prompt", "follow-up", "--pretty"], env)
+    const sent = runRove(["api", "send", "--task-id", taskId, "--prompt", "follow-up", "--pretty"], env)
     expect(sent.code).toBe(0)
-    const afterSend = JSON.parse(runKobe(["api", "pty-list", "--pretty"], env).stdout) as PtyListResult
+    const afterSend = JSON.parse(runRove(["api", "pty-list", "--pretty"], env).stdout) as PtyListResult
     expect(afterSend.sessions.filter((entry) => entry.key === session && entry.alive)).toHaveLength(1)
 
-    const archived = runKobe(["api", "archive", "--task-id", taskId, "--pretty"], env)
+    const archived = runRove(["api", "archive", "--task-id", taskId, "--pretty"], env)
     expect(archived.code).toBe(0)
-    const task = JSON.parse(runKobe(["api", "get-task", "--task-id", taskId, "--pretty"], env).stdout) as GetTaskResult
+    const task = JSON.parse(runRove(["api", "get-task", "--task-id", taskId, "--pretty"], env).stdout) as GetTaskResult
     expect(task.task.archived).toBe(true)
     expect(task.running).toBe(false)
     expect(existsSync(worktreePath)).toBe(true)
