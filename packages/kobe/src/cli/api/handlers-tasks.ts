@@ -11,9 +11,10 @@ import type { TaskStatus } from "../../types/task.ts"
 import type { VendorId } from "../../types/vendor.ts"
 import type { DaemonRpc } from "../daemon-session.ts"
 import { dispatcherEnvPayload, readOwnDispatcher, resolveDispatcherTab } from "./dispatcher.ts"
+import { F } from "./flags.ts"
 import { daemonOf, simpleRpc } from "./handler-helpers.ts"
 import { resolveActiveTaskId } from "./runtime.ts"
-import { ApiError, type VerbContext, helpStep } from "./types.ts"
+import { ApiError, type VerbContext, type VerbSpec, helpStep } from "./types.ts"
 
 /**
  * Peer provenance: a `send` issued from INSIDE another kobe task is one
@@ -235,6 +236,26 @@ export async function dispatch(ctx: VerbContext): Promise<unknown> {
     source: "dispatcher",
   })
   return { ok: true, taskId, ...(tabId !== undefined ? { tabId } : {}), routed: "session.deliver" }
+}
+
+/** The verb spec lives beside its handler (PANE_VERB pattern) so verbs.ts
+ *  stays under the file-size cap. */
+export const DISPATCH_VERB: VerbSpec = {
+  name: "dispatch",
+  summary:
+    "Route text into a task's live session via the daemon's session.deliver channel. The dispatcher's messenger (docs/design/dispatcher.md); unlike `send`, it requires an already-hosted session.",
+  flags: [
+    F.taskId(true),
+    F.prompt(true, "Text delivered into the task's engine session."),
+    {
+      name: "tab",
+      type: "string",
+      required: false,
+      placeholder: "TAB",
+      description: "Deliver into exactly this tab (e.g. tab-3) instead of the canonical engine tab.",
+    },
+  ],
+  handler: dispatch,
 }
 
 export async function note(ctx: VerbContext): Promise<unknown> {

@@ -11,11 +11,11 @@ import { collect, fanOut, feedback } from "./handlers-fanout.ts"
 import { INSPECT_VERB } from "./handlers-inspect.ts"
 import { PANE_CLOSE_VERB, PANE_VERB } from "./handlers-pane.ts"
 import {
+  DISPATCH_VERB,
   add,
   adopt,
   archive,
   deleteTask,
-  dispatch,
   getTask,
   land,
   list,
@@ -203,23 +203,7 @@ export const VERBS: readonly VerbSpec[] = [
     ],
     handler: send,
   },
-  {
-    name: "dispatch",
-    summary:
-      "Route text into a task's live session via the daemon's session.deliver channel. The dispatcher's messenger (docs/design/dispatcher.md); unlike `send`, it requires an already-hosted session.",
-    flags: [
-      F.taskId(true),
-      F.prompt(true, "Text delivered into the task's engine session."),
-      {
-        name: "tab",
-        type: "string",
-        required: false,
-        placeholder: "TAB",
-        description: "Deliver into exactly this tab (e.g. tab-3) instead of the canonical engine tab.",
-      },
-    ],
-    handler: dispatch,
-  },
+  DISPATCH_VERB,
   {
     name: "note",
     summary:
