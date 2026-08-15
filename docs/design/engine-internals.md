@@ -17,7 +17,7 @@ built-in engine registers an entry exposing:
 - `history` — a reader over the engine's on-disk transcript store (auto-title,
   recap, and activity polling).
 - `detectAccount` — a read-only binary + login probe (Settings → Accounts,
-  `kobe doctor`).
+  `rove doctor`).
 - `createHookAdapter` — installs activity hooks into the engine's own config
   file so sessions report normalized events.
 - `createTurnDetector` — turn-completion detection for the chat tab.
@@ -30,7 +30,7 @@ no neutral code names a vendor.
 
 ## Account detection
 
-Detection is **read-only**: kobe never writes to engine config for this, and
+Detection is **read-only**: Rove never writes to engine config for this, and
 never shells out to a status subcommand. The on-disk files are the source of
 truth those subcommands print anyway. Anything that isn't cleanly "logged in"
 / "not logged in" (unreadable file, corrupt JSON, malformed JWT) surfaces as
@@ -50,7 +50,7 @@ launch with a shell error.
 
 ## Hook integration
 
-kobe learns what a session is doing (turn started/finished, rate-limited,
+Rove learns what a session is doing (turn started/finished, rate-limited,
 waiting on a permission prompt) from the engine's **own hook mechanism**, not
 polling. Each engine's hook adapter translates vendor events into neutral
 verbs and points them at `kobe hook <verb>`, an internal CLI subcommand that
@@ -65,10 +65,10 @@ flowchart LR
     C --> D[task activity badge<br/>+ plugin events]
 ```
 
-Install is **default-on and global**: on every kobe launch,
-`ensureGlobalKobeHooks` (in `src/cli/hook-cmd.ts`) writes kobe's hooks into
+Install is **default-on and global**: on every Rove launch,
+`ensureGlobalKobeHooks` (in `src/cli/hook-cmd.ts`) writes Rove's hooks into
 each hook-supporting engine's user-level config file. The merge is idempotent
-and merge-safe — your own hooks for the same events are preserved; kobe
+and merge-safe — your own hooks for the same events are preserved; Rove
 replaces only its own entries, identified by the `kobe hook` command
 substring — and never blocks launch.
 
@@ -96,7 +96,7 @@ allow/deny *decision* hook, and installing an observer there could interfere
 with Codex's approval flow. The polling fallback covers those states.
 
 Codex also won't run a non-managed hook until you trust it once via `/hooks`
-(or launch with `--dangerously-bypass-hook-trust`). kobe writes the
+(or launch with `--dangerously-bypass-hook-trust`). Rove writes the
 definition but never auto-bypasses trust, so Codex activity badges light up
 only after you approve, by design.
 
@@ -111,7 +111,7 @@ The tool-family hooks fire on **every tool call of every session
 machine-wide**. They're written into the engine config **only while an
 enabled plugin declares a `tool.*` event hook** (`pluginsWantToolEvents` in
 `src/cli/hook-cmd.ts`, re-synced on every launch, so installing or removing
-such a plugin takes effect on the next kobe start). The other activity hooks
+such a plugin takes effect on the next Rove start). The other activity hooks
 are always installed.
 
 ### Worktree watch
@@ -121,13 +121,16 @@ A global `PostToolUse` (Bash) observer hook reports
 command was `git worktree add` (adopt the new worktree as a task immediately)
 or `git worktree remove` (archive the pinned task). This is a pure *observer*
 fired after the tool runs, unlike the old `WorktreeCreate` *provider* hook
-(0.7.4–0.7.9) whose mere presence broke `claude --worktree` everywhere. kobe
+(0.7.4–0.7.9) whose mere presence broke `claude --worktree` everywhere. Rove
 removes any such legacy hook it ever wrote; `kobe hook setup` survives only
 as a deprecated cleanup no-op.
 
 ### Invocation contract
 
-`kobe hook <verb>` is internal: engines fire it, you don't. Two guarantees
+`kobe hook <verb>` is internal: engines fire it, you don't. It keeps the
+legacy binary name on purpose — a hook file outlives the launcher that wrote
+it, so `kobeHookInvocation()` persists the guaranteed `kobe` alias rather than
+a name a future PATH may not carry. Two guarantees
 are load-bearing — it **never spawns the daemon** (an idle-stopped daemon
 means the event is simply dropped), and it **always exits 0** (a hook must
 never fail the engine's action).
@@ -149,7 +152,7 @@ merged hook-wins (`src/tui/workspace/turn-state-merge.ts`):
 3. **Quiescence/mtime fallback** — for engines with no markers (copilot) the
    daemon watches the latest transcript mtime; a session that goes quiet
    reads as done. Custom engines resolve to an empty history reader, so their
-   badge stays dark. kobe labels the gap honestly rather than guessing state
+   badge stays dark. Rove labels the gap honestly rather than guessing state
    from screen scraping.
 
 Because hook delivery can lapse (daemon restart, dropped event), a ~10-minute
@@ -194,7 +197,7 @@ duplicate turn glyph. Codex additionally launches with
 `-c tui.terminal_title=["activity","thread-title"]` so tabs show its thread
 title instead of the repo name. Everywhere a live engine title is displayed
 (tab labels, split corner tags) it collapses to the launch binary
-(`✳ Claude Code` renders as `claude`), so all kobe surfaces speak one
+(`✳ Claude Code` renders as `claude`), so all Rove surfaces speak one
 vocabulary for a process. Vendor identity comes from the process tree, never
 from matching the title string.
 
@@ -216,12 +219,12 @@ never throw. A missing or unreadable transcript degrades to "no session"
 rather than an error in the UI. Engines without a verified format (Kimi,
 custom engines) share an explicit `EMPTY_HISTORY` sentinel so neutral code
 can label the gap explicitly (`supportsStructuredHistory`, used by
-`kobe api read-output`) instead of confusing "no reader" with "reader found
+`rove api read-output`) instead of confusing "no reader" with "reader found
 nothing".
 
 ## Session handoff
 
-kobe never converts one vendor's transcript into another's format — every
+Rove never converts one vendor's transcript into another's format — every
 engine can read a JSONL file, and a converter would rot on both sides' format
 changes. Instead the target engine starts a FRESH session whose first prompt
 names the previous engine, the worktree, and the absolute path of that

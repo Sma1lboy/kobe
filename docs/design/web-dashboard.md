@@ -1,6 +1,6 @@
-# Web dashboard (`kobe web`) — architecture
+# Web dashboard (`rove web`) — architecture
 
-> The browser dashboard for kobe: a terminal-native workspace at
+> The browser dashboard for Rove: a terminal-native workspace at
 > `http://localhost:5173`, not a faithful TUI mirror. Source lives in
 > [`packages/kobe-web`](../../packages/kobe-web). This doc is the durable map
 > of its process model, the daemon channels it consumes, and the daemon-hosted
@@ -20,7 +20,7 @@ flowchart LR
   Vite["Vite dev server<br/>:5173 (dev only)"]
   Web["Daemon web transport<br/>packages/kobe-daemon/src/daemon/web-server.ts<br/>:45174"]
   PTY["PTY sidecar (node)<br/>pty-server.mjs<br/>:5175"]
-  Daemon["kobe daemon<br/>(task index + event bus)"]
+  Daemon["rove daemon<br/>(task index + event bus)"]
   Engine["claude / codex<br/>(in the worktree)"]
 
   Browser -->|"/events SSE, /api/* fetch"| Web
@@ -47,7 +47,7 @@ flowchart LR
   with a bounded scrollback ring.
 
 The canonical `@sma1lboy/rove` package bundles these web assets under
-`dist/web-ui`. `kobe web`
+`dist/web-ui`. `rove web`
 ([`packages/kobe/src/cli/web-cmd.ts`](../../packages/kobe/src/cli/web-cmd.ts))
 ensures the daemon web transport is available, serves the built SPA from
 `dist/web-ui`, and spawns the PTY sidecar on `port + 2`. In dev,

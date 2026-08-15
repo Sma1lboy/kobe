@@ -6,7 +6,7 @@ How the engineering skills should consume this repo's domain documentation when 
 
 ## Before exploring, read these
 
-- **`CONTEXT.md`** at the repo root — the domain glossary. kobe's is strict: every core noun (Task, Worktree, Handover, ChatTab, Engine, …) has an "Avoid" list of banned synonyms, and a Retired section for vocabulary that no longer exists.
+- **`CONTEXT.md`** at the repo root — the domain glossary. Rove's is strict: every core noun (Task, Worktree, Handover, ChatTab, Engine, …) has an "Avoid" list of banned synonyms, and a Retired section for vocabulary that no longer exists.
 - **`docs/adr/`** — architecture decision records. Read the ADRs that touch the area you're about to work in.
 
 If any of these files don't exist, proceed silently — the producer skill (`/grill-with-docs`) creates them lazily.

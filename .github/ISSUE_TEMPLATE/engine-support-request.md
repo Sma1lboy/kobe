@@ -31,7 +31,7 @@ assignees: ''
 
 ## Non-interactive / prompt mode
 
-<!-- If supported, how can Kobe send a prompt directly to this engine? -->
+<!-- If supported, how can Rove send a prompt directly to this engine? -->
 
 ```bash
 ```
@@ -51,7 +51,7 @@ assignees: ''
 
 <!-- How does the engine authenticate? API key, browser login, local config, etc. Do not paste secrets. -->
 
-## Why should Kobe support this engine?
+## Why should Rove support this engine?
 
 <!-- Who uses it? What workflow would this unlock? -->
 

@@ -8,7 +8,7 @@ Use these terms consistently in code, docs, issues, and reviews.
 Task = Worktree + hosted engine sessions + branch
 ```
 
-**Task** — one tracked unit of work persisted in `~/.kobe/tasks.json`. A Task
+**Task** — one tracked unit of work persisted in `~/.rove/tasks.json`. A Task
 owns one Worktree and may have several Terminal Tabs. A `kind: "main"` Task
 represents a saved repository's root checkout.
 
@@ -67,7 +67,7 @@ chord.
 
 **PureTUI prefix** — a configurable two-stroke sequence, default `ctrl+a`,
 followed by an action key. It is configured in
-`~/.kobe/settings/keybindings.yaml`.
+`~/.rove/settings/keybindings.yaml`.
 
 ## Engine boundary
 

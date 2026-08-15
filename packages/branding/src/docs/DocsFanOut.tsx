@@ -65,9 +65,9 @@ const Card: React.FC<{ card: TaskCard; top: number }> = ({ card, top }) => (
     </div>
     <div style={{ height: 1, backgroundColor: T.rule, margin: "15px 0" }} />
     {[
-      ["wt", `~/.kobe/worktrees/app/${card.name}`],
+      ["wt", `~/.rove/worktrees/app/${card.name}`],
       ["engine", card.engine],
-      ["branch", `kobe/${card.name}`],
+      ["branch", `rove/${card.name}`],
     ].map(([key, value]) => (
       <div key={key} style={{ display: "flex", alignItems: "baseline", height: 30 }}>
         <div style={{ width: 92, fontSize: 20, color: T.dim }}>{key}</div>

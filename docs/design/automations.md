@@ -14,7 +14,7 @@ Automation = cron rule + prompt + repo
 Firing     = a new Task (worktree + branch + engine session)
 ```
 
-The unit of work is an ordinary kobe task, not a hidden background job. A run
+The unit of work is an ordinary Rove task, not a hidden background job. A run
 that fired at 09:00 is a task in the sidebar you can open, read, and keep
 talking to. That is the whole point of modelling it this way: scheduled work
 that produces something you cannot inspect is not worth scheduling.
@@ -100,9 +100,9 @@ skips the precheck entirely — asking for it by hand IS the answer.
 
 ## Daemon lifetime
 
-kobe's daemon normally self-stops 3s after the last GUI detaches. **An enabled
+Rove's daemon normally self-stops 3s after the last GUI detaches. **An enabled
 automation holds it open** (`DaemonLifetime.keepAlive`), because a schedule that
-only fires while someone is watching kobe is not a schedule.
+only fires while someone is watching Rove is not a schedule.
 
 The hold is opt-in by construction — the user created the automation — and
 releases when the last one is deleted or disabled, restoring ordinary idle
@@ -134,19 +134,19 @@ is genuinely optional.
 ## CLI
 
 ```bash
-kobe api routine-create --repo . --name "weekday audit" \
+rove api routine-create --repo . --name "weekday audit" \
   --prompt "Audit dependencies and summarize risky changes." \
   --schedule "0 9 * * MON-FRI" \
   --precheck "gh pr list --json number -q '.[0].number'"
 
-kobe api routine-list
-kobe api routine-runs --id <id>
-kobe api routine-run-now --id <id>
-kobe api routine-set-enabled --id <id> --enabled false
-kobe api routine-delete --id <id>
+rove api routine-list
+rove api routine-runs --id <id>
+rove api routine-run-now --id <id>
+rove api routine-set-enabled --id <id> --enabled false
+rove api routine-delete --id <id>
 ```
 
-Full flag list: `kobe api schema --group automation`.
+Full flag list: `rove api schema --group automation`.
 
 ## Prompt delivery
 

@@ -167,16 +167,16 @@ Survey of the 396 `herdr-plugin` repos (2026-07-28), by demand signal:
 
 1. **Notifications / remote monitoring** — the biggest cluster by far
    (ntfy/Telegram bridges, macOS toasts, phone PWAs, mobile relays; top repos
-   1.2k/325/148/145 stars). Kobe: `examples.notify`; the attention inbox
+   1.2k/325/148/145 stars). Rove: `examples.notify`; the attention inbox
    covers the in-TUI half natively.
 2. **Worktree/workspace bootstrap** — declarative layouts, worktree-from-PR/
-   issue/Linear, copy-env-into-worktree, per-project setup. Kobe:
-   `examples.github-start`, `examples.worktree-include`; `.kobe/init.sh`
+   issue/Linear, copy-env-into-worktree, per-project setup. Rove:
+   `examples.github-start`, `examples.worktree-include`; `.rove/init.sh`
    already covers in-worktree setup.
 3. **Sidebar tools in panes** — file viewers, lazygit, kanban boards, PR
    review TUIs. Blocked on pane support (v2).
 4. **Session/agent management** — handoff between engines, session parking,
-   auto-rename, usage dashboards. Kobe ships auto-title, quota-resume, and
+   auto-rename, usage dashboards. Rove ships auto-title, quota-resume, and
    telemetry natively; the gap is third-party experimentation space.
 5. **Navigation/pickers** — fuzzy switchers, vim-style pane nav. Mostly
-   TUI-internal for kobe; revisit with panes.
+   TUI-internal for Rove; revisit with panes.

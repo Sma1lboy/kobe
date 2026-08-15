@@ -1,7 +1,7 @@
 # Remote topology (SSH-backed projects) — status assessment, 2026-07-27
 
 Assessment of the `remote-projects` branch and the current state of the
-reverse-topology feature (kobe local, project on a remote host over SSH).
+reverse-topology feature (Rove local, project on a remote host over SSH).
 Verified against code on current `main` (v0.8.19, commit `d31fbf31`), not
 against the branch summary.
 
@@ -19,7 +19,7 @@ ancestor of main:
 So the "badly stale branch that needs reviving" premise is stale itself. Main
 has been carrying and actively maintaining the code for ~7 weeks — the
 CHANGELOG shows post-merge remote-project work (RemoteExecHost caching by
-ControlMaster socket, `kobe remove` of `ssh://` entries, a fix for remote
+ControlMaster socket, `rove remove` of `ssh://` entries, a fix for remote
 projects silently breaking engine-activity collection, ExecHost-backed
 worktree content reads, ssh-arg quoting). The branch's changeset
 (`remote-projects-experimental.md`) was consumed by a release long ago;
@@ -39,7 +39,7 @@ maintained on main and already accurate.
 | 1. ExecHost seam | Done | `packages/kobe/src/exec/exec-host.ts` — `LocalExecHost` / `RemoteExecHost` / pure ssh construction (`sshConnectArgs`, `remoteShellCommand`, `shQuote`) + ControlMaster `ensureReady`. `exec/resolve.ts` — `execHostForRepo` / `execHostForWorktreePath`. Tests pass. |
 | 2. Keychain | Done | `packages/kobe/src/exec/keychain.ts` — macOS `security` store/read/delete behind injected deps; non-darwin no-op. Tests pass. |
 | 3. Data model | Done | `packages/kobe/src/state/repos.ts` — `RemoteRepoConfig`, `remoteRepos` map, synthetic `ssh://user@host[:port]` savedRepos keys, `resolveRepoRoot` ssh:// passthrough, `isRemoteProjectsEnabled()` experimental gate. `remoteControlSocketPath` in `env.ts`. Tests pass. |
-| 4. CLI | Done | `packages/kobe/src/cli/add-remote.ts` — `kobe add --remote --host --user --path [--port] [--key|--password]`; refuses when the experimental flag is off. Tests pass. |
+| 4. CLI | Done | `packages/kobe/src/cli/add-remote.ts` — `rove add --remote --host --user --path [--port] [--key|--password]`; refuses when the experimental flag is off. Tests pass. |
 | 5. Remote worktree | Done | `GitWorktreeManager` routes git+fs through `orchestrator/worktree/exec-deps.ts`; `paths.ts` `remoteWorktreePathFor`; new remote worktrees use `<basePath>/.rove/worktrees` and legacy `.kobe/worktrees` remains recognized. Tests pass. |
 | 6. Engine launch over SSH | **REGRESSED / disconnected** | The original phase-6 launch was wired through the tmux runtime, which was retired in the embedded-terminal pivot. `ExecHost.wrapCommand` (the `ssh -tt … 'cd <wt> && <engine>'` builder) still exists but has **zero consumers** outside `exec-host.ts`. The current shared launch builder `packages/kobe/src/engine/session-launch.ts` has no remote/ssh/ExecHost awareness — a task under a remote project would get its worktree created remotely but its engine launched locally (against a cwd that doesn't exist locally). |
 
@@ -69,7 +69,7 @@ No mechanical breakage to fix: main never let this code rot.
 None of the above is live-host validation. Everything below is untested
 against a real remote and cannot be claimed working:
 
-1. `kobe add --remote` end-to-end: connectivity probe, ControlMaster socket
+1. `rove add --remote` end-to-end: connectivity probe, ControlMaster socket
    creation under `<ROVE_HOME>/.rove/ssh/`, key and password (keychain +
    `sshpass -e`) auth paths, `StrictHostKeyChecking=accept-new` TOFU flow.
 2. Remote worktree creation: `git worktree add` over SSH against a real repo

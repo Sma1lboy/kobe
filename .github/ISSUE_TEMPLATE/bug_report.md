@@ -29,7 +29,7 @@ If applicable, add screenshots to help explain your problem.
  - Where it happens: [sidebar / embedded terminal / files / settings / browser]
 
 **Diagnostics**
-Run `kobe --version` and `kobe daemon status` in the same terminal where the bug happens and paste their output.
+Run `rove --version` and `rove daemon status` in the same terminal where the bug happens and paste their output.
 
 ```text
 paste command output here

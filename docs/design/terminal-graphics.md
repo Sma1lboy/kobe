@@ -1,34 +1,34 @@
-# Terminal graphics: why kobe renders images as cells
+# Terminal graphics: why Rove renders images as cells
 
-**Decision (2026-07-29): kobe keeps character-cell rendering. The kitty
+**Decision (2026-07-29): Rove keeps character-cell rendering. The kitty
 graphics path is not being built.** This note records the evidence so the
 question doesn't get re-opened from first principles.
 
 ## The question
 
-kobe's image / video / browser plugins all paint half-block truecolor
+Rove's image / video / browser plugins all paint half-block truecolor
 cells instead of real images. herdr — the comparable product — renders
-real images over the kitty graphics protocol. Should kobe switch?
+real images over the kitty graphics protocol. Should Rove switch?
 
 ## What the comparison actually shows
 
-herdr's hosting model is **the same as kobe's**: child in a PTY → bytes
+herdr's hosting model is **the same as Rove's**: child in a PTY → bytes
 into its own embedded VT emulator → read back a cell grid → compose its
 own frame. No full-screen takeover, no blind passthrough.
 
 The difference is **which emulator**:
 
-| | kobe | herdr |
+| | Rove | herdr |
 |---|---|---|
 | Embedded emulator | `@xterm/headless` | vendored libghostty-vt |
 | Kitty graphics APC (`ESC _G`) | discarded by the parser, **no hook exists** | parsed and retained as an image store |
 | How images reach the real terminal | they don't | host re-uploads under its own id, re-places clipped to the pane rect, after each frame |
 
-The blocking mechanism in kobe is one line of a dependency:
+The blocking mechanism in Rove is one line of a dependency:
 `EscapeSequenceParser.ts` routes `ESC _` into the APC state with action
 `IGNORE`, and the parser has **no APC action** to register a handler
 against (`IParser` exposes only CSI / DCS / ESC / OSC). By the time
-`xterm-chunks.ts` reads cells, the image never existed. Kobe registers no
+`xterm-chunks.ts` reads cells, the image never existed. Rove registers no
 parser hooks at all today.
 
 So: a capability gap in the emulator, not an architectural one.
@@ -42,7 +42,7 @@ So: a capability gap in the emulator, not an architectural one.
    clearing artifacts. Nobody in this category has made it boring yet.
 2. **Reading a CHILD's images stays impossible regardless.** Without
    forking xterm, `icat`, file-manager previews, and anything an engine
-   prints in a shell pane remain cells either way. Only kobe's OWN plugins
+   prints in a shell pane remain cells either way. Only Rove's OWN plugins
    could benefit — and their pixels are already in-process, so they never
    needed capture.
 3. **The plumbing is cheap; the lifecycle is not.** opentui's `writeOut` +
@@ -77,7 +77,7 @@ extending it.
 
 ## Related
 
-- Half-block rendering is the encoding kobe's pane renders best — see the
+- Half-block rendering is the encoding Rove's pane renders best — see the
   solid-block substitution in `panes/terminal/xterm-chunks.ts` (the
   zebra-stripe fix) and the `kobe.image` / `kobe.video` plugins.
 - Sixel (DCS) and iTerm2 inline images (OSC 1337) **are** capturable with
