@@ -11,11 +11,11 @@
 | Routines                     |
 |                              |
 | kobe ─────────────────────── |
-|  feat/alpha                2 |
-|▌  · build                  3 |
-|   · shell                  4 |
-|  feat/bravo                5 |
-|   · tests                  6 |
+|  feat/alpha                  |
+|▌  · build                    |
+|   · shell                    |
+|  feat/bravo                  |
+|   · tests                    |
 |                              |
 |                              |
 |                              |
