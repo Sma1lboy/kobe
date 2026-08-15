@@ -17,6 +17,16 @@ This prompts for the bump type (**patch** / **minor** / **major**) and a summary
 - The summary is the **user-facing changelog line** — write it in product voice, present tense ("Add X", "Fix Y", or a short narrative). It lands verbatim under the next release.
 - A pure tooling / docs / CI change that doesn't touch the published package needs **no** changeset. If you want to record "intentionally nothing to release", run `bun run changeset -- --empty`.
 - Bump type: default to `patch` for every change, including features and pre-1.0 breaking changes. Use `minor` or `major` only when the maintainer explicitly requests that bump for the change being released.
+- The frontmatter must name a **publishable workspace package** — today `"@sma1lboy/rove"` or `"@sma1lboy/rove-plugin-sdk"`. The `@sma1lboy/kobe` names are compatibility aliases that still publish alongside, but a changeset must not version them (they were canonical before 2026-08-13, so stale examples are all over the git history — don't copy an old changeset).
+
+Validate before committing:
+
+```bash
+bun run changeset:check         # all pending changesets
+bun run hooks:install           # once per clone — runs the same check on commit
+```
+
+Worth the two seconds: a bad package name is only caught downstream, by `package-distribution.test.ts` inside `typecheck-and-test`. Once it merges, **main and every branch cut from it stay red** until someone retargets that line (PR #445, 2026-08-15). The pre-commit hook exists to move that discovery from "everyone else's CI" to "your keyboard".
 
 ### 2. Cutting a release — automatic (default)
 
