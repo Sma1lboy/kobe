@@ -195,6 +195,16 @@ export interface EngineRegistryEntry {
    * user's own (`kimi -p` style wrappers RIDE the positional slot).
    */
   readonly firstMessageDelivery?: "argv" | "paste"
+  /**
+   * Extra executable basenames this engine's LIVE process may show as in
+   * `ps`, beyond `defaultCommand[0]` — for binaries that rewrite their
+   * process title post-launch (kimi's Mach-O launcher rewrites argv[0] to
+   * `kimi-co`, verified on two live sessions 2026-08-15). The foreground
+   * walk (`engine/foreground.ts`) matches these the same way it matches
+   * the launch binary; without them a running engine reads as a plain
+   * shell and prompt delivery refuses with ENGINE_NOT_RUNNING.
+   */
+  readonly processNames?: readonly string[]
 }
 
 // The per-vendor readers live in `history-readers.ts` (file-size cap);
@@ -275,6 +285,9 @@ const BUILTIN_ENGINES: Record<"claude" | "codex" | "copilot" | "kimi", EngineReg
     // kimi's positional CLI slot is a subcommand (export/provider/acp/…),
     // not an initial prompt — argv delivery kills it (issue #25).
     firstMessageDelivery: "paste",
+    // The installed Mach-O binary rewrites its process title to `kimi-co`
+    // after launch, so a live kimi session's argv[0] never reads `kimi`.
+    processNames: ["kimi-co"],
     history: kimiHistoryReader,
     detectAccount: (deps) => detectKimiAccount(deps),
     createHookAdapter: () => new NoopHookAdapter("kimi"),

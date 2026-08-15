@@ -40,6 +40,14 @@ describe("vendorFromArgv", () => {
     expect(vendorFromArgv("env FOO=1 claude")).toBe("claude")
   })
 
+  it("identifies kimi by its rewritten process title (registry processNames)", () => {
+    // Verbatim `ps -o args=` lines from two live kimi sessions (2026-08-15):
+    // the Mach-O launcher rewrites argv[0] to `kimi-co`, and what follows is
+    // environ memory, not arguments.
+    expect(vendorFromArgv("kimi-co NVM_RC_VERSION=")).toBe("kimi")
+    expect(vendorFromArgv("kimi-co SSH_AUTH_SOCK=/private/tmp/com.apple.launchd.x/Listeners")).toBe("kimi")
+  })
+
   it("returns null for a plain shell or unrelated process", () => {
     expect(vendorFromArgv("-zsh")).toBeNull()
     expect(vendorFromArgv("")).toBeNull()
@@ -90,6 +98,15 @@ describe("engineProcessIn (delivery foreground gate)", () => {
 `)
     // caller passed claude's bin; the running codex is still an engine
     expect(engineProcessIn(rows, 10, "claude")).toBe(true)
+  })
+
+  it("a live kimi session passes the gate despite its rewritten title", () => {
+    const rows = parsePsSnapshot(`
+10 1 -zsh
+11 10 /bin/bash -ilc kimi -y
+12 11 kimi-co NVM_RC_VERSION=
+`)
+    expect(engineProcessIn(rows, 10, "kimi")).toBe(true)
   })
 
   it("extraBin matches a custom engine binary the builtin walk cannot see", () => {
