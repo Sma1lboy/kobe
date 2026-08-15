@@ -1,7 +1,7 @@
 # Keybindings
 
-**Press `F1` inside Rove** for the live, localized keymap — it's always
-correct, including your own overrides. This page is the stable vocabulary.
+**Press `F1` inside Rove** for the live, localized keymap, including your own
+overrides. This page is the stable vocabulary and behavior reference.
 
 ## How keys work
 
@@ -31,22 +31,24 @@ the actions that can actually run right now.
 
 | Sequence | Action |
 |---|---|
-| `ctrl+a` `f` | New-conversation dialog, preset to "fork a child task" — new worktree, branched off this task's branch |
-| `ctrl+a` `c` | New-conversation dialog, preset to "continue this chat" in a new tab of the same worktree |
+| `ctrl+a` `f` | New-conversation dialog, preset to "fork a child task" — new managed worktree, branched off this Task's branch |
+| `ctrl+a` `c` | New-conversation dialog, preset to "continue this chat" in a new tab of the same Task directory |
 | `ctrl+a` `i` | Open the Inbox |
 | `ctrl+a` `y` | Resume a prior engine session |
 | `ctrl+a` `h` / `l` | Move focus left / right across panes |
-| `ctrl+a` `o` | Open the task's worktree in your editor |
-| `ctrl+a` `m` | Reorder projects and tasks in the sidebar |
+| `ctrl+a` `o` | Open the Task directory in your editor |
+| `ctrl+a` `m` | Reorder projects in the sidebar |
 | `ctrl+a` `w` | Close the active split |
 | `ctrl+a` `1` / `2` / `3` | Kanban / Automations / GitHub Issues |
 | `ctrl+a` `z` | Toggle zen mode |
 | `ctrl+a` `,` | Open Settings |
 | `ctrl+a` `p` | Create a PR from the active task |
 
-`ctrl+a` `c` picks an engine first. The same engine forks the conversation
-natively; a different one gets a transcript handoff (claude ⇄ codex — see
-[Engines](./ENGINES.md)).
+`ctrl+a` `c` picks an engine first. Claude and Codex can fork their own
+conversations natively. Copilot and Kimi use a transcript handoff even for a
+same-engine continuation; a built-in source can also hand off to a different
+built-in or custom target. A custom source has no readable transcript, so its
+continuation is refused. See [Engines](./ENGINES.md#resuming-and-forking).
 
 The sequence cancels on timeout, `esc`, an invalid second key, or a change of
 focus or dialog.
@@ -89,10 +91,16 @@ is active.
 | `n` | New task | | `r` | Rename |
 | `enter` | Open | | `b` | Rename branch |
 | `l` / `space` | Open the row under the cursor | | `v` | Change engine |
-| `o` | Open worktree in your editor | | `s` | Settings |
-| `a` | Archive | | `u` | Update page |
-| `d` | Delete | | `/` | Search |
-| `[` / `]` | Switch Working / Archives | | | |
+| `o` | Open Task directory in your editor | | `s` | Settings |
+| `a` | Archive non-main Task | | `u` | Update page |
+| `d` | Delete Task / forget project | | `/` | Search |
+| `[` / `]` | Switch Working / Archives | | `x` | Worktrees page |
+| `gg` / `shift+g` | Top / bottom | | `shift+p` | Pin / unpin managed Task |
+| `shift+m` | Enter project reorder mode | | | |
+
+In reorder mode, `j`/`k` moves the highlighted project and `enter` or `esc`
+finishes. Project headings themselves aren't cursor rows; the move routes
+through a Task row in that project.
 
 **Files**
 
@@ -100,19 +108,35 @@ is active.
 |---|---|
 | `j` / `k` | Move |
 | `h` / `l` | Collapse / expand |
-| `enter` | Preview |
-| `e` | Open in your editor |
-| `d` | Diff |
+| `enter` | Open in your configured editor; changed files use a Vim/Nvim diff when available, otherwise Rove falls back to its read-only preview |
+| `d` | Open a read-only diff in a workspace tab without moving focus |
+| `r` | Refresh the current file tab |
+| `b` | On Changes, switch working-tree changes ⇄ branch vs base |
+| `o` | Open audio, video, or PDF files in the system application |
+| `a` | Insert an `@path` mention into the engine pane |
 | `[` / `]` | Switch file tabs |
 
-The sidebar is a tree — project → worktree → tab — and it never folds, so
+The sidebar is a tree — project → Task → Terminal Tab — and it never folds, so
 everything is always visible. Search (`/`) matches titles, repos, branches,
 and live tab titles, and keeps matching rows' parents so a hit is never
 orphaned.
 
-Right-click any row for its menu. Every entry there is also a direct chord on
-the row, so the menu is optional. (If right-click opens your *terminal's*
-menu instead, see [Troubleshooting](./TROUBLESHOOTING.md).)
+Right-click any row for its context menu; common row actions also have direct
+chords. (If right-click opens your *terminal's* menu instead, see
+[Troubleshooting](./TROUBLESHOOTING.md).)
+
+## Terminal scrollback
+
+These chords are trapped by Rove while the embedded terminal has focus; the
+engine or shell does not receive them.
+
+| Key | Action |
+|---|---|
+| `ctrl+pageup` | Scroll one page up through buffered terminal output |
+| `ctrl+pagedown` | Scroll one page down; reaching the bottom resumes following live output |
+
+The mouse wheel uses the same scrollback. Buffer size is configured in
+Settings → General → Terminal and applies to newly opened terminals.
 
 ## Inbox
 
@@ -122,7 +146,7 @@ menu instead, see [Troubleshooting](./TROUBLESHOOTING.md).)
 | Key | Action |
 |---|---|
 | `j` / `k` (or arrows) | Select |
-| `enter` | Open the target task and tab, and clear the item |
+| `enter` | Open the target task and its exact tab when present, then clear the item |
 | `d` | Clear an ATTENTION item without navigating |
 | `esc` | Close |
 

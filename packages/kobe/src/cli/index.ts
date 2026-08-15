@@ -20,7 +20,7 @@ const ADD_USAGE = [
   `       ${CLI_NAME} add --remote --host <host> --user <user> --path <basePath> [--port N] [--key <path> | --password]`,
   "",
   "Save a repo for the new-task picker. With --remote, register an SSH-backed",
-  "project whose worktrees + engine run on <host> under <basePath>.",
+  "project whose worktrees live on <host>; engine launch over SSH is pending.",
   "",
 ].join("\n")
 

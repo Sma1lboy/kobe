@@ -7,7 +7,7 @@
 <p align="center">
   <strong>Multiplex your agents like you multiplex your terminals.</strong><br />
   Rove is an open-source agent multiplexer: it runs <a href="https://claude.com/claude-code">Claude Code</a>, <a href="https://github.com/openai/codex">Codex</a>, <a href="https://github.com/github/copilot-cli">Copilot</a>, Kimi — or any CLI you register — in parallel,<br />
-  each session on its own git worktree and branch — attach, detach, reattach; they keep working after you disconnect.
+  managed tasks on isolated git worktrees and branches — attach, detach, reattach; they keep working after you disconnect.
 </p>
 
 <p align="center">
@@ -29,15 +29,15 @@
   <img src="docs/assets/workspace.png" alt="Rove workspace — task sidebar, the embedded engine session mid-review, and the worktree's file tree" />
 </p>
 
-Terminal multiplexers let one terminal hold many shells that survive you. Rove does the same for AI coding agents: one TUI holds many engine sessions, each isolated on its own git worktree and branch, all alive after you close the laptop lid on your SSH connection. Start the auth refactor, start the flaky-test hunt beside it, walk away, come back to two finished branches. It runs where your code already lives — laptop, devbox, VPS — with no desktop app and no browser required.
+Terminal multiplexers let one terminal hold many shells that survive you. Rove does the same for AI coding agents: one TUI holds many engine sessions, while managed Tasks isolate parallel work on separate git worktrees and branches. Tabs inside one Task intentionally share its files. Start the auth refactor, start the flaky-test hunt beside it, walk away, come back to two finished branches. It runs where your code already lives — laptop, devbox, VPS — with no desktop app and no browser required.
 
 ## Why Rove
 
-- **Safe parallelism** — every task is `git worktree + engine session + branch`. Agents never trample each other or your checkout.
-- **Sessions survive you** — quit the TUI, drop SSH, restart the daemon; reattach and the screen comes back. A separate PTY host owns the sessions, so nothing you close kills them.
+- **Safe parallelism** — every managed Task is `git worktree + branch + terminal tabs`. Project-main and directory Tasks reuse existing directories; create separate managed Tasks when agents must not touch the same files.
+- **Sessions survive you** — quit the TUI, drop SSH, restart the daemon; reattach and the screen comes back. A separate PTY host owns the sessions, so closing the TUI or terminal only detaches. Explicit tab close, archive, or reset still tears sessions down.
 - **Real engines, real environment** — Rove embeds the actual interactive CLIs next to your dependencies, services, and credentials. No API wrappers, no re-rendered streams.
 - **Any engine, mid-task** — `claude`, `codex`, `copilot`, `kimi`, or your own command. Hand a stuck conversation to another vendor without losing its context.
-- **Terminal first** — notifications and clipboard ride SSH back to your local terminal, and the whole UI folds down to a phone-width session.
+- **Terminal first** — notifications and clipboard ride an active SSH terminal connection, pending attention waits in the Inbox after disconnect, and the whole UI folds down to a phone-width session.
 - **Agents orchestrating agents** — `rove api` lets a script, or another AI agent, spawn tasks, supervise them, and land the results headlessly.
 
 <p align="center">
@@ -47,7 +47,7 @@ Terminal multiplexers let one terminal hold many shells that survive you. Rove d
 
 ## Install
 
-Requires [Bun](https://bun.sh) ≥ 1.3.11, git, and at least one engine CLI on `PATH`. macOS, Linux, and Windows.
+Requires [Bun](https://bun.sh) ≥ 1.3.11, git, and at least one engine CLI on `PATH`. macOS, Linux, and Windows. Windows additionally needs Node.js and Git for Windows/Git Bash for Hosted PTYs.
 
 ```bash
 bun install -g @sma1lboy/rove
@@ -70,7 +70,7 @@ rove
 
 Press `n`, pick a repo, base branch, and engine, and prompt the embedded session. The worktree lands in `~/.rove/worktrees/<repo-key>/<task-slug>/`. Press `F1` anytime for the live keybinding reference; `ctrl+q` focuses the sidebar, and from there quits — sessions keep running in the background.
 
-Full documentation: **[docs.kobe.sma1lboy.me](https://docs.kobe.sma1lboy.me)** — quick start, concepts, CLI, agent API, configuration, keybindings, themes, engines, plugins, troubleshooting.
+Full documentation: **[docs.kobe.sma1lboy.me](https://docs.kobe.sma1lboy.me)** — quick start, concepts, TUI, CLI, agent API, configuration, keybindings, themes, engines, worktree safety, plugins, troubleshooting.
 
 > **If Rove saves you an afternoon, [star the repo](https://github.com/Sma1lboy/rove/stargazers)** — it is the single strongest signal that tells other developers this is worth their time.
 
@@ -82,7 +82,7 @@ Full documentation: **[docs.kobe.sma1lboy.me](https://docs.kobe.sma1lboy.me)** �
   <img src="docs/assets/diff-review.png" alt="Diff review — a range anchored across the agent's new lines and a note being written for the engine" />
 </p>
 
-**Never babysit a rate limit.** The footer carries each usage window the vendor reports (`CLAUDE 5h 42% → 14:00 · 7d 12%`). When Claude hits its subscription window, Rove schedules a resume and continues the task once the window resets. Or don't wait at all: `ctrl+e` continues the same conversation in a *different* engine — the next agent gets the previous transcript's path and picks up from there — and `rove api send --tab new --vendor codex` puts a second vendor on the same worktree, on the same files.
+**Never babysit a rate limit.** The footer carries each usage window the vendor reports (`CLAUDE 5h 42% → 14:00 · 7d 12%`). When Claude hits its subscription window, Rove schedules a resume and continues the task once the window resets. Or don't wait at all: `ctrl+e` continues the same conversation in a *different* engine — the next agent gets the previous transcript's path and picks up from there — and `rove api send --tab new --vendor codex` puts a second vendor in the same Task directory, on the same files.
 
 **Run it from your phone.** Below 70 columns the TUI becomes one panel at a time — task list and workspace alternate, the first row jumps you back where you were, quota shrinks to `CLAUDE 42%`. No setting, no separate app; it follows the terminal width.
 
@@ -128,14 +128,19 @@ Every verb, flag, and exit code: [Agent API reference](https://docs.kobe.sma1lbo
 ## How it works
 
 ```text
-Task = git worktree + hosted engine session + branch
+Managed task = git worktree + branch + terminal tabs
 ```
+
+Saved-project main Tasks and `rove .` directory Tasks are workspace records
+that reuse existing directories rather than creating a branch/worktree.
 
 1. **The daemon** owns tasks, worktrees, and state — the TUI, the web dashboard, and `rove api` are all clients of the same one.
 2. **The PTY host** is a separate long-lived process that owns the engine sessions. It outlives the TUI *and* the daemon, which is why disconnects and restarts never kill your work.
 3. **The TUI** just attaches: sidebar for tasks, workspace tabs for engines and shells (with splits and quick-fork), a files pane for diffs, review notes, and PR actions.
 
-The same tasks are available from a browser — `rove web` serves a local dashboard on the daemon the TUI uses, so both surfaces stay in sync:
+The frozen browser dashboard is available as a maintenance surface —
+`rove web` shares daemon-owned Task and issue data with the TUI. Its terminal
+tabs use a separate browser PTY sidecar; they are not the TUI's hosted sessions:
 
 ```bash
 rove web            # http://localhost:45174

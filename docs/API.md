@@ -32,7 +32,7 @@ rove api fan-out --repo "$PWD" \
 ```
 
 **Completion** — a worker spawned from another Rove task sends its outcome
-back to the dispatching chat tab: creation records the dispatcher
+back to the dispatching engine tab: creation records the dispatcher
 (task + tab), so a bare `send` routes home without any id in hand; no
 stored report, no blocking wait. Silence is a checkpoint, never a verdict:
 
@@ -105,7 +105,7 @@ alias of `add`.
 - `digest --repo PATH [--since-days N]`: the repo's recent agent work —
   tasks touched in the window plus routine outcomes by status. Default
   window 7 days. Task outcomes are deliberately absent: completion travels
-  to the spawning agent's chat tab (`send`), not into Rove state.
+  to the spawning agent's engine tab (`send`), not into Rove state.
 - `pty-list` *(offline)*: hosted PTY sessions (key, alive, pid, command,
   live window title). Empty when no PTY host runs.
 - `read-output [--task-id ID] [--tab TAB] [--source auto|history|terminal]
@@ -153,7 +153,7 @@ placeholder branch to a descriptive name. Prompts into existing sessions
 
 ## drive
 
-- `send [--task-id ID] --prompt TEXT [--tab TAB] [--plain]`: paste a
+- `send [--task-id ID] --prompt TEXT [--tab TAB] [--vendor V] [--plain]`: paste a
   follow-up into a task's running engine (one full turn). Without
   `--task-id`, a task that has a `dispatcher` on record replies to that
   exact tab — falling back to the dispatcher task's live canonical engine
@@ -162,8 +162,11 @@ placeholder branch to a descriptive name. Prompts into existing sessions
   Otherwise the default is the active task and its canonical engine tab.
   From another Rove task, the message includes `[KOBE PEER]` provenance and
   a tab-precise reply command (`--task-id <sender> --tab <sender's tab>`);
-  `--plain` skips that prefix. `--tab new` spawns a fresh engine tab, while `--tab
-  tab-N` targets that exact tab (`TAB_NOT_FOUND` if it is dead or absent).
+  `--plain` skips that prefix. `--tab new` spawns a fresh engine tab, while
+  `--tab tab-N` targets that exact tab (`TAB_NOT_FOUND` if it is dead or
+  absent). `--vendor V` is valid only with `--tab new`: it pins that new tab
+  to the selected engine without changing the task's default vendor. Using it
+  with an existing tab is a `BAD_FLAG` error rather than a silent switch.
   Delivery needs a live engine in that tab: one that exited into the
   keep-alive shell refuses with `ENGINE_NOT_RUNNING` and a `--tab new` hint
   instead of pasting into a shell. Any registered engine passes, so a tab may
@@ -186,7 +189,7 @@ placeholder branch to a descriptive name. Prompts into existing sessions
 - `note-list --repo PATH`: read a repo's accumulated field notes, newest
   first. Returns `{ notes }`.
 - `set-active [--task-id ID] [--none]`: set (or clear) the shared active
-  task every Tasks pane highlights.
+  task every attached sidebar highlights.
 - `pane-open [--task-id ID] [--tab TAB] [--command CMD] [--direction
   right|down] [--placement split|tab] [--title TEXT]`: open a terminal pane
   in a task's workspace — split the focused tab (default, tmux-style

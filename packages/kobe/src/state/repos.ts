@@ -329,8 +329,9 @@ export function removeSavedRepo(absPath: string): RemoveResult {
 
 // ── Remote projects (SSH-backed) ─────────────────────────────────────────────
 //
-// A remote project is a saved repo whose worktrees + engine live on another
-// host over SSH. Its `savedRepos` key is a synthetic `ssh://user@host:port`
+// A remote project is a saved repo whose worktrees live on another host over
+// SSH. Hosted PTY engine launch over SSH is still pending. Its `savedRepos`
+// key is a synthetic `ssh://user@host:port`
 // URL (it has no local path), and its connection details live under the
 // separate `remoteRepos` map. The PASSWORD is never stored here — only a
 // `keychainRef` pointing at the OS keychain (see `exec/keychain.ts`). See

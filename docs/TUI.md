@@ -1,8 +1,8 @@
 # The TUI
 
-A tour of the interface beyond the three panes: what the sidebar's status
-glyphs mean, where the Inbox fits, the pages behind `ctrl+a` `1`/`2`/`3`,
-and what changes when the terminal gets narrow.
+A tour of the interface beyond the three panes: creating tasks, reading the
+sidebar, managing worktrees, using Settings and the Inbox, opening the pages
+behind `ctrl+a` `1`/`2`/`3`, and working in a narrow terminal.
 
 This page explains what the features are *for*. The key tables live in
 [Keybindings](KEYBINDINGS.md); the mental model behind tasks and sessions
@@ -11,7 +11,7 @@ lives in [Concepts](CONCEPTS.md).
 ## Status glyphs in the sidebar
 
 Task rows carry the branch name, pin marker, PR chip, and `±` change counts.
-Session state belongs to the chat tab that runs it, so the status glyph sits
+Session state belongs to the engine tab that runs it, so the status glyph sits
 on the **tab rows** underneath:
 
 | Glyph | Meaning |
@@ -19,17 +19,17 @@ on the **tab rows** underneath:
 | spinner | Engine is working (also shown while a worktree materializes or deletes) |
 | `?` | Needs your input — a permission prompt or a question |
 | `●` | Turn finished, and you haven't looked yet |
-| `○` | Idle — nothing pending. Includes a finished turn you've already seen |
-| `◌` | Unknown — the daemon has no signal for this tab yet (it just started, or the session's lineage is gone) |
+| `○` | Idle or not yet observed. Includes a finished turn you've already seen |
 | `◷` | Rate limited |
-| `✕` | Error |
-| `·` | Not an agent tab (shell or command), or an engine without activity tracking |
+| `×` | Error, including a failed worktree deletion |
+| `·` | Not an agent tab, or a custom engine without activity tracking |
 
 **Seen means consumed.** A `●` clears the moment you actually open that tab —
 select the task, with that tab active. Moving the sidebar cursor over the row
 doesn't count. Once seen, the badge drops back to `○`; there is no lingering
-checkmark. Seen state lives in the running TUI only, so a fresh attach starts
-everything unseen.
+checkmark. Rove saves the completion timestamp per task and tab, so restarting
+or reattaching does not relight a completion you already read. A later
+completion has a later timestamp and appears unread as usual.
 
 Each tab row reports its **own** activity, not the task's roll-up — tab 2 can
 spin while tab 1 rests. The tab strip at the top of the workspace uses a
@@ -42,17 +42,20 @@ input, `○` idle).
 *where was I?* — with one section for each:
 
 - **ATTENTION** — pending items, oldest first. An item appears when a turn
-  completes, a session asks for input, hits a rate limit, or errors. One item
-  per task-and-tab: a newer event replaces the older one, and starting a new
-  turn clears it.
+  completes, a session asks for input, hits a rate limit, or errors. Most
+  items target one task-and-tab; events without a tab identity target the
+  whole task instead. A newer event for the same target replaces the older
+  one, and starting a new turn clears it.
 - **RECENT** — the last handful of tabs you visited, most recent first. These
   aren't pending work, just jump targets; a spinner marks the ones still
   running.
 
-`enter` opens the target and clears the item; `d` clears without navigating
-(ATTENTION rows only — RECENT rows have nothing to drop). You rarely need
-`d`: **visiting a target clears its item anyway** — visiting means handled —
-and stale items whose tab or task is gone get cleaned up in the background.
+`enter` opens the task and, when the episode names one, its exact tab; a
+task-level episode leaves that task's current tab active. It also clears the
+item. `d` clears without navigating (ATTENTION rows only — RECENT rows have
+nothing to drop). You rarely need `d`: **visiting a target clears its item
+anyway** — visiting any tab resolves a task-level episode — and stale items
+whose tab or task is gone get cleaned up in the background.
 
 `F7` jumps straight to the oldest pending item across **all** projects,
 without opening the Inbox, and cycles on repeated presses. It works even
@@ -81,6 +84,73 @@ Notes anchor to the file path and the line number displayed at the time you
 wrote them; they don't re-anchor when the diff changes underneath. These four
 keys are fixed and not rebindable.
 
+## Creating a task
+
+Focus the sidebar and press `n`. The New task dialog starts on a mode selector
+and an engine selector; `tab` walks every field and the bottom-right Create
+button, while `ctrl+e` cycles the detected engines from anywhere in the
+dialog. Use `ctrl+[` / `ctrl+]` to move between its three modes, or focus the
+mode selector and use the left/right arrows.
+
+- **For Existing** picks a local repository and the ref to branch from. Rove
+  creates a new task branch and worktree, then opens it ready for the first
+  prompt. The current repository and its checked-out branch are the defaults.
+- **For New Repo** clones a Git URL into a chosen parent directory, derives an
+  available folder name, then creates a task from the requested base branch.
+  The parent directory is remembered for the next clone.
+- **Adopt Worktree** imports existing git worktrees that are not already
+  tasks. The path-glob field filters by absolute path or basename; `enter`
+  toggles the highlighted row and `ctrl+a` selects or clears all filtered
+  rows. Adoption does not copy the directory or create a branch. Dirty and
+  externally-created worktrees are allowed and labelled.
+
+The chosen repository and engine become defaults for later task creation.
+Adopting several worktrees is item-by-item: successful imports remain even if
+another row fails, and Rove reports the result count.
+
+## Worktree audit and cleanup
+
+Focus the sidebar and press `x` to open the full-window Worktrees page. It
+audits every non-main local worktree for saved projects, including directories
+created outside Rove, and shows dirty state, remote-branch state, PR/merge
+signals and age. `l` lands a tracked task branch; `d` starts the guarded
+worktree-removal flow.
+
+Deleting a worktree is not the same as deleting a task, branch, or engine
+history. Dirty deletion requires a second, explicit force confirmation. Read
+[Managing worktrees](WORKTREES.md) before using either mutation.
+
+## Settings
+
+Open Settings with `ctrl+a` `,`, or press `s` while the sidebar is focused.
+Use `j`/`k` to choose a section, `l` or right arrow to enter its rows, `h` or
+left arrow to return to the section list, and `enter` to activate a row.
+
+- **General** controls theme, language, transparency, focus and split styles,
+  notifications, keyboard hints, zen startup, editor choice, worktree
+  location, terminal scrollback and the optional horizontal tab strip. It
+  also shows available engine quota snapshots.
+- **Engines** edits launch commands and display names, chooses the default,
+  and registers custom engines. On an engine row, `r` renames, `x` resets a
+  built-in or removes a custom engine, and `d` makes it the default.
+- **Accounts** is a read-only check of installed binaries and locally detected
+  login state for Claude Code, Codex, Copilot and Kimi; login still happens in
+  each engine's own CLI.
+- **Plugins** enables or disables registered plugins live and edits settings
+  declared by their manifests. Install, update, link and remove plugins from
+  the shell.
+- **Keybindings** shows the active prefix, loaded YAML overrides and warnings.
+  Edit the displayed YAML path; changes reload live.
+- **Feedback** submits a GitHub Discussion through an authenticated `gh` CLI.
+- **Dev** contains reset, daemon restart and experimental switches. Reset
+  clears UI and task-index state after confirmation, but leaves worktrees and
+  engine history on disk. Restart disconnects every attached Rove window but
+  leaves hosted engine sessions alive.
+
+The current PureTUI always keeps the Tasks rail visible in zen mode. The
+legacy `zen.keepTasks` value and its Settings checkbox are retained in state
+but do not change this layout.
+
 ## Starting sessions: the new-session dialog
 
 `ctrl+e` is the one dialog for starting anything. It lists your detected
@@ -93,10 +163,12 @@ engines, a `shell`, and any plugin panes. Two toggles set what happens:
 Flip either toggle and the list narrows to engines only — a shell can't
 continue a conversation, and a plugin pane isn't a task.
 
-**Continue** with the same engine forks the conversation natively; picking a
-different engine performs a hand-off — the new session opens with a pointer
-to the old transcript and picks up from there. Engines that keep no readable
-transcript can't be continued from, and the dialog says so.
+**Continue** uses a native conversation fork only when the selected engine is
+the source engine and supports one — currently Claude and Codex. Copilot and
+Kimi use a transcript handoff even when continuing to the same engine. A
+built-in source can also hand off to a different built-in or custom target.
+A custom source has no readable transcript, so Rove refuses to continue it
+instead of opening a context-free tab.
 
 **Fork a child task** opens the quick composer (prompt, engine, branch). The
 child branches from your task's **current branch**, so committed work carries

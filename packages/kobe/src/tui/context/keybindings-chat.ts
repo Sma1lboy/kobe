@@ -96,7 +96,7 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     keys: [],
     prefixKeys: ["c"],
     category: "Workspace",
-    description: "Fork this chat into a new tab (same worktree, keeps the conversation)",
+    description: "Fork this chat into a new tab (same Task directory, keeps the conversation)",
     hint: { keys: "ctrl+a c" },
   },
   {
@@ -129,7 +129,7 @@ export const CHAT_BINDINGS: readonly KobeBinding[] = [
     keys: [],
     prefixKeys: ["y"],
     category: "Workspace",
-    description: "Resume a prior session in this task's worktree",
+    description: "Resume a prior session in this Task directory",
     hint: { keys: "ctrl+y" },
   },
   {

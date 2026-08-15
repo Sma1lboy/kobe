@@ -4,11 +4,14 @@
 
 Rove is a local-first terminal UI for running many AI coding sessions at once — Conductor's multi-task shape (task sidebar, workspace chat/files tabs, file tree, embedded terminal, status bar) made terminal-native with git worktrees and local engine processes.
 
-The product unit is:
+The isolation unit for a managed Task is:
 
 ```text
-Task = git worktree + engine session + branch
+Managed task = git worktree + branch + terminal tabs
 ```
+
+Project-main Tasks reuse a saved repository checkout, and directory Tasks reuse
+a user-owned directory; neither owns a Rove-created worktree or branch.
 
 The TUI is the product; engine adapters are execution backends (Claude Code is the default, Codex lives behind the same engine-owned contract). This file is a lean operator manual — **boundaries and orientation only**. Mechanics live in `docs/`; the current version + shipped behavior live in [`packages/kobe/package.json`](./packages/kobe/package.json) and [`packages/kobe/CHANGELOG.md`](./packages/kobe/CHANGELOG.md). Don't duplicate those here.
 
@@ -33,7 +36,7 @@ The docs are the source of truth. **If docs and implementation disagree, surface
 - **Daemon** is a long-lived background process, refcounted on attached GUIs (mechanics: [`docs/design/daemon.md`](./docs/design/daemon.md)). Boundaries: background consumers subscribe with `role: "pane"`; attached TUI clients and open browser SSE streams hold GUI lifetime; hosted engine PTYs belong to the separate PTY host and survive daemon restarts; read `<KOBE_HOME>/.kobe/daemon.log` first when debugging; **after editing daemon/orchestrator/engine code, `rove daemon restart`** — Bun doesn't hot-reload.
 - **Per-repo init:** a repo can ship `.rove/init.sh` (runs before the engine, in the worktree) + `.rove/init-prompt.md` (the engine's first message); `.kobe/` spellings remain field-by-field fallbacks, and repo files win over the per-user state.json override. Mechanics: [`src/state/repo-init.ts`](./packages/kobe/src/state/repo-init.ts).
 - **Reference repos** (`refs/`, gitignored, **read-only**): clone before development — the clone list, what each is for, and when to consult it all live in [`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) §7.
-- **User-facing docs set:** [`docs/CONCEPTS.md`](./docs/CONCEPTS.md), [`docs/CONFIGURATION.md`](./docs/CONFIGURATION.md), [`docs/ENGINES.md`](./docs/ENGINES.md), [`docs/SESSIONS.md`](./docs/SESSIONS.md), [`docs/CLI.md`](./docs/CLI.md), [`docs/API.md`](./docs/API.md) — behavior verified against source at writing time. When you change config keys, CLI verbs, `rove api` verbs, engine support, or session/persistence behavior, update the matching page in the same PR. Published at [docs.kobe.sma1lboy.me](https://docs.kobe.sma1lboy.me) — a new user-facing page must be added to `SECTIONS` in [`packages/kobe-docs/scripts/sync-docs.mjs`](./packages/kobe-docs/scripts/sync-docs.mjs) or it never reaches the site.
+- **User-facing docs set:** [`docs/QUICKSTART.md`](./docs/QUICKSTART.md), [`docs/CONCEPTS.md`](./docs/CONCEPTS.md), [`docs/TUI.md`](./docs/TUI.md), [`docs/KEYBINDINGS.md`](./docs/KEYBINDINGS.md), [`docs/CONFIGURATION.md`](./docs/CONFIGURATION.md), [`docs/ENGINES.md`](./docs/ENGINES.md), [`docs/WORKTREES.md`](./docs/WORKTREES.md), [`docs/SESSIONS.md`](./docs/SESSIONS.md), [`docs/CLI.md`](./docs/CLI.md), [`docs/API.md`](./docs/API.md), [`docs/ROUTINES.md`](./docs/ROUTINES.md), [`docs/PLUGIN-AUTHORING.md`](./docs/PLUGIN-AUTHORING.md), and [`docs/TROUBLESHOOTING.md`](./docs/TROUBLESHOOTING.md) — behavior verified against source at writing time. When you change config keys, CLI verbs, `rove api` verbs, engine support, worktree safety, or session/persistence behavior, update the matching page in the same PR. Published at [docs.kobe.sma1lboy.me](https://docs.kobe.sma1lboy.me) — a new user-facing page must be added to `SECTIONS` in [`packages/kobe-docs/scripts/sync-docs.mjs`](./packages/kobe-docs/scripts/sync-docs.mjs) or it never reaches the site.
 
 ## Work tracking — local only
 

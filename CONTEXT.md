@@ -5,15 +5,21 @@ Use these terms consistently in code, docs, issues, and reviews.
 ## Product unit
 
 ```text
-Task = Worktree + hosted engine sessions + branch
+Managed task = Worktree + branch + Terminal Tabs
 ```
 
 **Task** — one tracked unit of work persisted in `~/.rove/tasks.json`. A Task
-owns one Worktree and may have several Terminal Tabs. A `kind: "main"` Task
-represents a saved repository's root checkout.
+may have several Terminal Tabs. A regular `kind: "task"` Task owns a managed
+Worktree and branch; a `kind: "main"` Task represents a saved repository's root
+checkout; a `kind: "dir"` Task points at a user-owned directory. Main and
+directory Tasks do not own a Rove-created Worktree or branch.
 
-**Worktree** — the git worktree where a Task's files and engine sessions run.
-It is distinct from the source repository checkout.
+**Task directory** — `Task.worktreePath`, the directory where a Task's files
+and terminal processes run. A managed Task points it at an isolated Worktree;
+main and directory Tasks point it at an existing directory.
+
+**Worktree** — the isolated git working tree Rove creates for a managed Task,
+distinct from the source repository checkout.
 
 **Session** — a persisted engine conversation on disk. Qualify this as an
 engine Session when it could be confused with a live Hosted PTY session.
@@ -32,8 +38,14 @@ called a pane.
 
 **PTY Host** — the standalone `rove pty-host` process. It owns interactive
 children, buffers output, and lets TUI/API clients attach and detach. Engine
-sessions therefore survive TUI exits and daemon restarts. Only explicit
-`pty.kill`, tab close, task archive/delete, or host teardown ends them.
+sessions therefore survive TUI exits and daemon restarts. It also freezes
+bounded scrollback plus launch metadata so a host restart or reboot can restore
+the screen and respawn the recorded command on first attach. Explicit
+`pty.kill`, tab close, task archive/delete, terminal reset, or `rove reset`
+tears down the corresponding hosted session and frozen record.
+
+**Browser PTY sidecar** — the Node process started by `rove web`. It owns only
+browser-created terminal children and is separate from the standalone PTY Host.
 
 **PTY Registry** — the Workspace Host's client-side attachment manager. It
 maps tab keys to hosted sessions and reference-counts local consumers; it does

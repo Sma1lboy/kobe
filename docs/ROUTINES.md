@@ -65,7 +65,7 @@ rove api routine-run-now --id <id>          # fire it now, skipping the precheck
 rove api routine-runs --id <id>             # run history, newest first
 ```
 
-Full flag list: `rove api schema --group automation`, or [rove api](API.md).
+Full flag list: `rove api schema --group routine`, or [rove api](API.md).
 
 ## Reading the page
 

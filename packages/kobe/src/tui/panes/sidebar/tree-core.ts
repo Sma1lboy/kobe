@@ -1,8 +1,8 @@
 /**
- * Sidebar tree shaping — project → worktree → tab, as ONE flat row list.
+ * Sidebar tree shaping — project → Task → Terminal Tab, as ONE flat row list.
  *
  * The owner's call (2026-08-01) retires the horizontal chattab strip: a
- * worktree's tabs become child rows under it in the sidebar, and the right
+ * a Task's tabs become child rows under it in the sidebar, and the right
  * side is nothing but the active terminal. This module owns the shape; the
  * renderer owns the glyphs.
  *

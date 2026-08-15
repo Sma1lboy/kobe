@@ -11,10 +11,10 @@
 #
 # coverage-cap (PR only) is the coverage sibling of file-size-cap: every
 # packages/kobe/src file a PR touches must meet a line-coverage floor
-# (scripts/coverage-gate.mjs; `coverage-exemption: <reason>` in the PR body
-# opts out with a paper trail). `render-track` is the matching hard macOS
-# gate for React/OpenTUI components: it runs bun-test rendering plus the same
-# touched-file floor against render lcov. `visual-ground-truth` independently
+# (scripts/coverage-gate.mjs; `coverage-exemption: <path> — <reason>` in the
+# PR body opts out per file with a paper trail). `render-track` is the matching
+# hard macOS gate for React/OpenTUI components: it runs bun-test rendering plus
+# the same touched-file floor against render lcov. `visual-ground-truth` independently
 # gates the browser → PTY → real OpenTUI journey on Linux, where the hosted
 # runner grants node-pty a working pseudoterminal.
 #

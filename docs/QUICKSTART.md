@@ -1,10 +1,16 @@
 # Quick start
 
-rove runs many AI coding sessions side by side in your terminal. Each one
-gets its own git worktree and branch, so they never step on each other.
+rove runs many AI coding sessions side by side in your terminal. Each managed
+Task gets its own git worktree and branch, so parallel Tasks never step on
+each other. Extra tabs inside one Task share that Task's directory.
 
 You need [Bun](https://bun.sh) ≥ 1.3.11, git, and at least one engine CLI
-(`claude`, `codex`, or `copilot`) on your `PATH`.
+(`claude`, `codex`, `copilot`, or `kimi`) on your `PATH`.
+
+**Windows also requires [Node.js](https://nodejs.org) and Git for Windows.**
+Rove uses Node.js for its Windows PTY host and Git Bash as the POSIX shell
+behind engine and terminal tabs. Restart Rove after installing either one so
+the new executables are on `PATH`.
 
 ## Install
 
@@ -35,7 +41,7 @@ Three panes: **tasks** on the left, the **engine session** in the middle,
 
 | Key | What it does |
 |---|---|
-| `F1` | Every shortcut, live and up to date |
+| `F1` | Shortcuts reachable from the current focus, including your overrides |
 | `ctrl+a` | Opens the command menu |
 | `ctrl+q` | Focus the sidebar — press it again to quit |
 
@@ -43,8 +49,13 @@ Three panes: **tasks** on the left, the **engine session** in the middle,
 
 Sessions keep running in the background after you quit, close the terminal,
 or drop an SSH connection. Run `rove` again and everything is where you left
-it. When a background session finishes or needs you, Rove raises a desktop
-notification and marks the task unread.
+it. Finishes, failures, and approval requests are recorded in the Inbox and
+show as unread when you return.
+
+Desktop notifications need an attached Rove TUI and a terminal that supports
+OSC 9. They can ride an active SSH connection to your local terminal, but once
+the terminal or SSH stream is gone there is nowhere to send one; the durable
+Inbox entry is the notification you see on the next attach.
 
 ## Run many attempts at once
 

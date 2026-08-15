@@ -33,9 +33,10 @@ export interface ParsedFlags {
 const USAGE = `Usage: ${CLI_NAME} add --remote --host <host> --user <user> --path <basePath>
                 [--port N] [--key [path] | --password]
 
-Register an SSH-backed project. Worktrees + the engine run on <host> under
-<basePath>. Choose ONE auth: --key [path] (ssh-agent when path omitted) or
---password (prompted, stored in the OS keychain — never in state.json).
+Register an experimental SSH-backed project. Worktrees are created on <host>
+under <basePath>; Hosted PTY engine launch over SSH is not implemented yet.
+Choose ONE auth: --key [path] (ssh-agent when path omitted) or --password
+(macOS only; prompted and stored in Keychain, never in state.json).
 `
 
 export function parseRemoteFlags(args: readonly string[]): ParsedFlags {
