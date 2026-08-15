@@ -55,6 +55,7 @@ const SECTIONS = [
   {
     title: 'Automating and extending',
     pages: [
+      ['ROUTINES.md', 'routines'],
       ['API.md', 'api'],
       ['PLUGIN-AUTHORING.md', 'plugins'],
       ['WORK-TRACKING.md', 'work-tracking'],

@@ -37,6 +37,20 @@ export function heroApi(args: readonly string[]): Record<string, unknown> {
  */
 const CLAUDE_COMMAND = 'claude --permission-mode acceptEdits --allowedTools "Bash(git *)" "Bash(bun test*)"'
 
+/**
+ * Skill version this build expects, read off the BUILT skill (stamped in
+ * lockstep with `KOBE_SKILL_VERSION`). Canonical `rove-` marker with the
+ * legacy `kobe-` spelling, matching `parseSkillVersion` in the product.
+ */
+async function builtSkillVersion(): Promise<string | null> {
+  try {
+    const skill = await readFile(join(KOBE_DIR, "dist", "skills", "rove", "SKILL.md"), "utf8")
+    return skill.match(/(?:rove|kobe)-skill-version:\s*(\d+)/)?.[1] ?? null
+  } catch {
+    return null
+  }
+}
+
 async function seedSettings(): Promise<void> {
   const pkg = JSON.parse(await readFile(join(KOBE_DIR, "package.json"), "utf8")) as { version: string }
   const state: Record<string, unknown> = {
@@ -47,6 +61,13 @@ async function seedSettings(): Promise<void> {
     defaultVendor: "claude",
     "engineCommand.claude": CLAUDE_COMMAND,
   }
+  // `HOME` stays the operator's (see hero-env.ts), so an ALREADY-INSTALLED
+  // skill that is merely behind this build takes the *stale* path, which is
+  // gated on a version-keyed flag the unversioned one above does not answer.
+  // Unseeded, the TUI opens on an interactive "update now? [y/n/d]" prompt
+  // and never renders — every capture then times out waiting for the sidebar.
+  const skillVersion = await builtSkillVersion()
+  if (skillVersion) state[`skillHintSeen:v${skillVersion}`] = "1"
   const dir = join(HERO_CONFIG, "kobe")
   await mkdir(HERO_HOME, { recursive: true })
   await mkdir(dir, { recursive: true })

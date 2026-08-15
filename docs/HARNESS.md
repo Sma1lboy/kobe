@@ -142,11 +142,12 @@ bun e2e/hero-serve.ts             # warm capture stack on :5323 (keep running)
 bun e2e/hero-shot.ts --scale=2 --out=../../docs/assets/workspace.png ctrl+a l
 bun e2e/hero-record.ts            # demo.mp4 + demo.gif (4× cut)
 bun e2e/hero-kanban.ts            # kanban.mp4 + kanban.gif (3× cut)
+bun e2e/hero-routines.ts          # routines.mp4 + routines.gif (3× cut)
 ```
 
-`hero-capture.ts` holds what the two recorders share — the `/harness` browser
-PTY, the typed-and-verified input helpers, and the encode — so a storyboard
-file is only its beats. `--encode-only` re-encodes the take already on disk.
+`hero-capture.ts` holds what the recorders share — the `/harness` browser PTY,
+the typed-and-verified input helpers, and the encode — so a storyboard file is
+only its beats. `--encode-only` re-encodes the take already on disk.
 
 - **`HOME` stays the operator's**, alone among the isolation knobs: the engine
   under capture is the real `claude`, and a redirected home photographs a
@@ -167,6 +168,18 @@ file is only its beats. `--encode-only` re-encodes the take already on disk.
   drawer's Start: a story started into its own worktree boots the engine in a
   directory Claude Code has never seen, and the folder-trust prompt would be
   what got filmed.
+- **The routines capture costs no quota either, and IS idempotent.** A routine
+  is a daemon record and the fixture seeds three, so `hero-routines.ts` only
+  needs the page; it composes one on camera and removes it through
+  `rove api routine-delete` after the take, leaving the same three rows the
+  stills were framed on. It stops short of `run now` for the same folder-trust
+  reason the kanban take stops short of Start.
+- **The fixture seeds the skill hint by VERSION.** `HOME` stays the operator's,
+  so an already-installed skill that is merely behind this build takes the
+  *stale* path, gated on `skillHintSeen:v<N>` — unseeded, the TUI opens on an
+  interactive "update now? [y/n/d]" prompt, never renders, and every capture
+  times out waiting for the sidebar. `hero-fixture.ts` reads the version off
+  the BUILT skill, so `bun run build` in `packages/kobe` has to be current.
 - **Video beats switch panes by CLICKING rows**, never by the `ctrl+a` prefix.
   The prefix is two strokes, and while an engine streams into the pane the
   second one gets starved — the storyboard then types its own navigation keys

@@ -145,6 +145,8 @@ Full-quality mp4:
 
 ### Routines (`ctrl+a` `2`)
 
+![The Routines page — three scheduled prompts with their repo, cron expression and next run, and the selected routine's prompt, precheck and run history below](assets/routines.png)
+
 Daemon-owned scheduled prompts on five-field cron expressions. Each row shows
 the repo, the schedule, and the next run; the detail box below shows the
 prompt, the precheck if any, and the last few runs with their outcomes.
@@ -154,6 +156,9 @@ prompt, the precheck if any, and the last few runs with their outcomes.
 no in-page editing — recreate the routine, or use `rove api routine-update`
 (which also sets prechecks; see [rove api](API.md)). An enabled routine keeps
 the daemon alive so schedules fire with no TUI attached.
+
+Walked through end to end, with the page pictured and the cron and precheck
+rules spelled out: [Routines](ROUTINES.md).
 
 ### GitHub Issues (`ctrl+a` `3`)
 
