@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.104
+
+### Patch Changes
+
+- affdfb9: Correct the public feature, session, keybinding, remote-project, and platform documentation to match the current TUI and Hosted PTY behavior.
+
 ## 0.8.103
 
 ### Patch Changes
