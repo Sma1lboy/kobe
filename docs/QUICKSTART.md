@@ -21,6 +21,17 @@ bun install -g @sma1lboy/rove
 bunx @sma1lboy/rove
 ```
 
+## First launch
+
+The first `rove` launch asks two optional setup questions: whether to install
+shell completions for the detected shell, and whether to install the companion
+Rove skill for coding agents. Choose with `j`/`k` or the arrow keys and confirm
+with `enter`. `q` or `esc` skips anything you have not answered.
+
+The wizard finishes with a short keyboard primer. It does not sign in to an
+engine; install and authenticate at least one supported engine CLI separately.
+You can install the agent skill later with `rove skill install`.
+
 ## Your first task
 
 ```bash
