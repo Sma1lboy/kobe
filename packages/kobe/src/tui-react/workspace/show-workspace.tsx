@@ -2,8 +2,8 @@
 /**
  * The workspace center column — the terminal-in-the-middle seam (issue #16):
  * either the empty "select a task" placeholder or the selected worktree's
- * TerminalTabs (keyed per worktree so each task keeps its own registry-backed
- * PTYs). Split from host.tsx (file-size cap).
+ * TerminalTabs (keyed per task so tasks sharing a directory never share
+ * component state). Split from host.tsx (file-size cap).
  */
 
 import type { ReactNode } from "react"
@@ -46,10 +46,14 @@ export function ShowWorkspace(props: {
     // The terminal-in-the-middle seam (issue #16): the center column IS
     // the engine — an in-process PTY (Bun.spawn terminal) running the
     // real interactive CLI, so kobe never re-renders the engine's own
-    // TUI. `key={path}` remounts per worktree, giving each task its own
-    // registry-backed PTY (acquire reuses a live one on switch-back).
+    // TUI. Keyed by TASK, not worktree: two tasks can share a directory
+    // (a project-main task + a dir task on the same checkout), and a
+    // path key reused the component across them — the stale task's
+    // TabsState got written under the new task's persistKey, cloning its
+    // tabs into the other task. PTY reuse on switch-back is unaffected:
+    // the registry keys are `taskId::tabId`, not React keys.
     <TerminalTabs
-      key={path}
+      key={props.task?.id ?? path}
       taskId={props.task?.id ?? path}
       worktree={path}
       repo={props.task?.repo}
