@@ -55,6 +55,13 @@ describe("engineEntry — built-in vendors", () => {
     expect(supportsStructuredHistory("claude")).toBe(true)
     expect(supportsStructuredHistory("kimi")).toBe(false)
     expect(supportsStructuredHistory("my-custom-engine")).toBe(false)
+    // First-message delivery (issue #25): kimi's positional CLI slot is a
+    // subcommand, so its first message pastes post-spawn; claude/codex and
+    // custom engines keep the argv contract.
+    expect(engineEntry("kimi").firstMessageDelivery).toBe("paste")
+    expect(engineEntry("claude").firstMessageDelivery).toBeUndefined()
+    expect(engineEntry("codex").firstMessageDelivery).toBeUndefined()
+    expect(engineEntry("my-custom-engine").firstMessageDelivery).toBeUndefined()
     // Claude is the only engine declaring user-slash directories — the TUI
     // gates its `.claude/{commands,skills}/` loader on this, not a vendor string.
   })

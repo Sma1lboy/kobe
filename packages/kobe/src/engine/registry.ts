@@ -182,6 +182,19 @@ export interface EngineRegistryEntry {
    * readable quota API.
    */
   readonly quotaUsage?: () => Promise<EngineQuotaUsage | null>
+  /**
+   * How a session's FIRST message (the `send --tab new --prompt` /
+   * `add --prompt` / repo init-prompt text) may reach the engine:
+   *   - "argv" (default): appended to the launch argv as a positional arg —
+   *     claude/codex accept an initial prompt there.
+   *   - "paste": the CLI's positional slot is a SUBCOMMAND, not a prompt
+   *     (kimi exits `Unknown command` on one — issue #25), so the launch
+   *     spawns bare and the spawner pastes the message once the engine
+   *     process is up (`pastePromptWhenEngineUp` in `hosted-session.ts`).
+   * Custom engines keep "argv" — their launch-command contract is the
+   * user's own (`kimi -p` style wrappers RIDE the positional slot).
+   */
+  readonly firstMessageDelivery?: "argv" | "paste"
 }
 
 // The per-vendor readers live in `history-readers.ts` (file-size cap);
@@ -259,6 +272,9 @@ const BUILTIN_ENGINES: Record<"claude" | "codex" | "copilot" | "kimi", EngineReg
     builtin: true,
     displayName: "Kimi",
     defaultCommand: ["kimi"],
+    // kimi's positional CLI slot is a subcommand (export/provider/acp/…),
+    // not an initial prompt — argv delivery kills it (issue #25).
+    firstMessageDelivery: "paste",
     history: kimiHistoryReader,
     detectAccount: (deps) => detectKimiAccount(deps),
     createHookAdapter: () => new NoopHookAdapter("kimi"),

@@ -57,6 +57,40 @@ describe("hosted engine session launch", () => {
     expect(launch.command[2]).toContain("set-branch --task-id task-9")
   })
 
+  test("keeps a paste vendor's first message OUT of the argv and hands it to the spawner (issue #25)", () => {
+    const launch = buildEngineSessionLaunch({
+      task: { id: "task-1", kind: "task", vendor: "kimi", repo: "/repo" },
+      worktreePath: "/repo/.worktrees/task-1",
+      shell: "/bin/zsh",
+      argv: ["kimi", "-y"],
+      promptIntent: { kind: "explicit", prompt: "fix it" },
+      protocolGates: { status: () => false, notes: () => false, dispatcher: () => false },
+    })
+
+    // kimi's positional CLI slot is a subcommand — a prompt there exits the
+    // engine with "Unknown command". The spawner pastes it post-spawn.
+    expect(launch.command[2]).not.toContain("fix it")
+    expect(launch.firstMessage).toBe("fix it")
+  })
+
+  test("an explicit argv override keeps the prompt on the launch line even for a paste vendor", () => {
+    // The TUI owns no post-spawn paste hook yet, so it pins "argv" —
+    // dropping the prompt silently would be worse than the engine's loud
+    // unknown-command exit.
+    const launch = buildEngineSessionLaunch({
+      task: { id: "task-1", kind: "task", vendor: "kimi", repo: "/repo" },
+      worktreePath: "/repo/.worktrees/task-1",
+      shell: "/bin/zsh",
+      argv: ["kimi"],
+      promptIntent: { kind: "explicit", prompt: "fix it" },
+      firstMessageDelivery: "argv",
+      protocolGates: { status: () => false, notes: () => false, dispatcher: () => false },
+    })
+
+    expect(launch.command[2]).toContain("kimi 'fix it'")
+    expect(launch.firstMessage).toBeUndefined()
+  })
+
   test("is owned by the engine layer without importing the retiring tmux runtime", () => {
     const source = fs.readFileSync(new URL("../../src/engine/session-launch.ts", import.meta.url), "utf8")
     expect(source).not.toMatch(/from ["'][^"']*tmux/)

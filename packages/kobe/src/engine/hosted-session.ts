@@ -4,6 +4,7 @@ import { ensurePtyHostReachable } from "@sma1lboy/kobe-daemon/client/pty-process
 import { defaultPtyHostSocketPath } from "@sma1lboy/kobe-daemon/daemon/paths"
 import type { PtyOpenResult, PtyPeekResult } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import type { PtySessionInfo } from "@sma1lboy/kobe-daemon/daemon/pty-host"
+import { type PsSnapshot, engineProcessIn, parsePsSnapshot, psSnapshot } from "./foreground.ts"
 import type { EngineSessionLaunch } from "./session-launch.ts"
 
 export interface HostedSessionRpc {
@@ -144,4 +145,61 @@ export async function ensureHostedEngine(
   })
   await rpc.request("pty.detach", { key: launch.key }).catch(() => {})
   return result
+}
+
+/** Bounds for the first-message readiness wait (paste-delivery vendors). */
+export const FIRST_MESSAGE_ENGINE_TIMEOUT_MS = 20_000
+export const FIRST_MESSAGE_POLL_INTERVAL_MS = 500
+/** Post-detection grace so the TUI finishes booting (bracketed-paste mode on). */
+export const FIRST_MESSAGE_SETTLE_MS = 1_500
+
+export interface PasteFirstMessageOptions {
+  readonly timeoutMs?: number
+  readonly intervalMs?: number
+  readonly settleMs?: number
+  /** Test seam for the process-table read (see `pty-delivery.ts`'s gate). */
+  readonly snapshot?: PsSnapshot
+  readonly sleep?: (ms: number) => Promise<void>
+}
+
+/**
+ * Deliver a paste-delivery vendor's FIRST message (issue #25): the launch
+ * spawned the bare engine (its positional argv slot is a subcommand, not a
+ * prompt), so the prompt is bracketed-pasted once the engine process is
+ * actually up — the same reason `send` into a cold engine embeds nowhere
+ * but waits here instead. Polls the session's process tree until an engine
+ * child appears (or the session dies / the wait budget runs out), grants a
+ * short settle for the TUI to finish initializing, then pastes + submits.
+ * Returns whether the paste happened.
+ */
+export async function pastePromptWhenEngineUp(
+  rpc: HostedSessionRpc,
+  key: string,
+  engineBin: string | undefined,
+  prompt: string,
+  opts: PasteFirstMessageOptions = {},
+): Promise<boolean> {
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)))
+  const snapshot = opts.snapshot ?? psSnapshot
+  const deadline = Date.now() + (opts.timeoutMs ?? FIRST_MESSAGE_ENGINE_TIMEOUT_MS)
+  while (Date.now() < deadline) {
+    const { sessions = [] } = await rpc.request<{ sessions?: PtySessionInfo[] }>("pty.list", {})
+    const session = sessions.find((s) => s.key === key)
+    if (!session?.alive) return false
+    if (session.pid) {
+      let up = false
+      try {
+        up = engineProcessIn(parsePsSnapshot(await snapshot()), session.pid, engineBin)
+      } catch {
+        up = false // ps hiccup — treat as "not yet", keep polling
+      }
+      if (up) {
+        await sleep(opts.settleMs ?? FIRST_MESSAGE_SETTLE_MS)
+        await writeHostedPrompt(rpc, key, prompt)
+        return true
+      }
+    }
+    await sleep(opts.intervalMs ?? FIRST_MESSAGE_POLL_INTERVAL_MS)
+  }
+  return false
 }
