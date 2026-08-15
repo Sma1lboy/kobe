@@ -46,14 +46,21 @@ export function shellSpawn(argv: readonly string[], shell: string, env?: Readonl
  * Identity export line for a BARE shell tab (the ctrl+e "shell" pick) — the
  * plain-shell sibling of {@link shellSpawn}'s `env` prefix. A user typing an
  * engine (`claude`) into this shell makes its hook subprocesses inherit
- * `KOBE_TASK_ID`/`KOBE_TAB_ID`, so the daemon gets tab-precise events + the
- * session id for a session kobe never spawned. Typed via `initialInput`
- * (same mechanism engine launch lines use): reaches fresh spawns AND
- * adopted warm spares, zero pty protocol change. Leading space keeps it out
- * of HIST_IGNORE_SPACE shells' history; `clear` hides it from scrollback.
- * ponytail: one visible line flashes before the clear; upgrade path = an
- * `env` field on PtySpawnSpec with a skip-spare rule if cosmetics matter.
+ * `ROVE_TASK_ID`/`ROVE_TAB_ID` (plus the `KOBE_*` compatibility aliases), so
+ * the daemon gets tab-precise events + the session id for a session Rove
+ * never spawned. Both namespaces are exported for the same reason
+ * `session-launch.ts` exports both: the canonical name is what agents and
+ * docs reference, while runtime reads still resolve the legacy spelling and
+ * a bare shell never passes through the CLI's ROVE_* → KOBE_* mirror.
+ * Typed via `initialInput` (same mechanism engine launch lines use):
+ * reaches fresh spawns AND adopted warm spares, zero pty protocol change.
+ * Leading space keeps it out of HIST_IGNORE_SPACE shells' history; `clear`
+ * hides it from scrollback. ponytail: one visible line flashes before the
+ * clear; upgrade path = an `env` field on PtySpawnSpec with a skip-spare
+ * rule if cosmetics matter.
  */
 export function shellIdentityInput(taskId: string, tabId: string): string {
-  return ` export KOBE_TASK_ID=${shellCommandLine([taskId])} KOBE_TAB_ID=${shellCommandLine([tabId])} && clear\r`
+  const task = shellCommandLine([taskId])
+  const tab = shellCommandLine([tabId])
+  return ` export ROVE_TASK_ID=${task} KOBE_TASK_ID=${task} ROVE_TAB_ID=${tab} KOBE_TAB_ID=${tab} && clear\r`
 }

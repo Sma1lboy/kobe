@@ -114,14 +114,29 @@ export function renderPRPrompt(template: string, state: PRPromptState): string {
   )
 }
 
+/**
+ * Per-repo PR instruction overrides, canonical spelling first. `.rove/` is
+ * the convention repos ship today (same rule as `.rove/init.sh` in
+ * `state/repo-init.ts`); the legacy `.kobe/` spelling stays a fallback so a
+ * repo that already committed one keeps working. First readable NON-EMPTY
+ * file wins — an empty `.rove/pr-instructions.md` is a no-op placeholder,
+ * not an instruction to blank the prompt.
+ */
+const PR_INSTRUCTION_RELS = [
+  path.join(".rove", "pr-instructions.md"),
+  path.join(".kobe", "pr-instructions.md"),
+] as const
+
 async function loadTemplate(worktree: string): Promise<string> {
-  const file = path.join(worktree, ".kobe", "pr-instructions.md")
-  try {
-    const text = await fs.readFile(file, "utf8")
-    return text.length > 0 ? text : DEFAULT_PR_PROMPT_TEMPLATE
-  } catch {
-    return DEFAULT_PR_PROMPT_TEMPLATE
+  for (const relative of PR_INSTRUCTION_RELS) {
+    try {
+      const text = await fs.readFile(path.join(worktree, relative), "utf8")
+      if (text.length > 0) return text
+    } catch {
+      // An unreadable/absent file does not block the next candidate.
+    }
   }
+  return DEFAULT_PR_PROMPT_TEMPLATE
 }
 
 export async function buildPRPrompt(worktree: string, state?: PRPromptState): Promise<string> {

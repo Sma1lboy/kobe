@@ -431,11 +431,18 @@ describe("terminal tabs state", () => {
   // the same identity env engine tabs get, or its hooks land task-level
   // only (no tabId, no per-tab sessionId). The export line is typed input
   // (leading space + clear), NOT the PTY environment — same inheritance
-  // path as shellSpawn's env prefix.
+  // path as shellSpawn's env prefix. It exports the CANONICAL ROVE_* names
+  // alongside the KOBE_* aliases, exactly like `engineTabSpawnFor` below: a
+  // bare shell never passes through the CLI's ROVE_* → KOBE_* mirror, so
+  // exporting only one namespace leaves the other unset in that shell.
   it("shellIdentityInput builds the typed export line for bare shell tabs", () => {
-    expect(shellIdentityInput("t1", "tab-4")).toBe(" export KOBE_TASK_ID=t1 KOBE_TAB_ID=tab-4 && clear\r")
-    // Hostile ids stay one shell word each.
-    expect(shellIdentityInput("t 1", "tab-4")).toBe(" export KOBE_TASK_ID='t 1' KOBE_TAB_ID=tab-4 && clear\r")
+    expect(shellIdentityInput("t1", "tab-4")).toBe(
+      " export ROVE_TASK_ID=t1 KOBE_TASK_ID=t1 ROVE_TAB_ID=tab-4 KOBE_TAB_ID=tab-4 && clear\r",
+    )
+    // Hostile ids stay one shell word each, in BOTH namespaces.
+    expect(shellIdentityInput("t 1", "tab-4")).toBe(
+      " export ROVE_TASK_ID='t 1' KOBE_TASK_ID='t 1' ROVE_TAB_ID=tab-4 KOBE_TAB_ID=tab-4 && clear\r",
+    )
   })
 
   // Why: the F7 attention jump's tab precision — the launch script exports
