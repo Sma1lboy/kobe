@@ -24,17 +24,28 @@ The example throughout this page is the one in the screenshot: *every morning at
    **repo** (a scrolling picker over your projects), **prompt**, and
    **schedule** — five labelled cells (min / hour / day / month / weekday)
    where `←`/`→` picks a cell and `↑`/`↓` changes it. The composer restates
-   the next fire time in your own clock as you type ("weekdays at 09:00 · in
-   2d · Mon 09:00"), so a cron expression you got wrong is visible before you
+   the next fire time in your own clock as you type ("weekdays at 12:00 · in
+   2d · Mon 12:00"), so a cron expression you got wrong is visible before you
    save it.
 3. `s` runs it once, right now. **Do this** — it is how you find out the prompt
    works without waiting a day for the schedule, and it does not shift the next
    scheduled run.
 4. `enter` opens the task that run created. From here it is a normal session.
 
+![The New routine composer — name, repo picker and prompt above five labelled cron cells, with the hour cell selected and the schedule restated underneath as "weekdays at 12:00 · in 2d · Mon 12:00"](assets/routines-composer.png)
+
 There is no in-page editing: recreate the routine, or use `rove api
 routine-update`. A precheck (below) is CLI-only — it is the one field that is
 genuinely optional.
+
+The page end to end — walking the schedules, pausing one, then composing a
+routine whose next fire time is restated in plain words as the cron cells
+change:
+
+![Walking the routines, pausing one, and composing a new one as the cron preview follows each cell](assets/routines.gif)
+
+Full-quality mp4:
+[routines.mp4](https://github.com/Sma1lboy/rove/blob/main/docs/assets/routines.mp4).
 
 ### From the CLI
 
