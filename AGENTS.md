@@ -47,6 +47,8 @@ No Linear. Backlog/open issues live in the daemon-owned issue store (web Issues 
 - A direct push to `main` needs the owner to say so **in that turn** — never inferred, never carried over to the next task.
 - `scripts/release.sh` pushes its own `chore: release — X.Y.Z` commit + tag (see [`docs/RELEASING.md`](./docs/RELEASING.md)).
 - Never force-push; `git fetch` before pushing.
+- **`claude-review` failing is NOT a merge blocker when it fails for lack of a token.** Its `ANTHROPIC_API_KEY` is frequently empty in Actions, and the run then dies ~0.3s after `Claude Code initialized` with `is_error: true` and no findings. Confirm that shape before waving it through — read the job log for the empty-key signature, and check `gh run list --workflow=claude-review.yml` to see whether unrelated branches fail identically. A review that actually RAN and reported findings still blocks.
+- **`claude-review` failing is NOT a merge blocker when it fails for lack of a token.** Its `ANTHROPIC_API_KEY` is frequently empty in Actions, and the run then dies ~0.3s after `Claude Code initialized` with `is_error: true` and no findings. Confirm that shape before waving it through — read the job log for the empty-key signature, and check `gh run list --workflow=claude-review.yml` to see whether unrelated branches fail identically. A review that actually RAN and reported findings still blocks.
 
 ### Commits
 - Commit at the end of each stream when green (per-stream commits are pre-authorized). Message: `<type>: <summary>` + a 2-3 sentence body.
