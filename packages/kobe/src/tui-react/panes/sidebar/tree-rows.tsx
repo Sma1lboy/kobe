@@ -14,7 +14,7 @@ import type { Task } from "@/types/task"
 import { type BoxRenderable, MouseButton } from "@opentui/core"
 import { type ReactNode, useEffect } from "react"
 import { currentBranch, pollCurrentBranch } from "../../../tui/panes/sidebar/git-head"
-import { buildSidebarRowView, prCheckChip, withSpinnerFrame } from "../../../tui/panes/sidebar/row-view"
+import { NO_STATE_GLYPH, buildSidebarRowView, prCheckChip, withSpinnerFrame } from "../../../tui/panes/sidebar/row-view"
 import { type TreeTab, tabRowActivity } from "../../../tui/panes/sidebar/tree-core"
 import { toneColor, truncateBranchLabel } from "../../../tui/panes/sidebar/view-core"
 import type { WorktreeChanges } from "../../../tui/panes/sidebar/worktree-changes"
@@ -241,13 +241,14 @@ export function TabTreeRow(props: {
   // Glyph precedence for an agent row: with any daemon signal (running /
   // sticky badge / a KNOWN-idle tombstone) the row wears the shared state
   // vocabulary — buildSidebarRowView rests at `○` for known-idle. With NO
-  // signal at all the daemon genuinely does not know (fresh daemon before
-  // its first observer pass, dead daemon lineage — issue #11), and claiming
-  // `○ idle` was the lie this distinguishes: a dotted ◌ says "unknown",
-  // muted like the rest state, until a hook event or the activity observer
-  // supplies the fact.
-  const UNKNOWN_GLYPH = "◌"
-  const glyph = isAgent ? (carriesState ? rowView.stateGlyph : UNKNOWN_GLYPH) : "·"
+  // signal at all (fresh daemon before its first observer pass, dead daemon
+  // lineage — issue #11) it rests at the same dim dot a non-agent tab wears.
+  // That case used to have its own dotted `◌` for "the daemon doesn't know",
+  // distinct from `○ idle` — dropped 2026-08-15 as a distinction without a
+  // difference: both readings send you into the tab to find out, and U+25CC
+  // is missing from common terminal fonts, so it fell back oversized and ran
+  // into the label. See NO_STATE_GLYPH.
+  const glyph = isAgent && carriesState ? rowView.stateGlyph : NO_STATE_GLYPH
   return (
     <RowShell rowId={props.rowId} flatIndex={props.flatIndex} depth={2} shared={props.shared}>
       <text

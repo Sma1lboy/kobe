@@ -12,10 +12,10 @@
 |                              |
 | kobe ─────────────────────── |
 |  feat/alpha                2 |
-|▌  ◌ build                  3 |
+|▌  · build                  3 |
 |   · shell                  4 |
 |  feat/bravo                5 |
-|   ◌ tests                  6 |
+|   · tests                  6 |
 |                              |
 |                              |
 |                              |

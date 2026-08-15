@@ -20,7 +20,7 @@
  */
 
 import { afterAll, beforeAll, expect, test } from "bun:test"
-import { CLAUDE_SPINNER_FRAMES, DEFAULT_SPINNER_FRAMES } from "@/engine/spinner-frames"
+import { DEFAULT_SPINNER_FRAMES } from "@/engine/spinner-frames"
 import { currentLang, setLocaleLang } from "@/tui/i18n"
 import { goldenPath, matchGolden } from "../../golden/golden-file"
 import { renderComponent, settle } from "../harness"
@@ -30,10 +30,10 @@ import { SCENES, SCENE_HEIGHT, SCENE_WIDTH, type Scene } from "./sidebar-scenes"
  *  before capturing — the same window every render test in this track uses. */
 const SETTLE_MS = 90
 
-/** Every glyph any engine's spinner can be showing at capture time. A running
- *  row is genuinely animating, so its ONE glyph cell is replaced by `~` before
- *  the compare; the rest of the frame stays byte-exact. */
-const SPINNER_GLYPHS = new Set([...DEFAULT_SPINNER_FRAMES, ...CLAUDE_SPINNER_FRAMES])
+/** Every glyph the spinner can be showing at capture time. A running row is
+ *  genuinely animating, so its ONE glyph cell is replaced by `~` before the
+ *  compare; the rest of the frame stays byte-exact. */
+const SPINNER_GLYPHS = new Set(DEFAULT_SPINNER_FRAMES)
 
 function maskSpinner(frame: string): string {
   let out = ""

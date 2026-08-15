@@ -12,10 +12,10 @@
 |                              |
 | kobe ─────────────────  move |
 |  feat/alpha                2 |
-|▌  ◌ build                  3 |
-|   ◌ review                 4 |
+|▌  · build                  3 |
+|   · review                 4 |
 |  feat/bravo                5 |
-|   ◌ tests                  6 |
+|   · tests                  6 |
 |                              |
 |                              |
 |                              |

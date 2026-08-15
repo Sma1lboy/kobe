@@ -119,7 +119,7 @@ describe("activity pipeline — vendor hook payload to sidebar badge", () => {
   it("turn failed (other): unknown error_type shows the error badge", () => {
     const row = rowAfterClaudeHook("StopFailure", { error_type: "hook_crashed" })
     expect(row.loading).toBe(false)
-    expect(row.stateGlyph).toBe("✕")
+    expect(row.stateGlyph).toBe("×")
     expect(row.tone).toBe("error")
     expect(row.subtitleText).toBe("error")
   })
