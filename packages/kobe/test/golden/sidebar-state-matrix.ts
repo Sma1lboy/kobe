@@ -46,9 +46,10 @@ const BRANCH = "feat/sidebar"
 /** A non-builtin engine id — the "no transcript store to watch" branch. */
 const CUSTOM_VENDOR = "my-engine"
 
-/** `undefined` is a real, distinct input everywhere below: no activity entry
- *  at all is not the same as an `idle` one, and the difference is what the
- *  tab row's `◌ unknown` glyph exists to say. */
+/** `undefined` is a real, distinct INPUT everywhere below — no activity entry
+ *  at all reaches different code than an `idle` one, even though both now
+ *  render as the same dim `·` (the tab row's separate `◌ unknown` glyph was
+ *  dropped 2026-08-15). Keeping them apart here is what proves that. */
 const ACTIVITY_STATES: ReadonlyArray<TaskActivityState | undefined> = [undefined, ...TASK_ACTIVITY_STATES]
 
 const DELETION_PHASES = [undefined, "queued", "running", "error"] as const
@@ -442,8 +443,8 @@ export function tabActivityBlock(): string[] {
       }
     }
   }
-  // With no rollup either there is nothing to fall back to, which is the
-  // `◌ unknown` case the tab row renders.
+  // With no rollup either there is nothing to fall back to — the tab row
+  // rests at the shared no-state dot.
   for (const active of [false, true]) {
     const picked = tabRowActivity({ tabActivity: undefined, reportedTabCount: 0, taskActivity: undefined, active })
     lines.push(

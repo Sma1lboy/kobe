@@ -54,7 +54,6 @@ import {
   kimiHistoryReader,
 } from "./history-readers.ts"
 import { type EngineHookAdapter, NoopHookAdapter } from "./hook-adapter.ts"
-import { CLAUDE_SPINNER_FRAMES } from "./spinner-frames.ts"
 import { ClaudeTurnDetector, CodexTurnDetector, type EngineTurnDetector, UnknownTurnDetector } from "./turn-detector.ts"
 
 /**
@@ -133,12 +132,6 @@ export interface EngineRegistryEntry {
   readonly capabilities?: EngineCapabilities
   /** Product identity (composer placeholder etc.). Paired with capabilities. */
   readonly identity?: EngineIdentity
-  /**
-   * Brand spinner frame set for this engine's running rows (sidebar badge).
-   * Omit for engines without one — consumers fall back to the neutral
-   * braille set (`spinner-frames.ts` `DEFAULT_SPINNER_FRAMES`).
-   */
-  readonly spinnerFrames?: readonly string[]
   /**
    * Native OSC 0/2 title policy for interactive terminal sessions.
    * `ownsStatus` means the engine's live title is the status surface while
@@ -225,7 +218,6 @@ const BUILTIN_ENGINES: Record<"claude" | "codex" | "copilot" | "kimi", EngineReg
     createTurnDetector: () => new ClaudeTurnDetector(),
     capabilities: claudeCapabilities,
     identity: claudeIdentity,
-    spinnerFrames: CLAUDE_SPINNER_FRAMES,
     terminalTitle: {
       ownsStatus: true,
       // `${prefix} ${title}` where prefix is ✳ at rest and cycles through

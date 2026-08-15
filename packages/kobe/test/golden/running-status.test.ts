@@ -198,7 +198,7 @@ describe("golden: session events → sidebar running state", () => {
 
     const errored = track(harness())
     errored.registry.report(TASK_ID, "turn-failed", { failure: "other" }, "tab-1")
-    expect(errored.row("tab-1")).toMatchObject({ loading: false, glyph: "✕", tone: "error" })
+    expect(errored.row("tab-1")).toMatchObject({ loading: false, glyph: "×", tone: "error" })
   })
 
   it("a tab row never borrows a sibling's spinner (a85f0919)", () => {

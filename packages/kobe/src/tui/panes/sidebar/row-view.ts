@@ -89,13 +89,28 @@ export function prCheckChip(task: Task): { glyph: string; tone: SidebarTone } | 
 }
 
 /**
- * Static dim glyph for a custom-engine task with no live signal. A custom
- * engine has no transcript store the monitor can watch (see
- * `monitor/activity.ts`), so its activity badge would otherwise sit on the
- * perpetual spinner / empty backlog dot and read as "stuck". We show a
- * neutral filled dot instead — present, but explicitly NOT animating.
+ * The dim dot every row wears when it has no state to report. Three cases
+ * converge on it deliberately (2026-08-15): a custom engine with no
+ * transcript store the monitor can watch (`monitor/activity.ts`), a
+ * non-agent tab (shell / command / content), and a row the daemon has
+ * simply not observed yet. A dotted `◌` used to carry that last case as its
+ * own "unknown" state, but it told the reader nothing they could act on —
+ * both "idle" and "unknown" mean open it to find out — and U+25CC is absent
+ * from several popular terminal fonts, so it fell back to a CJK face at 1.62
+ * cells and overlapped the label beside it. `·` is in every font at one cell.
+ *
+ * Exported so the tab rows share the constant rather than re-declaring it.
  */
-const NO_TRACKING_GLYPH = "·"
+export const NO_STATE_GLYPH = "·"
+
+/**
+ * Error / failed-deletion glyph. `×` (U+00D7 MULTIPLICATION SIGN), not the
+ * heavier `✕` (U+2715) it replaced: U+2715 is in the dingbat block, which
+ * FiraCode Nerd Font and SF Mono lack, so macOS fell it back to ZapfDingbats
+ * at 1.24 cells and it bled into the next column. U+00D7 is Latin-1 — every
+ * monospace font on earth has it, at exactly one cell.
+ */
+const ERROR_GLYPH = "×"
 
 /**
  * Muted subtitle shown when a custom-engine task has nothing else to say.
@@ -274,12 +289,13 @@ export function buildSidebarRowView(opts: {
     job: opts.job,
     transcript: opts.transcript,
   })
-  // Engine-owned brand frames (registry `spinnerFrames`), braille fallback.
-  // Every frame set must stay visually distinct from the STATIC badge glyphs
-  // below (`●` unseen-complete, `✓` seen, `○` idle): a spinner that borrows a
-  // badge glyph makes a RUNNING row read as a finished one. That collision is
-  // why the reduced-motion `●`/`·` pulse was removed (2026-07-30).
-  const spinnerFrames = engineEntry(task.vendor ?? DEFAULT_TASK_VENDOR).spinnerFrames ?? DEFAULT_SPINNER_FRAMES
+  // One frame set for every engine (see `spinner-frames.ts` for why the
+  // per-vendor field went away). It must stay visually distinct from the
+  // STATIC badge glyphs below (`●` unseen-complete, `○` idle, `·` no state):
+  // a spinner that borrows a badge glyph makes a RUNNING row read as a
+  // finished one. That collision is why the reduced-motion `●`/`·` pulse was
+  // removed (2026-07-30).
+  const spinnerFrames = DEFAULT_SPINNER_FRAMES
   const spinner = spinnerFrames[opts.spinnerFrame % spinnerFrames.length] ?? spinnerFrames[0]
   const tone = deleteFailed
     ? "error"
@@ -317,7 +333,7 @@ export function buildSidebarRowView(opts: {
   // Untracked custom engine gets a distinct dim dot. Normal tasks fall back
   // to the hollow idle circle because the client deliberately removes an
   // explicit `idle` activity entry; absence is therefore the idle projection.
-  const restGlyph = deleteFailed ? "✕" : untrackedCustomEngine ? NO_TRACKING_GLYPH : (activityBadge?.glyph ?? "○")
+  const restGlyph = deleteFailed ? ERROR_GLYPH : untrackedCustomEngine ? NO_STATE_GLYPH : (activityBadge?.glyph ?? "○")
   return {
     isMain,
     titleText: isMain ? repoBasename(task.repo) : task.title,
@@ -367,7 +383,7 @@ function activityBadgeFor(
     case "permission_needed":
       return { glyph: "?", tone: "warning" }
     case "error":
-      return { glyph: "✕", tone: "error" }
+      return { glyph: ERROR_GLYPH, tone: "error" }
     case "turn_complete":
       return completionSeen ? null : { glyph: "●", tone: "primary" }
     default:

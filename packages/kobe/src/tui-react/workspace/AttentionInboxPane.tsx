@@ -4,7 +4,6 @@ import { type RGBA, TextAttributes } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/react"
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react"
 import type { AttentionInboxItem, RemoteOrchestrator, TaskEngineState } from "../../client/remote-orchestrator"
-import { engineEntry } from "../../engine/registry"
 import { DEFAULT_SPINNER_FRAMES } from "../../engine/spinner-frames"
 import { relativeAgeMs } from "../../tui/history/message-core"
 import { spinnerFrameSnapshot, subscribeSpinnerFrame } from "../../tui/lib/spinner-frame-store"
@@ -45,7 +44,11 @@ function itemColor(state: AttentionInboxItem["state"], theme: ReturnType<typeof 
 function itemGlyph(state: AttentionInboxItem["state"]): string {
   if (state === "permission_needed") return "?"
   if (state === "turn_complete") return "✓"
-  if (state === "rate_limited") return "⌛"
+  // `◷`, the sidebar's rate-limited glyph, not the `⌛` this used to show:
+  // U+231B carries the Unicode Emoji property, so macOS resolved it to
+  // AppleColorEmoji — a 2.13-cell colour glyph in a 1-cell column, which
+  // both overflowed and broke the pane's monochrome ink (2026-08-15).
+  if (state === "rate_limited") return "◷"
   return "!"
 }
 
@@ -91,7 +94,7 @@ function tabLabel(
  * Every OTHER activity state (done / error / needs input / rate limited)
  * already surfaced as an episode, so that task is sitting in ATTENTION
  * above — running is the one thing this section can tell you that the
- * queue can't. Frames are engine-owned (vendor registry).
+ * queue can't.
  */
 function runningBadge(opts: {
   activity: TaskEngineState | undefined
@@ -101,7 +104,7 @@ function runningBadge(opts: {
   t: ReturnType<typeof useT>
 }): { glyph: string; label: string; color: RGBA } | undefined {
   if (opts.activity?.state !== "running") return undefined
-  const frames = engineEntry(opts.task.vendor ?? DEFAULT_TASK_VENDOR).spinnerFrames ?? DEFAULT_SPINNER_FRAMES
+  const frames = DEFAULT_SPINNER_FRAMES
   return {
     glyph: frames[opts.frame % frames.length] ?? frames[0] ?? "⠋",
     label: opts.t("workspace.inbox.state.running"),

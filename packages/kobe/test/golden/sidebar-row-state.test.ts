@@ -22,8 +22,9 @@
  * then read the diff — every moved line should be one you meant to move.
  */
 
+import { DEFAULT_SPINNER_FRAMES } from "@/engine/spinner-frames"
 import { currentLang, setLocaleLang } from "@/tui/i18n"
-import { buildSidebarRowView } from "@/tui/panes/sidebar/row-view"
+import { NO_STATE_GLYPH, buildSidebarRowView } from "@/tui/panes/sidebar/row-view"
 import { truncateBranchLabel } from "@/tui/panes/sidebar/view-core"
 import { type Task, toTaskId } from "@/types/task"
 import { afterAll, beforeAll, expect, test } from "vitest"
@@ -80,18 +81,15 @@ test("sidebar row state matrix matches the committed golden", () => {
  * enumeration so they can never disagree with what the golden captured.
  */
 test("no spinner frame collides with a settled-state badge glyph", () => {
-  // A running row that borrows `●`/`○`/`◌` reads as a finished one — this is
+  // A running row that borrows `●`/`○`/`·` reads as a finished one — this is
   // why the reduced-motion pulse was removed, and the collision would
   // otherwise be invisible in a golden full of correct-looking glyphs.
   //
-  // `·` is deliberately NOT in this set. Claude's brand frames open and close
-  // on it (lifted from claude-code's own spinner), and the two other places
-  // `·` appears — the untracked-custom-engine rest glyph and the non-agent tab
-  // dot — are states this row cannot simultaneously be in: a builtin-vendor
-  // task is not an untracked custom engine, and a spinner only renders on an
-  // agent row. The ambiguity this guard exists to prevent is within ONE row's
-  // own vocabulary.
-  const settled = new Set(["●", "○", "◌", "✓", "?", "◷", "✕"])
+  // `·` joined this set on 2026-08-15, when it became the single no-state
+  // glyph (untracked custom engine + non-agent tab + unobserved agent tab) and
+  // simultaneously stopped being a spinner frame — Claude's brand set, which
+  // opened and closed on it, was removed the same day.
+  const settled = new Set(["●", "○", "·", "✓", "?", "◷", "×"])
   const spinnerLines = spinnerBlock().filter((line) => line.includes("frames(0..25)="))
   expect(spinnerLines.length).toBeGreaterThan(0)
   for (const line of spinnerLines) {
@@ -99,6 +97,52 @@ test("no spinner frame collides with a settled-state badge glyph", () => {
     for (const glyph of frames) {
       expect({ line, glyph, collides: settled.has(glyph) }).toEqual({ line, glyph, collides: false })
     }
+  }
+})
+
+/**
+ * Every glyph the rail can render must survive the FONT, not just the layout.
+ *
+ * kobe reserves one cell per state glyph, and both the width table and opentui
+ * agree on one cell for all of these. The terminal may not: when the user's
+ * font lacks a codepoint, the OS substitutes another face at ITS advance, and
+ * a CJK or dingbat substitute is 1.1–1.6 cells wide — it overruns into the
+ * label beside it. Ambiguous-width codepoints hide this, because everyone in
+ * the pipeline still calls them 1 cell.
+ *
+ * That shipped: `◌` U+25CC (the tab row's old "unknown" glyph) is absent from
+ * FiraCode Nerd Font and SF Mono, so macOS drew it from HiraginoSans at 1.62
+ * cells and it sat on the first letter of every tab name (2026-08-15). `✕`
+ * U+2715 did the same at 1.24 cells via ZapfDingbats.
+ *
+ * So the vocabulary is an allowlist, and adding to it means checking the
+ * candidate against the fonts people actually run first. The dingbat block
+ * (U+2700–U+27BF) and the geometric shapes a Latin mono font typically skips
+ * are what to avoid; Latin-1, ASCII, and the four filled/hollow circles are
+ * present essentially everywhere.
+ */
+test("every rendered glyph is in the font-verified vocabulary", () => {
+  const VERIFIED = new Map<string, string>([
+    ["·", "U+00B7 Latin-1 — the no-state dot"],
+    ["×", "U+00D7 Latin-1 — error / failed deletion"],
+    ["○", "U+25CB — idle; in every mono font checked"],
+    ["●", "U+25CF — unread completion; ditto"],
+    ["◇", "U+25C7 — subagent count prefix"],
+    ["◷", "U+25F7 — rate limited (falls back to Menlo at 1 cell where absent)"],
+    ["✓", "U+2713 — seen; the one dingbat-adjacent glyph both fonts carry"],
+    ["?", "ASCII — needs input"],
+    ["▴", "U+25B4 — pinned marker"],
+    ...DEFAULT_SPINNER_FRAMES.map((frame) => [frame, "braille — uniform AppleBraille fallback"] as const),
+  ])
+  // Glyph cells the matrix emits, plus the constants the tab rows render
+  // directly (they never reach `buildSidebarRowView`).
+  const rendered = new Set<string>([NO_STATE_GLYPH])
+  for (const line of activityCrossProduct()) {
+    const glyph = / glyph=(\S+)/.exec(line)?.[1]
+    if (glyph) for (const ch of glyph) rendered.add(ch)
+  }
+  for (const glyph of rendered) {
+    expect({ glyph, verified: VERIFIED.has(glyph) }).toEqual({ glyph, verified: true })
   }
 })
 

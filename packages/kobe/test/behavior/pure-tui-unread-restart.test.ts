@@ -25,7 +25,7 @@ const nodePty = await loadNodePty()
 
 const COLS = 140
 const ROWS = 40
-/** ● an unread completion, ○ one already looked at, ◌ no daemon signal yet. */
+/** ● an unread completion, ○ one already looked at (· = no signal at all). */
 const UNREAD = "●"
 const SEEN = "○"
 
