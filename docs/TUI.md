@@ -1,16 +1,44 @@
 # The TUI
 
-A tour of the interface beyond the three panes: creating tasks, reading the
-sidebar, managing worktrees, using Settings and the Inbox, opening the pages
-behind `ctrl+a` `1`/`2`/`3`, and working in a narrow terminal.
+A tour of the complete user-facing interface: the three panes, tasks and
+sessions, files and review, Settings and the Inbox, full-window pages, updates,
+attachments, and narrow terminals.
 
 This page explains what the features are *for*. The key tables live in
 [Keybindings](KEYBINDINGS.md); the mental model behind tasks and sessions
 lives in [Concepts](CONCEPTS.md).
 
+## Workspace, focus, and mouse
+
+The normal workspace has three columns:
+
+- **Tasks** is a tree of project → Task/worktree → terminal tab. Every level is
+  always expanded. Selecting a tab opens that exact session.
+- **Workspace** shows the active engine, shell, plugin, or read-only file tab.
+  A Task can have several tabs, and a terminal tab can contain several splits.
+- **Files** has **All** and **Changes** views for the selected Task's worktree.
+
+Click a pane or row to focus it. `F4` moves focus forward, `ctrl+a` `h` / `l`
+moves left or right, and `ctrl+q` returns from the workspace to Tasks. From the
+Tasks pane, right arrow enters the current engine tab. Mouse clicks select rows
+and tabs; right-clicking a sidebar row opens the same common actions available
+from the keyboard.
+
+Zen mode (`ctrl+a` `z`) hides Files and lets the workspace use the freed width.
+The Tasks rail remains visible. Below 70 columns, the separate
+[narrow-terminal layout](#narrow-terminals-phone-ssh) takes over instead.
+
 ## Status glyphs in the sidebar
 
-Task rows carry the branch name, pin marker, PR chip, and `±` change counts.
+Task rows carry worktree-level facts:
+
+| Mark | Meaning |
+|---|---|
+| `▴` | Pinned Task |
+| `+N` / `−N` | Added and deleted lines in the worktree |
+| `✓` / `✗` / `•` | Pull-request checks passing, failing, or pending |
+| jump digit | The `ctrl+2` … `ctrl+0` shortcut currently assigned to this row |
+
 Session state belongs to the engine tab that runs it, so the status glyph sits
 on the **tab rows** underneath:
 
@@ -24,6 +52,10 @@ on the **tab rows** underneath:
 | `×` | Error, including a failed worktree deletion |
 | `·` | Not an agent tab, or a custom engine without activity tracking |
 
+A tab labelled `⚠ <name>` is a live hosted session that was missing from the
+saved tab list. Rove exposes it instead of hiding a running process and adopts
+it back into the Task's tab state when possible.
+
 **Seen means consumed.** A `●` clears the moment you actually open that tab —
 select the task, with that tab active. Moving the sidebar cursor over the row
 doesn't count. Once seen, the badge drops back to `○`; there is no lingering
@@ -35,6 +67,35 @@ Each tab row reports its **own** activity, not the task's roll-up — tab 2 can
 spin while tab 1 rests. The tab strip at the top of the workspace uses a
 similar but separate vocabulary (`●` running, `✓` done, `!` error, `?` needs
 input, `○` idle).
+
+## Managing Tasks in the sidebar
+
+Press `/` to fuzzy-search task titles, repositories, branches, and live tab
+titles. Parent rows stay visible around a match. Arrow keys move through the
+results, `enter` opens one, and `esc` restores the previous selection. `[` / `]`
+switches between the Active and Archived lists when archived Tasks exist.
+
+The selected Task answers these actions whether the cursor is on its worktree
+row or one of its tab rows:
+
+- `r` changes the Task title. `b` opens a filterable local-branch picker and
+  can also rename the current branch by accepting a new name. Project-main
+  rows do not rename the repository's checked-out branch.
+- `v` cycles through detected and custom engines. The new engine applies when
+  the Task's engine session is reopened; it does not replace a running turn.
+- `o` opens the Task directory in the configured GUI/workspace editor.
+- `shift+p` pins or unpins a managed Task. `shift+m`, followed by `j`/`k`,
+  reorders whole projects rather than individual Tasks.
+- `a` archives a managed or directory Task after confirmation, stopping its
+  hosted sessions but preserving its directory, branch, tab snapshot, and
+  engine history. Run it again in Archived to restore the Task.
+- `d` is kind-aware: it forgets a project-main row, removes only the Rove
+  record for a directory Task, or removes a managed Task and its worktree after
+  the dirty-worktree safety check.
+
+The confirmation dialogs state the exact deletion boundary before anything is
+changed. See [Concepts → Task](CONCEPTS.md#task) for the three Task kinds and
+[Sessions](SESSIONS.md#what-actually-ends-a-session) for session teardown.
 
 ## Inbox
 
@@ -84,6 +145,40 @@ Notes anchor to the file path and the line number displayed at the time you
 wrote them; they don't re-anchor when the diff changes underneath. These four
 keys are fixed and not rebindable.
 
+## Files pane
+
+**All** shows the worktree's tracked and unignored files as a navigable tree.
+**Changes** starts with uncommitted changes against `HEAD`. If the working tree
+is clean and Rove can resolve a base branch, it automatically switches to the
+whole branch-versus-base view so committed agent work does not disappear. Press
+`b` to choose the scope manually; the header always names the active scope.
+
+Open a text file with `enter`. Rove uses the configured terminal editor; for a
+changed file it requests that editor's diff mode when Vim or Neovim is
+available, otherwise it opens Rove's read-only preview. `d` always opens the
+read-only diff in a workspace tab, `a` pastes an `@path` mention into the active
+engine without submitting it, and `o` sends audio, video, or PDF files to the
+system application. Remote files cannot use a local system viewer.
+
+The pane watches local worktrees for changes and also supports `r` for an
+explicit refresh. See [Keybindings](KEYBINDINGS.md#sidebar-and-files) for the
+complete navigation table.
+
+## Create a pull request with the active agent
+
+Choose **Create PR** above Files or press `ctrl+a` `p`. This is an agent
+workflow, not a direct GitHub API action: Rove inspects the current branch,
+target branch, upstream, and dirty-file count, then submits a prompt to the
+active engine. The prompt asks the agent to review the diff, commit remaining
+changes, push the branch, and run `gh pr create`.
+
+Watch the engine tab for progress, failures, or questions. The action is
+unavailable on the target branch and requires an active engine session. A repo
+can replace the prompt with `.rove/pr-instructions.md`; see
+[Per-repo init](CONFIGURATION.md#per-repo-init). Because the engine performs the
+work, its own skills and approval rules still apply. The default prompt expects
+an authenticated `gh` CLI and a pushable `origin` remote.
+
 ## Creating a task
 
 Focus the sidebar and press `n`. The New task dialog starts on a mode selector
@@ -107,6 +202,26 @@ mode selector and use the left/right arrows.
 The chosen repository and engine become defaults for later task creation.
 Adopting several worktrees is item-by-item: successful imports remain even if
 another row fails, and Rove reports the result count.
+
+## Tabs and terminal splits
+
+`ctrl+t` starts a fresh engine tab immediately; `ctrl+e` opens the full engine,
+shell, and plugin picker. Tabs share the Task's worktree but keep separate
+processes, scrollback, titles, and engine conversations. `ctrl+[` / `ctrl+]`
+switch tabs, `F2` renames one, and `ctrl+w` closes it. A Task always keeps at
+least one tab.
+
+Inside a terminal tab, `ctrl+\` splits right and `ctrl+=` splits down. New
+leaves run your login shell in the same worktree. `F3` cycles split focus;
+`F2` and `ctrl+w` operate on the active split before falling back to the whole
+tab. Split layouts and custom names survive a Rove restart, but which split had
+focus does not. If a split process exits, its leaf disappears and the remaining
+layout collapses naturally.
+
+The optional horizontal tab strip can be always visible, visible only for
+multiple tabs, or hidden. The sidebar tree still lists every tab in all three
+modes. Persistence and process-lifetime details live in
+[Sessions](SESSIONS.md#tab-and-split-state).
 
 ## Worktree audit and cleanup
 
@@ -142,10 +257,11 @@ left arrow to return to the section list, and `enter` to activate a row.
 - **Keybindings** shows the active prefix, loaded YAML overrides and warnings.
   Edit the displayed YAML path; changes reload live.
 - **Feedback** submits a GitHub Discussion through an authenticated `gh` CLI.
-- **Dev** contains reset, daemon restart and experimental switches. Reset
+- **Dev** contains reset, a backend-exit action and experimental switches. Reset
   clears UI and task-index state after confirmation, but leaves worktrees and
-  engine history on disk. Restart disconnects every attached Rove window but
-  leaves hosted engine sessions alive.
+  engine history on disk. The current **Restart backend** action exits only this
+  TUI window; other attached windows and hosted sessions remain connected. Use
+  `rove daemon restart` from a shell when you need to restart the daemon itself.
 
 The current PureTUI always keeps the Tasks rail visible in zen mode. The
 legacy `zen.keepTasks` value and its Settings checkbox are retained in state
@@ -177,6 +293,11 @@ over — uncommitted changes stay behind; commit first if the child needs them.
 `ctrl+a` `c` (continue in a new tab) and `ctrl+a` `f` (fork a child task)
 open the same dialog with the toggles pre-set.
 
+`ctrl+a` `y` is different: it opens the active Task's engine-owned history
+picker so you can resume a conversation that is not already represented by a
+tab. Availability and restart behavior vary by engine; see
+[Resuming a conversation](SESSIONS.md#resuming-a-conversation).
+
 ## Pages: `ctrl+a` `1` / `2` / `3`
 
 Three pages replace the workspace pane while the sidebar stays put. `esc` or
@@ -203,6 +324,12 @@ the board. Starting links the issue and flips it to `doing`. `n` creates a
 story, `d` deletes one (the issue record only — a linked task and its
 worktree are never touched). The board refreshes every few seconds, so cards
 moved by agents move on screen too.
+
+For a linked story, the drawer also shows an **EVENTS** snapshot with up to the
+12 most recent engine lifecycle events Rove still holds for that task. It is a
+point-in-time diagnostic view: reopen the drawer to fetch it again. A daemon
+restart clears the in-memory event ring, so an empty list does not mean the
+linked Task never ran.
 
 ![The story detail drawer — editable title and description above the engine, workspace and after-start choices a session would launch with](assets/kanban-story.png)
 
@@ -245,6 +372,27 @@ switches repos, `r` refreshes past the cache.
 the first prompt (fenced, and explicitly marked as an untrusted report), and
 the task keeps a `linkedWorkItem` pointer back to the issue. Nothing is
 imported into the local issue store and nothing is written back to GitHub.
+
+## Updates and version warnings
+
+When a newer release is available, the sidebar shows an update affordance and
+`u` opens the Update page. It compares the installed and latest versions,
+shows release notes for the versions in between, and offers three actions:
+
+- `u` runs the displayed self-update command, leaves the TUI, and reports the
+  result in the terminal.
+- `r` opens the latest release page in the system browser.
+- `q` or `esc` closes the page without changing anything.
+
+For a specific release or a browsable list of the latest 20 releases, use
+`rove update <version>` or `rove update list`; see
+[CLI reference](CLI.md#install-and-update). Releases that cross a known
+breaking version show a warning before installation.
+
+An amber **DAEMON OUT OF DATE** banner means this TUI and the already-running
+daemon are different builds. Finish any immediate interaction, run
+`rove daemon restart`, and relaunch Rove. Hosted engine sessions live in the
+separate PTY host and survive that daemon restart.
 
 ## Narrow terminals (phone SSH)
 

@@ -96,7 +96,7 @@ is active.
 | `d` | Delete Task / forget project | | `/` | Search |
 | `[` / `]` | Switch Working / Archives | | `x` | Worktrees page |
 | `gg` / `shift+g` | Top / bottom | | `shift+p` | Pin / unpin managed Task |
-| `shift+m` | Enter project reorder mode | | | |
+| `shift+m` | Enter project reorder mode | | `right` | Focus the current engine pane |
 
 In reorder mode, `j`/`k` moves the highlighted project and `enter` or `esc`
 finishes. Project headings themselves aren't cursor rows; the move routes
@@ -163,6 +163,25 @@ In the read-only diff tab, with the workspace focused:
 
 These four are fixed — they can't be rebound. The workflow:
 [The TUI → Diff review](TUI.md#diff-review).
+
+## Workspace pages
+
+All of these pages close with `q` or `esc`. Their bare letters are active only
+while the page has focus.
+
+| Page | Keys |
+|---|---|
+| Kanban | arrows move between cards; `tab` changes project; `enter` opens details; `n` creates; `d` deletes; `r` refreshes |
+| Routines | `j`/`k` select; `n` creates; `e` pauses/resumes; `s` runs now; `d` deletes; `r` refreshes; `enter` opens the latest run's Task |
+| GitHub Issues | `j`/`k` select; `tab` changes repo; `a` toggles “assigned to me”; `r` refreshes; `enter` starts a Task |
+| Worktrees | arrows select; `l` lands; `d` starts removal; see [Managing worktrees](WORKTREES.md) |
+| Update | `j`/`k` selects an action; `u` updates; `r` opens the release page; `enter` runs the selected action |
+
+In the Kanban story drawer, `tab` / `shift+tab` walks fields and `ctrl+enter`
+activates its primary action: start an unlinked story or open the linked Task.
+While creating a story, `ctrl+s` saves without starting and `esc` cancels.
+In an existing story, `esc` saves edits and closes, while `ctrl+c` discards
+them.
 
 ## Customizing
 

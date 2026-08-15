@@ -122,8 +122,8 @@ Error toasts always show, even with toasts off. See
 
 ### Zen mode
 
-Zen hides the files and terminal panes so each engine pane fills its window.
-Toggle with `ctrl+a` `z`.
+Zen hides the Files pane so the active workspace gets the freed width. The
+engine or shell in the workspace remains visible. Toggle with `ctrl+a` `z`.
 
 | Key | Type | Default | What it does |
 |---|---|---|---|
@@ -168,7 +168,7 @@ Off by default. These can change without notice.
 | `experimental.remoteProjects` | Projects over SSH |
 | `experimental.autoStatus` | Tasks move to `in_progress` and self-report `in_review` |
 | `experimental.dispatcher` | Per-repo routing of field notes between sessions |
-| `experimental.archivedHistoryPreview` | Read-only history for archived tasks |
+| `experimental.archivedHistoryPreview` | Reserved legacy toggle; the current PureTUI has no archived-history viewer |
 
 ## Themes
 

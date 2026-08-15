@@ -126,6 +126,22 @@ local to each one.
 A daemon-side janitor applies the archive rule even for headless
 `rove api archive`, so an archived task cannot leave an engine running.
 
+## Tab and split state
+
+Rove saves each Task's tab list and each terminal tab's split tree in UI state.
+Closing and reopening the TUI therefore restores tab order, active tab, split
+directions, and custom tab or split names. This saved layout is separate from
+the PTY host: a still-running hosted process is reattached, while a process
+lost to a reboot is relaunched according to the rules above.
+
+Every split created with `ctrl+\` or `ctrl+=` starts a login shell in the
+same worktree as its tab. The first leaf keeps the tab's original engine or
+command; extra leaves do not start extra agents unless you run one yourself.
+Split focus is intentionally local and temporary, so a restored layout starts
+from its saved structural leaf rather than trying to reproduce another
+client's cursor. Closing or exiting a leaf removes it and collapses any empty
+split group.
+
 ## Notifications while detached
 
 The daemon records finishes, failures, rate limits, and permission requests
