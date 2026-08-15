@@ -4,7 +4,9 @@
   <img src="docs/assets/brand/bracket-chip.gif" alt="Rove — the agent multiplexer for your terminal" />
 </p>
 
-Rove is a terminal-native workspace for running multiple coding tasks in parallel with [Claude Code](https://claude.com/claude-code), [Codex](https://github.com/openai/codex), [Copilot](https://github.com/github/copilot-cli), Kimi, or any CLI you register. Each managed task gets its own git worktree and branch, while agent and shell sessions keep running when you disconnect.
+Rove is a terminal-native workspace for running multiple coding tasks in parallel with [Claude Code](https://claude.com/claude-code), [Codex](https://github.com/openai/codex), [Copilot](https://github.com/github/copilot-cli), Kimi, or any CLI you register. 
+
+Rove isolates parallel work in git worktrees and branches, while agent and shell sessions keep running when you disconnect.
 
 <p align="center">
   <a href="https://www.npmjs.com/package/@sma1lboy/rove"><img src="https://img.shields.io/npm/v/%40sma1lboy%2Frove?style=flat-square&label=npm&color=c96442" alt="npm version" /></a>
