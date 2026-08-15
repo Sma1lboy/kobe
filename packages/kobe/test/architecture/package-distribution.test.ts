@@ -1,6 +1,7 @@
 /** Distribution contract for the canonical Rove npm package and Kobe alias. */
 
-import { readFileSync, readdirSync } from "node:fs"
+import { execFileSync } from "node:child_process"
+import { existsSync, readFileSync, readdirSync } from "node:fs"
 import { join } from "node:path"
 import { fileURLToPath } from "node:url"
 import { describe, expect, test } from "vitest"
@@ -10,6 +11,25 @@ const read = (path: string) => readFileSync(join(ROOT, path), "utf8")
 const json = <T>(path: string): T => JSON.parse(read(path)) as T
 
 describe("Rove package distribution", () => {
+  test("the docs build embeds demo videos from its own static asset tree", () => {
+    execFileSync("bun", ["packages/kobe-docs/scripts/sync-docs.mjs"], {
+      cwd: ROOT,
+      stdio: "pipe",
+    })
+
+    for (const [page, video] of [
+      ["tui", "kanban"],
+      ["routines", "routines"],
+    ] as const) {
+      const generated = read(`packages/kobe-docs/content/docs/${page}.mdx`)
+      expect(generated).toContain("<video controls playsInline")
+      expect(generated).toContain(`poster="/docs-assets/${video}.png"`)
+      expect(generated).toContain(`src="/docs-assets/${video}.mp4"`)
+      expect(generated).toContain(`](/docs-assets/${video}.mp4)`)
+      expect(existsSync(join(ROOT, `packages/kobe-docs/public/docs-assets/${video}.mp4`))).toBe(true)
+    }
+  })
+
   test("the workspace package is canonical Rove while both CLI names remain available", () => {
     const pkg = json<{ name: string; bin: Record<string, string> }>("packages/kobe/package.json")
 
