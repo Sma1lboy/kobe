@@ -31,7 +31,7 @@ const EMPTY: readonly LiveSession[] = []
  * render-free; a title moving (the point of the projection) still gets
  * through.
  */
-function sameSessions(a: readonly LiveSession[], b: readonly LiveSession[]): boolean {
+export function sameSessions(a: readonly LiveSession[], b: readonly LiveSession[]): boolean {
   if (a.length !== b.length) return false
   return a.every((s, i) => {
     const other = b[i] as LiveSession
