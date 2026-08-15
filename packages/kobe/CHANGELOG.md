@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.8.94
+
+### Patch Changes
+
+- a8f450a: Exercise the canonical Rove CLI, config, and bundled skill paths in acceptance tooling while preserving explicit Kobe compatibility coverage, update active web and CI copy to Rove, and build those canonical artifacts before clean-checkout visual CI runs.
+- a8f450a: Make the runtime's default spellings canonical Rove. Bare shell tabs now export `ROVE_TASK_ID`/`ROVE_TAB_ID` alongside the `KOBE_*` aliases, matching engine tabs — a shell never passes through the CLI's `ROVE_* → KOBE_*` mirror, so an engine typed into one previously saw only the legacy names. `rove api` help and errors advertise `$ROVE_TASK_ID`, the foreign-daemon-socket error tells you to run `rove daemon stop`, per-repo PR instructions resolve `.rove/pr-instructions.md` first with `.kobe/` as a fallback, and `bun run dev` plus the root `daemon*` scripts drive the `rove` entry point. Every legacy spelling stays accepted, with explicit `dev:kobe` / `daemon:kobe` scripts keeping the `kobe` entry exercised.
+- a8f450a: Canonicalize Rove in current documentation, landing copy, GitHub issue templates, brand metadata, and the generated docs illustrations: the glossary and CLI reference now print `~/.rove` state paths and lead with the `ROVE_*` environment names, current design notes document `rove …` commands, the themes page installs into `~/.rove/themes/` and recommends the `rove-theme` topic, the fan-out demo and `docs/assets` stills render `rove/<slug>` branches, and the bug template asks for `rove` diagnostics. Every compatibility surface is untouched — the `kobe` executable and package, `KOBE_*` aliases, `~/.kobe` runtime and plugin paths, legacy worktree discovery, the `kobe-plugin` topic, and the existing website domains all keep working.
+
 ## 0.8.93
 
 ### Patch Changes
