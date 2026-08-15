@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.8.96
+
+### Patch Changes
+
+- 37a5148: fix: live kimi sessions are recognized again by the foreground engine walk, so `send` into a running kimi tab and first-message paste delivery no longer refuse with `ENGINE_NOT_RUNNING` / `SESSION_FAILED`. Kimi's installed Mach-O binary rewrites its process title to `kimi-co` after launch, so the process-tree check never matched the launch binary name `kimi`; the engine registry now carries `processNames` aliases for exactly this case (claude/codex/copilot/custom engines are unchanged).
+
+## 0.8.95
+
+### Patch Changes
+
+- 533cdf4: fix: `send --tab new --vendor kimi --prompt …` (and `add --prompt` / automation starts) no longer kill the kimi engine with its own `Unknown command` error. Kimi's positional CLI slot is a subcommand, not an initial prompt, so the first message now rides outside the launch argv for paste-delivery vendors and is bracketed-pasted once the engine process is actually up (new `firstMessageDelivery` registry contract; claude/codex/custom engines keep the argv path). The TUI's own spawn path pins argv delivery explicitly until it grows a post-spawn paste hook.
+
 ## 0.8.94
 
 ### Patch Changes

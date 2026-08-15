@@ -6,6 +6,7 @@ import {
   isHostedTaskKey,
   killHostedSessions,
   listHostedSessions,
+  pastePromptWhenEngineUp,
 } from "../../src/engine/hosted-session.ts"
 
 function session(key: string) {
@@ -67,5 +68,63 @@ describe("hosted session helpers", () => {
       ],
       ["pty.detach", { key: "task-a::tab-1" }],
     ])
+  })
+})
+
+describe("pastePromptWhenEngineUp (issue #25 first-message paste delivery)", () => {
+  const noSleep = () => Promise.resolve()
+  // ps -A -o pid=,ppid=,args= shape: a shell (pid 42) with a kimi child.
+  const withEngine = "  42   1 /bin/zsh -ilc kimi\n  43  42 kimi\n"
+  const shellOnly = "  42   1 /bin/zsh -ilc kimi\n"
+
+  it("waits for the engine process, then bracketed-pastes and submits the prompt", async () => {
+    const writes: unknown[] = []
+    const request = vi.fn().mockImplementation((name: string, payload: unknown) => {
+      if (name === "pty.list") return Promise.resolve({ sessions: [session("task-a::tab-1")] })
+      if (name === "pty.write") {
+        writes.push(payload)
+        return Promise.resolve({})
+      }
+      return Promise.reject(new Error(`unexpected ${name}`))
+    })
+    const rpc: HostedSessionRpc = { request }
+
+    const delivered = await pastePromptWhenEngineUp(rpc, "task-a::tab-1", "kimi", "fix it", {
+      snapshot: async () => withEngine,
+      sleep: noSleep,
+    })
+
+    expect(delivered).toBe(true)
+    expect(writes).toEqual([
+      { key: "task-a::tab-1", data: "\x1b[200~fix it\x1b[201~" },
+      { key: "task-a::tab-1", data: "\r" },
+    ])
+  })
+
+  it("returns false without pasting when the session dies before any engine appears", async () => {
+    const request = vi.fn().mockResolvedValue({ sessions: [{ ...session("task-a::tab-1"), alive: false }] })
+    const rpc: HostedSessionRpc = { request }
+
+    const delivered = await pastePromptWhenEngineUp(rpc, "task-a::tab-1", "kimi", "fix it", {
+      snapshot: async () => withEngine,
+      sleep: noSleep,
+    })
+
+    expect(delivered).toBe(false)
+    expect(request).not.toHaveBeenCalledWith("pty.write", expect.anything())
+  })
+
+  it("gives up within the wait budget when only a bare shell ever shows", async () => {
+    const request = vi.fn().mockResolvedValue({ sessions: [session("task-a::tab-1")] })
+    const rpc: HostedSessionRpc = { request }
+
+    const delivered = await pastePromptWhenEngineUp(rpc, "task-a::tab-1", "kimi", "fix it", {
+      timeoutMs: 5,
+      snapshot: async () => shellOnly,
+      sleep: noSleep,
+    })
+
+    expect(delivered).toBe(false)
+    expect(request).not.toHaveBeenCalledWith("pty.write", expect.anything())
   })
 })

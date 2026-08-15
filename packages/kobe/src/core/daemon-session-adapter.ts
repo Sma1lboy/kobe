@@ -10,6 +10,7 @@ import {
   killHostedSessions,
   listHostedSessions,
   openHostedSessionHost,
+  pastePromptWhenEngineUp,
 } from "../engine/hosted-session.ts"
 import { interactiveEngineCommand } from "../engine/interactive-command.ts"
 import { buildEngineSessionLaunch } from "../engine/session-launch.ts"
@@ -38,6 +39,13 @@ export async function ensureTaskSessionAdapter(link: DaemonRpcClient, taskId: st
   try {
     const opened = await ensureHostedEngine(host.rpc, worktreePath, launch)
     if (!opened.alive) throw new Error(`failed to start hosted engine session for ${taskId}`)
+    // Paste-delivery vendor (kimi — issue #25) with a repo init-prompt: the
+    // message rode outside the argv. Best-effort paste — the engine IS up,
+    // so a missed paste leaves an idle prompt, not a failed session.
+    if (launch.firstMessage) {
+      const engineBin = interactiveEngineCommand(task.vendor, task.modelEffort)[0]
+      await pastePromptWhenEngineUp(host.rpc, launch.key, engineBin, launch.firstMessage).catch(() => false)
+    }
   } finally {
     host.close()
   }
@@ -67,7 +75,15 @@ export async function startTaskSessionWithPromptAdapter(
   const host = await ensureHostedSessionHost()
   try {
     const opened = await ensureHostedEngine(host.rpc, worktreePath, launch)
-    return opened.alive
+    if (!opened.alive) return false
+    // Paste-delivery vendor (kimi — issue #25): the prompt rode OUTSIDE the
+    // argv; deliver it once the engine process is up. A paste that never
+    // lands means the prompt was not delivered — report false.
+    if (launch.firstMessage) {
+      const engineBin = interactiveEngineCommand(task.vendor, task.modelEffort)[0]
+      return await pastePromptWhenEngineUp(host.rpc, launch.key, engineBin, launch.firstMessage)
+    }
+    return true
   } finally {
     host.close()
   }

@@ -92,6 +92,12 @@ export function engineTabSpawnFor(
     argv: engineTabArgv(tab, base, live),
     promptIntent,
     protocolGates: opts.protocolGates,
+    // The TUI owns no post-spawn paste hook, so it keeps argv delivery even
+    // for paste vendors (kimi). That preserves the pre-#25 behavior here —
+    // a kimi tab-level prompt still fails loud in the engine — rather than
+    // silently dropping the prompt. Wiring the TUI's own paste-after-ready
+    // is the tracked follow-up.
+    firstMessageDelivery: "argv",
     // Tab identity → exported env in the launch script: the engine's hook
     // subprocesses inherit it, so `kobe hook` can attribute activity to
     // THIS tab — cwd alone can't (every tab of a task shares the worktree).

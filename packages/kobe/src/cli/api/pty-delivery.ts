@@ -25,6 +25,7 @@ import {
   killHostedSessions,
   listHostedSessions,
   openHostedSessionHost,
+  pastePromptWhenEngineUp,
   writeHostedPrompt,
 } from "../../engine/hosted-session.ts"
 import type { EngineSessionLaunch } from "../../engine/session-launch.ts"
@@ -198,6 +199,20 @@ export async function deliverHostedPrompt(
         started: open.created !== false,
         engineReady: false,
         delivered: false,
+      }
+    }
+    // Paste-delivery vendor (kimi — issue #25): the launch spawned the bare
+    // engine and carried the first message OUTSIDE its argv; paste it once
+    // the engine process is up. A paste that never lands is a failed start,
+    // not a delivered prompt.
+    if (launch.firstMessage) {
+      const delivered = await pastePromptWhenEngineUp(rpc, launch.key, target.engineBin, launch.firstMessage)
+      return {
+        session: launch.key,
+        pane: launch.key,
+        started: open.created !== false,
+        engineReady: delivered,
+        delivered,
       }
     }
     // Another API process may win the create race after our pty.list. Its

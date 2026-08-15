@@ -5,6 +5,7 @@ import { readFieldNotes } from "../state/field-notes.ts"
 import { type PromptDeliveryIntent, resolveEngineLaunchInit } from "../state/repo-init.ts"
 import type { VendorId } from "../types/vendor.ts"
 import { withDispatcherProtocol, withWorktreeProtocol } from "./interactive-command.ts"
+import { engineEntry } from "./registry.ts"
 
 export const SIGINT_GUARD = "trap ':' INT; "
 
@@ -117,11 +118,25 @@ export interface EngineSessionLaunchInput {
   readonly readNotes?: (repoRoot: string) => readonly { text: string; author: string }[]
   /** Which engine TAB this session is (defaults to tab-1, the key's tab). */
   readonly tabId?: string
+  /**
+   * Override the registry's first-message delivery for this launch. Headless
+   * spawners (api `send`/`add`, daemon automation) leave it unset so a
+   * "paste" vendor (kimi) gets its prompt pasted post-spawn; the TUI owns no
+   * post-spawn paste hook yet and pins "argv" explicitly.
+   */
+  readonly firstMessageDelivery?: "argv" | "paste"
 }
 
 export interface EngineSessionLaunch {
   readonly key: string
   readonly command: readonly string[]
+  /**
+   * First message the SPAWNER must deliver itself after the engine process
+   * is up (paste-delivery vendors — see the registry's
+   * `firstMessageDelivery`). Undefined when the message already rode the
+   * launch argv or there is none.
+   */
+  readonly firstMessage?: string
 }
 
 /** Canonical PTY Host key for a task's interactive engine tab (first by default). */
@@ -161,7 +176,14 @@ export function buildEngineSessionLaunch(input: EngineSessionLaunchInput): Engin
     dispatcherTaskId,
     gates?.dispatcher,
   )
-  if (launchInit.firstMessage) argv = [...argv, launchInit.firstMessage.text]
+  // Paste-delivery vendors (kimi — issue #25) must NOT see the first message
+  // in their argv: their positional slot is a subcommand, so the text would
+  // kill the launch as an unknown command. The spawner pastes it instead
+  // (see EngineSessionLaunch.firstMessage).
+  const delivery =
+    input.firstMessageDelivery ?? engineEntry(input.task.vendor ?? "claude").firstMessageDelivery ?? "argv"
+  const pasteFirstMessage = delivery === "paste" ? launchInit.firstMessage?.text : undefined
+  if (launchInit.firstMessage && !pasteFirstMessage) argv = [...argv, launchInit.firstMessage.text]
   const script = engineLaunchLine(quoteShellArgv(argv, { bareSafe: true }), {
     initScript: launchInit.initScript,
     markerPath: launchInit.initScript ? worktreeInitMarkerPath(input.worktreePath) : undefined,
@@ -175,5 +197,9 @@ export function buildEngineSessionLaunch(input: EngineSessionLaunchInput): Engin
   const taskId = quoteShellArg(input.task.id)
   const tabId = quoteShellArg(input.tabId ?? "tab-1")
   const identity = `export ROVE_TASK_ID=${taskId} KOBE_TASK_ID=${taskId} ROVE_TAB_ID=${tabId} KOBE_TAB_ID=${tabId}\n`
-  return { key: engineSessionKey(input.task.id, input.tabId), command: [input.shell, "-ilc", identity + script] }
+  return {
+    key: engineSessionKey(input.task.id, input.tabId),
+    command: [input.shell, "-ilc", identity + script],
+    ...(pasteFirstMessage ? { firstMessage: pasteFirstMessage } : {}),
+  }
 }

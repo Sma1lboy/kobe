@@ -61,7 +61,14 @@ export function vendorFromArgv(commandLine: string): VendorId | null {
     if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(token)) continue
     const name = binaryName(token)
     if (WRAPPERS.has(name)) continue
-    return BUILTIN_VENDORS.find((v) => engineEntry(v).defaultCommand[0] === name) ?? null
+    // defaultCommand[0] is the launch binary; processNames covers engines
+    // that rewrite their process title post-launch (kimi → `kimi-co`).
+    return (
+      BUILTIN_VENDORS.find((v) => {
+        const entry = engineEntry(v)
+        return entry.defaultCommand[0] === name || entry.processNames?.includes(name) === true
+      }) ?? null
+    )
   }
   return null
 }
