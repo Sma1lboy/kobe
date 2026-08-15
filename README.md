@@ -99,20 +99,18 @@ Tasks created from inside another Rove session remember which task and tab dispa
 
 See the [Agent API reference](https://docs.kobe.sma1lboy.me/docs/api) for every verb, flag, and exit code.
 
-## Rove vs desktop agent IDEs
+## Built for the terminal
 
-Rove takes a different approach: **the terminal is the product.**
+Rove works with the tools you already use: your editor, terminal, git workflow, and coding agents.
 
-| | Rove | Desktop agent IDEs |
-|---|---|---|
-| Interface | Terminal TUI | Desktop application |
-| Remote use | Runs directly over SSH | Usually mediated by a local app |
-| Sessions | Persist on the host across disconnects | Often tied to the app lifecycle |
-| Agents | Embeds existing interactive CLIs | Usually provides its own agent surface |
-| Setup | `bunx @sma1lboy/rove` | Application install |
-| Orchestration | `rove api` and companion skill | Varies |
+It runs the interactive agent CLIs you already use, keeps their sessions alive on the host, and lets you manage parallel coding tasks directly from your terminal — including over SSH.
 
-If your workflow already centers on terminals, git, and SSH, Rove adds parallel agent work without replacing those tools.
+- **Terminal TUI** — no desktop app required
+- **SSH-native** — the same workflow works on remote machines
+- **Persistent sessions** — disconnect and come back without losing running agents
+- **Existing agent CLIs** — Claude Code, Codex, Copilot, Kimi, or your own
+- **Git-native isolation** — parallel tasks can live in separate worktrees and branches
+- **Programmable** — orchestrate tasks through `rove api`
 
 ## More features
 
