@@ -108,6 +108,10 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Build canonical Rove artifacts
+        working-directory: packages/kobe
+        run: bun run build
+
       - name: Verify node-pty can create a real child terminal
         working-directory: packages/kobe-web
         run: |

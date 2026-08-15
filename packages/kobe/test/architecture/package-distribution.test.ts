@@ -33,6 +33,23 @@ describe("Rove package distribution", () => {
     expect(build).toContain('const SKILL_OUT_DIR = "./dist/skills/rove"')
   })
 
+  test.each([
+    [".github/workflows/ci.yml", "\n  coverage-cap:"],
+    [".github/workflows/release.yml", "\n  publish:"],
+  ])("%s builds the Rove artifacts before the visual journey", (path, nextJob) => {
+    const workflow = read(path)
+    const start = workflow.indexOf("\n  visual-ground-truth:")
+    const end = workflow.indexOf(nextJob, start)
+    const job = workflow.slice(start, end)
+    const build = job.indexOf("name: Build canonical Rove artifacts")
+    const visual = job.indexOf("name: Visual journey (browser → PTY → real OpenTUI)")
+
+    expect(start, `${path} has no visual-ground-truth job`).toBeGreaterThanOrEqual(0)
+    expect(end, `${path} has no job after visual-ground-truth`).toBeGreaterThan(start)
+    expect(build, `${path} does not build dist/ before visual tests`).toBeGreaterThanOrEqual(0)
+    expect(visual, `${path} has no visual journey step`).toBeGreaterThan(build)
+  })
+
   test("workspace commands address the canonical package name", () => {
     const root = json<{ scripts: Record<string, string> }>("package.json")
     const commands = Object.values(root.scripts)

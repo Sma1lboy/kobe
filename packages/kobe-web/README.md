@@ -1,6 +1,6 @@
 # kobe-web
 
-The local browser dashboard for kobe — a terminal-native workspace for running
+The local browser dashboard for Rove — a terminal-native workspace for running
 many AI coding sessions at once, in the browser. Full architecture (process
 model, daemon channels, route table) lives in
 [`docs/design/web-dashboard.md`](../../docs/design/web-dashboard.md).
@@ -11,8 +11,8 @@ model, daemon channels, route table) lives in
 daemon down — so the dashboard is split into three cooperating processes:
 
 - **SPA** — React + TanStack Router, served by Vite in dev (`:5173`).
-- **Daemon web transport** — loopback HTTP/SSE routes hosted by the kobe daemon
-  (`:45174` by default for `kobe web`).
+- **Daemon web transport** — loopback HTTP/SSE routes hosted by the Rove daemon
+  (`:45174` by default for `rove web`).
 - **PTY sidecar** (`pty-server.mjs`) — a node process (`:5175`) running each
   engine/terminal tab's PTY.
 
@@ -34,7 +34,7 @@ mutate real tasks.
 ```bash
 bun run test    # vitest — touches NO daemon (fake links / pure helpers); safe anytime
 bun run check   # biome lint + format (gate this by exit code)
-bun run build   # vite build → dist/ (what `kobe web` serves in production)
+bun run build   # vite build → dist/ (what `rove web` serves in production)
 ```
 
 The repo-root `bun run lint` does NOT cover this package — run `bun run check`
@@ -44,12 +44,12 @@ here.
 
 The canonical `@sma1lboy/rove` package bundles this web dashboard under
 `dist/web-ui`. Source checkouts can use `bun run dev` / `bun run dev:sandbox`;
-installed packages can run `kobe web`, which serves the built SPA through the
+installed packages can run `rove web`, which serves the built SPA through the
 daemon web transport and spawns the PTY sidecar on `port + 2`:
 
 ```bash
-kobe web                 # http://localhost:45174
-kobe web --port 5180
+rove web                 # http://localhost:45174
+rove web --port 5180
 ```
 
 ## What it does

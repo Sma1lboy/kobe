@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# preview-install — overwrite the globally-installed PROD kobe with THIS
+# preview-install — overwrite the globally-installed PROD Rove with THIS
 # checkout's build, for local testing only.
 #
 # Usage:  scripts/preview-install.sh        (from anywhere in the repo)
@@ -8,18 +8,18 @@
 # What it does:
 #   1. builds the current tree with the version baked as
 #      `<version>-preview.<shortsha>` (CURRENT_VERSION reads package.json
-#      at compile time, so `kobe -v` and the TUI update chip both say
+#      at compile time, so `rove -v` and the TUI update chip both say
 #      "preview", and the published prod release always compares newer),
 #   2. deletes the global install's dist/ and copies this build in,
 #   3. patches the global package.json to the preview version.
 #
 # Going back to prod is the NORMAL update path — nothing special:
-#   kobe update        (npm/bun reinstall @latest overwrites everything
+#   rove update        (npm/bun reinstall @latest overwrites everything
 #                       this script touched)
 #
 # Ceiling (ponytail): only dist/ is copied — if the dev tree changed the
 # package's runtime *dependencies* since the installed prod release, the
-# preview may crash on a missing module. Run `kobe update` first so the
+# preview may crash on a missing module. Run `rove update` first so the
 # global dep tree is current, then preview-install again.
 set -euo pipefail
 
@@ -31,7 +31,7 @@ if [ -z "$BIN" ]; then
   echo "preview-install: no global rove on PATH — install prod first: npm i -g @sma1lboy/rove" >&2
   exit 1
 fi
-ENTRY="$(realpath "$BIN")" # …/node_modules/@sma1lboy/rove/dist/cli/kobe.js
+ENTRY="$(realpath "$BIN")" # …/node_modules/@sma1lboy/rove/dist/cli/rove.js
 PKG_DIR="$(cd "$(dirname "$ENTRY")/../.." && pwd)"
 # Either package name is a valid target: installs that haven't run
 # `rove update` since the rename are still on @sma1lboy/kobe.
@@ -72,5 +72,5 @@ rm -rf "$PKG_DIR/dist"
 cp -R "$PKG_SRC/dist" "$PKG_DIR/dist"
 set_version "$PKG_DIR" "$PREVIEW"
 
-echo "✓ preview installed: $(kobe -v 2>/dev/null || echo 'kobe -v failed — check the build')"
-echo "  back to prod any time:  kobe update"
+echo "✓ preview installed: $(rove -v 2>/dev/null || echo 'rove -v failed — check the build')"
+echo "  back to prod any time:  rove update"

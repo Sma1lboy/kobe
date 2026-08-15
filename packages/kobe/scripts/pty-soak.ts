@@ -90,7 +90,7 @@ async function inventory(): Promise<PtyInventory> {
 
 let peakRss = process.memoryUsage().rss
 try {
-  console.log(`kobe pty soak: ${tabs} tabs × ${cycles} park/wake cycles × ${lines} output lines`)
+  console.log(`Rove PTY soak: ${tabs} tabs × ${cycles} park/wake cycles × ${lines} output lines`)
   let handles = keys.map((key) => registry.acquire(key, home, shell))
   let unsubs = handles.map((pty) => pty.onData(() => {}))
 

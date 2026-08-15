@@ -51,7 +51,7 @@ const CURRENT_DESIGN_DOCS = [
  * keep the guaranteed legacy name.
  */
 const TYPED_KOBE_COMMAND =
-  /\bkobe (?!hook\b)(api|daemon|doctor|reset|update|plugin|theme|repo|config|web|add|remove|export|completions|pty-host)\b/
+  /\bkobe (?!hook\b)(api|attach|daemon|doctor|reset|update|plugin|skill|theme|repo|config|web|add|remove|list|feedback|export|completions|pty-host)\b/
 
 /**
  * The product called by its retired name. Compatibility spellings survive the
@@ -129,6 +129,9 @@ describe("current docs and landing copy speak Rove", () => {
       read("packages/kobe-landing/index.html"),
       "the static fan-in fallback still prints a kobe/ branch",
     ).not.toMatch(/\bkobe\/[a-z0-9]/i)
+    for (const path of ["packages/kobe-landing/themes.html", "packages/kobe-landing/themes.js"]) {
+      expect(read(path), `${path} still recommends the legacy theme topic`).not.toContain("kobe-theme")
+    }
   })
 
   test("generated docs illustrations render the Rove worktree root and branch prefix", () => {
@@ -144,5 +147,24 @@ describe("current docs and landing copy speak Rove", () => {
     // `id:` stays "kobe" — it keys marketing.studio.yaml and the accepted-asset
     // ledger. Only the display names are the product's public name.
     expect(meta, "brand.meta.yaml still names the product kobe").not.toMatch(/^\s*name:\s*"kobe"\s*$/m)
+    expect(meta, "brand.meta.yaml still carries the legacy-name basketball association").not.toContain(
+      "basketball references",
+    )
+  })
+
+  test("the preview installer teaches the canonical executable", () => {
+    const source = read("scripts/preview-install.sh")
+    const command = TYPED_KOBE_COMMAND.exec(source)
+    expect(command?.[0], `preview-install.sh still teaches "${command?.[0]}"`).toBeUndefined()
+    expect(source, "preview-install.sh still verifies the compatibility executable").not.toContain("kobe -v")
+  })
+
+  test("active developer tooling labels Rove", () => {
+    expect(read("packages/kobe/scripts/pty-soak.ts"), "the PTY soak banner still labels Kobe").not.toContain(
+      "kobe pty soak",
+    )
+    const webReadme = read("packages/kobe-web/README.md")
+    expect(webReadme, "the web README still calls the product Kobe").not.toMatch(PRODUCT_NAME_KOBE)
+    expect(webReadme, "the web README still teaches the compatibility CLI").not.toMatch(TYPED_KOBE_COMMAND)
   })
 })

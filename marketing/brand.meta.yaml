@@ -23,7 +23,7 @@ product:
     - "local-first engine orchestration"
 voice:
   tone: ["technical", "compressed", "confident", "terminal-native"]
-  avoid: ["generic AI glow", "glossy SaaS cards", "fake dashboards", "basketball references"]
+  avoid: ["generic AI glow", "glossy SaaS cards", "fake dashboards", "sports references"]
 visual_direction:
   accepted_styles:
     - "real TUI panes as the main subject"
