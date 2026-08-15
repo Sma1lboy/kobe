@@ -55,8 +55,8 @@ waiting on a permission prompt) from the engine's **own hook mechanism**, not
 polling. Each engine's hook adapter translates vendor events into neutral
 verbs and points them at `kobe hook <verb>`, an internal CLI subcommand that
 reports the event to the daemon. The daemon maps the hook's `cwd` (or the
-inherited `KOBE_TASK_ID` / `KOBE_TAB_ID` env vars) to a task and folds the
-event into the task's activity badge.
+inherited `ROVE_TASK_ID` / `ROVE_TAB_ID` env vars, with `KOBE_*` aliases) to a
+task and folds the event into the task's activity badge.
 
 ```mermaid
 flowchart LR
