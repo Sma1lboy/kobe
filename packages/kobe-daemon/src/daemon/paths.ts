@@ -212,3 +212,10 @@ export function defaultPtyHostLogPath(homeDir = readRoveEnv("HOME_DIR") ?? homed
 export function defaultPtyExitsPath(homeDir = readRoveEnv("HOME_DIR") ?? homedir()): string {
   return join(homeDir, COMPAT_STATE_DIR_BASENAME, "pty-exits.json")
 }
+
+/** Frozen live-session snapshots (`pty-freeze-store.ts`) — one JSON file per
+ *  session key, so a host restart (crash, reboot) can hand every session's
+ *  metadata + scrollback back to the next host incarnation. */
+export function defaultPtyFreezeDir(homeDir = readRoveEnv("HOME_DIR") ?? homedir()): string {
+  return join(homeDir, COMPAT_STATE_DIR_BASENAME, "pty-sessions")
+}

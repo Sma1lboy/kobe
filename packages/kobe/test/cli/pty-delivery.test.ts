@@ -273,6 +273,31 @@ describe("deliverHostedPrompt", () => {
     expect(calls).not.toContain("pty.write") // and nothing was pasted anywhere
   })
 
+  it("a freeze-RESTORED corpse is respawned in place — never killed, prompt not pasted twice", async () => {
+    // After a pty-host restart the canonical session lists as a dead,
+    // restored corpse. Delivery must NOT pty.kill it (the open respawns it,
+    // keeping the pre-restart scrollback) and must NOT writePrompt after
+    // the respawn (the prompt already rode the launch argv).
+    const calls: Array<{ name: string; payload?: unknown }> = []
+    const rpc = {
+      request: async <T>(name: string, payload?: unknown): Promise<T> => {
+        calls.push({ name, payload })
+        if (name === "pty.list")
+          return {
+            sessions: [{ ...session("t1::tab-1", ["/bin/zsh", "-ilc", "claude 'x'"], false), restored: true }],
+          } as T
+        if (name === "pty.open") return { replay: "b2xk", alive: true, created: false, respawned: true } as T
+        return {} as T
+      },
+    }
+    const result = await deliverHostedPrompt(rpc, { id: "t1", engineBin: "claude" }, "/wt/t1", "go", {
+      key: "t1::tab-1",
+      command: ["/bin/zsh", "-ilc", "claude 'go'"],
+    })
+    expect(result).toMatchObject({ session: "t1::tab-1", started: true, delivered: true })
+    expect(calls.map((c) => c.name)).toEqual(["pty.list", "pty.open", "pty.detach"])
+  })
+
   it("still first-starts the canonical engine when only DEAD sessions remain, cwd'd at the worktree", async () => {
     const calls: Array<{ name: string; payload: unknown }> = []
     const rpc = {

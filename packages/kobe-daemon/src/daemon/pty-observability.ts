@@ -21,6 +21,36 @@ export interface PtySessionInfo {
   readonly parkedScreenBytes?: number
   /** How the child died — null while alive or before exit was observed. */
   readonly exit?: PtySessionExit | null
+  /** True while the session is a freeze-restored corpse awaiting its
+   *  respawn-on-open (a host-death casualty, not a death the user saw). */
+  readonly restored?: boolean
+}
+
+/** One session state → its `pty.list` row (the host's `list()` mapping). */
+export function sessionInfo(s: {
+  key: string
+  alive: boolean
+  proc: { readonly pid: number } | null
+  command: readonly string[]
+  title: string
+  totalBytes: number
+  parked: boolean
+  parkedScreenBytes: number
+  exit: PtySessionExit | null
+  restored: boolean
+}): PtySessionInfo {
+  return {
+    key: s.key,
+    alive: s.alive,
+    pid: s.proc?.pid ?? null,
+    command: s.command,
+    title: s.title,
+    totalBytes: s.totalBytes,
+    parked: s.parked,
+    parkedScreenBytes: s.parkedScreenBytes,
+    exit: s.exit,
+    restored: s.restored || undefined,
+  }
 }
 
 /** What the host hands `onSessionExit` — the death record for one session. */
@@ -61,6 +91,35 @@ export interface PtyHostStats {
   readonly parkRestoreDeltas: number
   /** Park wakes that had to fall back to a full ring replay. */
   readonly parkRestoreFallbacks: number
+}
+
+/** The host's `stats()` aggregation (the cap math included). */
+export function hostStats(
+  sessions: Iterable<{ bytes: number; parked: boolean; parkedScreenBytes: number }>,
+  perSessionCap: number,
+  parkRestoreDeltas: number,
+  parkRestoreFallbacks: number,
+): PtyHostStats {
+  let ringBytes = 0
+  let count = 0
+  let parkedSessions = 0
+  let parkedScreenBytes = 0
+  for (const session of sessions) {
+    count++
+    ringBytes += session.bytes
+    if (session.parked) {
+      parkedSessions++
+      parkedScreenBytes += session.parkedScreenBytes
+    }
+  }
+  return {
+    ringBytes,
+    ringCapacityBytes: count * perSessionCap,
+    parkedSessions,
+    parkedScreenBytes,
+    parkRestoreDeltas,
+    parkRestoreFallbacks,
+  }
 }
 
 type PtyTitleState = {

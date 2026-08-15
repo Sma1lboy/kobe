@@ -21,6 +21,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import {
   hasLiveEngineTab,
   joinTaskTabs,
+  markCliTabSession,
   mintCliTab,
   publishCliTabSnapshot,
   readTabsSnapshot,
@@ -91,6 +92,37 @@ describe("publishCliTabSnapshot", () => {
     writeState({})
     publishCliTabSnapshot("")
     expect(Object.keys(readState())).toEqual([])
+  })
+
+  it("records the pinned session id + spawned when the delivery started the session", () => {
+    writeState({})
+    publishCliTabSnapshot("t1", "uuid-abc")
+    const snapshot = readState()["terminalTabs.t1"] as {
+      tabs: { id: string; sessionId?: string; spawned?: boolean }[]
+    }
+    // The dead-reattach rule (engineTabArgv) reads exactly these two fields
+    // to `--resume` the conversation after a pty-host restart.
+    expect(snapshot.tabs[0]).toMatchObject({ id: "tab-1", sessionId: "uuid-abc", spawned: true })
+  })
+})
+
+describe("markCliTabSession", () => {
+  it("patches an existing minted tab with its session id once the session started", () => {
+    writeState({})
+    const id = mintCliTab("t1")
+    markCliTabSession("t1", id, "uuid-xyz")
+    const snapshot = readState()["terminalTabs.t1"] as {
+      tabs: { id: string; sessionId?: string; spawned?: boolean }[]
+    }
+    expect(snapshot.tabs.find((t) => t.id === id)).toMatchObject({ sessionId: "uuid-xyz", spawned: true })
+    // The canonical tab keeps having no id — its session was never CLI-pinned.
+    expect(snapshot.tabs.find((t) => t.id === "tab-1")?.sessionId).toBeUndefined()
+  })
+
+  it("is a no-op for an unknown tab or a missing snapshot", () => {
+    writeState({})
+    markCliTabSession("t1", "tab-9", "uuid-xyz")
+    expect(readState()).toEqual({})
   })
 })
 

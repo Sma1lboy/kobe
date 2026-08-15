@@ -29,10 +29,11 @@ import { StringDecoder } from "node:string_decoder"
 import { ClientWriter } from "./client-writer.ts"
 import { logDaemonError } from "./crash-log.ts"
 import { objectPayload, requireString } from "./handler-validators.ts"
-import { defaultPtyHostPidPath, defaultPtyHostSocketPath, isWindowsPipePath } from "./paths.ts"
+import { defaultPtyFreezeDir, defaultPtyHostPidPath, defaultPtyHostSocketPath, isWindowsPipePath } from "./paths.ts"
 import { DAEMON_PROTOCOL_VERSION, type DaemonFrame, frameToLine } from "./protocol.ts"
 import type { PtyDriver } from "./pty-driver.ts"
 import { recordPtyExit } from "./pty-exit-store.ts"
+import { clearFrozenSessions, fileFreezeSink, loadFrozenSessions } from "./pty-freeze-store.ts"
 import { PtyHost } from "./pty-host.ts"
 
 /**
@@ -57,6 +58,9 @@ export interface PtyHostServerOptions {
   readonly idleExitMs?: number
   /** How PTY children get spawned. Defaults to Bun's; the node host passes node-pty's. */
   readonly driver?: PtyDriver
+  /** Freeze-store directory (`pty-freeze-store.ts`). Defaults to the home's
+   *  `pty-sessions/`; tests pass a temp dir. */
+  readonly freezeDir?: string
   /** Called after close() when the host stops itself (idle / daemon.stop). */
   readonly onStop?: () => void
   readonly log?: (event: string, message: string) => void
@@ -77,10 +81,16 @@ interface PtyClientState {
 export async function startPtyHostServer(options: PtyHostServerOptions = {}): Promise<PtyHostServer> {
   const socketPath = options.socketPath ?? defaultPtyHostSocketPath()
   const pidPath = options.pidPath ?? defaultPtyHostPidPath()
+  const freezeDir = options.freezeDir ?? defaultPtyFreezeDir()
   const idleExitMs = options.idleExitMs || resolveIdleExitMs()
   const log = options.log ?? (() => {})
   const clients = new Set<PtyClientState>()
   let stopping = false
+  /** Set by the `daemon.stop` verb (rove reset): an explicit teardown wipes
+   *  the freeze store so the next host comes up EMPTY — reset's contract is
+   *  "starts fresh". Idle-exit, SIGTERM, and crashes keep it (they are the
+   *  restarts freeze/restore exists for). */
+  let wipeFreezeOnStop = false
   let idleTimer: ReturnType<typeof setTimeout> | null = null
 
   const cancelIdle = (): void => {
@@ -114,9 +124,15 @@ export async function startPtyHostServer(options: PtyHostServerOptions = {}): Pr
         log("pty", `exit record write failed for ${info.key}: ${err instanceof Error ? err.message : String(err)}`)
       }
     },
+    // Freeze/restore: per-session snapshots so a host restart (idle-exit,
+    // crash, reboot) hands the next incarnation every session's metadata +
+    // scrollback. Restore happens BEFORE listen below, so no client open
+    // can race the thaw.
+    freeze: fileFreezeSink(freezeDir),
     driver: options.driver,
     log,
   })
+  ptys.restoreFrozen(loadFrozenSessions(freezeDir))
 
   // A Windows named pipe lives in the `\\.\pipe` namespace, not the
   // filesystem — there is no parent directory to create.
@@ -162,7 +178,11 @@ export async function startPtyHostServer(options: PtyHostServerOptions = {}): Pr
       stopping = true
       cancelIdle()
       // The host process IS the sessions' lifetime — ending it ends them.
-      await ptys.killAll()
+      // shutdown() freezes first: the records outlive us, and the next
+      // host incarnation restores the work scene. An explicit `daemon.stop`
+      // (rove reset) wipes the store instead — starts fresh means fresh.
+      await ptys.shutdown()
+      if (wipeFreezeOnStop) clearFrozenSessions(freezeDir)
       for (const client of Array.from(clients)) client.socket.destroy()
       await new Promise<void>((resolve) => server.close(() => resolve()))
       // A named pipe is reclaimed with its last handle; only a filesystem
@@ -259,7 +279,9 @@ export async function startPtyHostServer(options: PtyHostServerOptions = {}): Pr
       }
       case "daemon.stop":
         // Shared graceful-stop verb so `stopDaemonProcess` (kobe reset)
-        // works against this socket unchanged.
+        // works against this socket unchanged. Reset's "starts fresh"
+        // contract includes NOT resurrecting frozen sessions next boot.
+        wipeFreezeOnStop = true
         setTimeout(() => void stop(), 0).unref()
         return {}
       default:

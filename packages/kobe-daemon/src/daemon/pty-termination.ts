@@ -7,6 +7,8 @@
  * which is what makes the platform behaviour below testable without spawning.
  */
 
+import type { PtyChild } from "./pty-driver.ts"
+
 /**
  * True if `exited` settled inside `ms`; false on timeout. A rejection counts
  * as settled — an exit is an exit however the runtime reports it.
@@ -62,4 +64,25 @@ export function signalProcessGroup(
   } catch {
     /* already gone */
   }
+}
+
+/** Let a cooperative terminal child shut down before escalating to SIGKILL. */
+const TERMINATION_GRACE_MS = 500
+
+/**
+ * End one PTY child: SIGTERM its process group, escalate to SIGKILL past a
+ * short grace, then fire `onSettled`. BOUNDED on purpose. Bun's
+ * `proc.exited` always settles, so an unbounded await was safe; the
+ * node-pty driver's resolves only when ConPTY delivers onExit, and a
+ * wedged one would hang the host's shutdown — and with it `kobe reset`.
+ * A child that outlives SIGKILL is already beyond this process's reach;
+ * reporting the session dead is strictly better than never returning.
+ */
+export async function terminatePtyChild(proc: PtyChild, onSettled: () => void): Promise<void> {
+  signalProcessGroup(proc.pid, "SIGTERM", () => proc.kill("SIGTERM"))
+  if (!(await settledWithin(proc.exited, TERMINATION_GRACE_MS))) {
+    signalProcessGroup(proc.pid, "SIGKILL", () => proc.kill("SIGKILL"))
+    await settledWithin(proc.exited, TERMINATION_GRACE_MS)
+  }
+  onSettled()
 }

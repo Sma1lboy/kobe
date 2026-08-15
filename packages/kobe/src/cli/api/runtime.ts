@@ -7,7 +7,7 @@
  */
 
 import type { PtySessionExit } from "@sma1lboy/kobe-daemon/daemon/protocol"
-import { interactiveEngineCommand } from "../../engine/interactive-command.ts"
+import { interactiveEngineCommand, withClaudeSessionId } from "../../engine/interactive-command.ts"
 import { buildEngineSessionLaunch } from "../../engine/session-launch.ts"
 import type { DaemonRpc } from "../daemon-session.ts"
 import {
@@ -23,6 +23,7 @@ import {
   type TaskSessionRow,
   hasLiveEngineTab,
   joinTaskTabs,
+  markCliTabSession,
   mintCliTab,
   publishCliTabSnapshot,
   readTabsSnapshot,
@@ -52,7 +53,15 @@ async function deliverHosted(target: PromptTarget, worktree: string, prompt: str
       return await deliverToExactTab(host.rpc, target.id, target.tab, worktree, prompt, { engineBin })
     }
     const newTab = target.tab === "new" ? mintCliTab(target.id, target.tabVendor) : undefined
-    const argv = interactiveEngineCommand(target.vendor, target.modelEffort)
+    // Pin the conversation's session id up front (claude only — the same
+    // `withClaudeSessionId` contract the TUI launches with), so a LATER
+    // reattach after a pty-host restart can resume THIS conversation
+    // instead of opening a blank one. The id lands in the persisted tab
+    // snapshot below once the session actually started.
+    const { argv, sessionId } = withClaudeSessionId(
+      interactiveEngineCommand(target.vendor, target.modelEffort),
+      target.vendor,
+    )
     const launch = buildEngineSessionLaunch({
       task: { id: target.id, kind: target.kind, vendor: target.vendor, repo: target.repo },
       worktreePath: worktree,
@@ -83,8 +92,13 @@ async function deliverHosted(target: PromptTarget, worktree: string, prompt: str
     // tabs from the task's persisted snapshot — a CLI-started session used to
     // run live with no snapshot, so the tree showed the worktree with no tabs
     // under it at all. Write-once (a --tab new spawn already appended its tab
-    // in mintCliTab); see `tab-snapshot.ts`.
-    if (!newTab) publishCliTabSnapshot(target.id)
+    // in mintCliTab); see `tab-snapshot.ts`. When THIS delivery started the
+    // session, record the pinned session id + spawned flag too, so a later
+    // dead-reattach resumes the conversation (see engineTabArgv).
+    if (result.started && sessionId) {
+      if (newTab) markCliTabSession(target.id, newTab, sessionId)
+      else publishCliTabSnapshot(target.id, sessionId)
+    } else if (!newTab) publishCliTabSnapshot(target.id)
     return result
   } catch (error) {
     if (error instanceof ApiError) throw error

@@ -181,7 +181,11 @@ export async function deliverHostedPrompt(
   }
 
   const staleCanonical = sessions.find((session) => session.key === launch.key && !session.alive)
-  if (staleCanonical) await rpc.request("pty.kill", { key: launch.key })
+  // A FREEZE-RESTORED corpse is not killed: `pty.open` respawns it in place
+  // (pre-restart scrollback kept), so the launch below both revives the tab
+  // and carries this prompt. An ordinary corpse (died while the host lived)
+  // is view-only — open would ignore our spec, so it must be killed first.
+  if (staleCanonical && staleCanonical.restored !== true) await rpc.request("pty.kill", { key: launch.key })
 
   // No cols/rows: the host sizes the fresh spawn itself (80×24 default);
   // on the lost-create-race reattach below, a size-less open never resizes
@@ -196,7 +200,7 @@ export async function deliverHostedPrompt(
       return {
         session: launch.key,
         pane: launch.key,
-        started: open.created !== false,
+        started: open.created !== false || open.respawned === true,
         engineReady: false,
         delivered: false,
       }
@@ -210,19 +214,21 @@ export async function deliverHostedPrompt(
       return {
         session: launch.key,
         pane: launch.key,
-        started: open.created !== false,
+        started: open.created !== false || open.respawned === true,
         engineReady: delivered,
         delivered,
       }
     }
     // Another API process may win the create race after our pty.list. Its
     // launch spec wins, so ours did not carry this prompt; deliver it now.
-    if (open.created === false) await writePrompt(rpc, launch.key, prompt)
+    // A RESPAWNED restored corpse is the opposite: our launch DID run (the
+    // prompt rode its argv), so pasting here would deliver it twice.
+    if (open.created === false && open.respawned !== true) await writePrompt(rpc, launch.key, prompt)
     const delivered = true
     return {
       session: launch.key,
       pane: launch.key,
-      started: open.created !== false,
+      started: open.created !== false || open.respawned === true,
       engineReady: delivered,
       delivered,
     }
