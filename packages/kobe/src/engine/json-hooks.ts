@@ -57,6 +57,17 @@ function isKobeActivityGroup(group: unknown, markers: readonly string[]): boolea
   )
 }
 
+/** True if a shared settings object still carries any of kobe's activity hook
+ *  groups (the same ownership predicate the merge uses). Detection only — the
+ *  plugin-migration hint needs a read-side answer without editing the file. */
+export function hasKobeActivityHooks(current: Record<string, unknown>, eventMap: readonly HookEventSpec[]): boolean {
+  const markers = activityMarkers(eventMap)
+  const hooks = isObject(current.hooks) ? current.hooks : {}
+  return Object.values(hooks).some(
+    (groups) => Array.isArray(groups) && groups.some((g) => isKobeActivityGroup(g, markers)),
+  )
+}
+
 /** Optional knobs shared by the build/merge pair. */
 export interface ActivityHookOpts {
   /** Extra argv appended after the verb (e.g. `--engine claude`, so `kobe

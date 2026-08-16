@@ -17,6 +17,10 @@ const mocks = vi.hoisted(() => ({
   connectIfRunning: vi.fn(),
   request: vi.fn(),
   close: vi.fn(),
+  // Plugin takeover flag (issue #37) — mocked so the gate never reads the
+  // developer's real ~/.claude/settings.json (which may genuinely have the
+  // Rove plugin enabled).
+  rovePluginEnabled: vi.fn(() => false),
   adapter: {
     supportsHooks: vi.fn(() => true),
     supportsWorktreeSync: vi.fn(() => true),
@@ -25,6 +29,8 @@ const mocks = vi.hoisted(() => ({
     globalSettingsPath: vi.fn((): string | null => "/fake/.claude/settings.json"),
     installActivityHooks: vi.fn(),
     installWorktreeWatchHook: vi.fn(),
+    removeActivityHooks: vi.fn(),
+    removeWorktreeWatchHook: vi.fn(),
     removeWorktreeSyncHook: vi.fn(),
   },
 }))
@@ -34,7 +40,15 @@ vi.mock("@sma1lboy/kobe-daemon/client/daemon-process", () => ({
 }))
 
 vi.mock("../../src/engine/hook-adapter.ts", () => ({
-  createEngineHookAdapter: vi.fn(() => mocks.adapter),
+  // Same shared method mocks for every vendor; `vendor` is stamped per call so
+  // the plugin-mode gate can tell claude apart from the rest.
+  createEngineHookAdapter: vi.fn((vendor: string) => ({ ...mocks.adapter, vendor })),
+}))
+
+vi.mock("../../src/engine/claude-code-local/plugin-migration.ts", () => ({
+  isRovePluginEnabled: mocks.rovePluginEnabled,
+  detectLegacyInstalls: vi.fn(() => ({ legacyHooks: false, legacySkillDirs: [] })),
+  migrationHint: vi.fn(() => null),
 }))
 
 import { ensureGlobalKobeHooks, runHookSubcommand } from "../../src/cli/hook-cmd.ts"
@@ -64,6 +78,7 @@ beforeEach(() => {
   mocks.connectIfRunning.mockReset().mockResolvedValue({ request: mocks.request, close: mocks.close })
   mocks.request.mockReset().mockResolvedValue({})
   mocks.close.mockReset()
+  mocks.rovePluginEnabled.mockClear().mockReturnValue(false)
   mocks.adapter.supportsHooks.mockClear().mockReturnValue(true)
   mocks.adapter.supportsWorktreeSync.mockClear().mockReturnValue(true)
   mocks.adapter.activityDetailFromPayload.mockClear().mockReturnValue(undefined)
@@ -71,6 +86,8 @@ beforeEach(() => {
   mocks.adapter.globalSettingsPath.mockClear().mockReturnValue("/fake/.claude/settings.json")
   mocks.adapter.installActivityHooks.mockClear()
   mocks.adapter.installWorktreeWatchHook.mockClear()
+  mocks.adapter.removeActivityHooks.mockClear()
+  mocks.adapter.removeWorktreeWatchHook.mockClear()
   mocks.adapter.removeWorktreeSyncHook.mockClear()
   stubStdin({})
 })
@@ -278,6 +295,35 @@ describe("ensureGlobalKobeHooks (default-ON global install)", () => {
   it("never throws when an install fails (best-effort, must not block launch)", async () => {
     mocks.adapter.installActivityHooks.mockRejectedValue(new Error("EACCES"))
     await expect(ensureGlobalKobeHooks()).resolves.toBeUndefined()
+  })
+
+  // Issue #37 plugin takeover: the Claude Code plugin's hooks.json carries
+  // the claude hooks, so the settings-managed install must skip claude —
+  // otherwise every event fires twice. Other engines keep their install.
+  it("plugin mode skips the claude settings install but keeps other engines", async () => {
+    mocks.rovePluginEnabled.mockReturnValue(true)
+    await ensureGlobalKobeHooks()
+    const installedVendors = mocks.adapter.installActivityHooks.mock.contexts.map(
+      (ctx) => (ctx as { vendor: string }).vendor,
+    )
+    expect(installedVendors).not.toContain("claude")
+    expect(installedVendors.length).toBeGreaterThan(0) // codex/… still installed
+  })
+})
+
+describe("runHookSubcommand cleanup (plugin migration path)", () => {
+  it("removes the claude settings-managed hooks and only those", async () => {
+    const outSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true)
+    await runHookSubcommand(["cleanup"])
+    expect(mocks.adapter.removeActivityHooks).toHaveBeenCalledWith("/fake/.claude/settings.json")
+    expect(mocks.adapter.removeWorktreeWatchHook).toHaveBeenCalledWith("/fake/.claude/settings.json")
+    // Exactly one adapter (claude) swept — codex's hooks.json is untouched.
+    expect(mocks.adapter.removeActivityHooks).toHaveBeenCalledTimes(1)
+    const cleanedVendors = mocks.adapter.removeActivityHooks.mock.contexts.map(
+      (ctx) => (ctx as { vendor: string }).vendor,
+    )
+    expect(cleanedVendors).toEqual(["claude"])
+    outSpy.mockRestore()
   })
 })
 
