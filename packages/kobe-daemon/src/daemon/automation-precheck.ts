@@ -15,10 +15,15 @@
  * can tell a healthy "nothing to do" from a broken command.
  *
  * Runs through the user's login shell so the command reads the same as it
- * would typed into a terminal (pipes, `&&`, PATH from their profile).
+ * would typed into a terminal (pipes, `&&`, PATH/exports from their rc
+ * files). It uses the same `-ilc` form `session-launch.ts` spawns engine
+ * tabs with (#26): the interactive bit is what sources `.zshrc`/`.bashrc`,
+ * so a precheck sees the same environment as the engine it gates. Interactive
+ * rc output (e.g. a prompt framework's banner) rides along in the captured
+ * streams; the exit code stays the only decision signal, and the timeout
+ * bounds a slow rc.
  * `resolveLoginShell` resolves to a bash even on Windows (Git Bash — see its
- * WSL caveat), so the `-lc` form is portable, matching the `-ilc` that
- * `session-launch.ts` already uses for engine spawns.
+ * WSL caveat), so the `-ilc` form is portable.
  */
 
 import { spawn } from "node:child_process"
@@ -99,7 +104,7 @@ export function runAutomationPrecheck(
 
     let child: ReturnType<typeof spawn>
     try {
-      child = spawn(shell, ["-lc", precheck.command], {
+      child = spawn(shell, ["-ilc", precheck.command], {
         cwd,
         stdio: ["ignore", "pipe", "pipe"],
         signal: controller.signal,

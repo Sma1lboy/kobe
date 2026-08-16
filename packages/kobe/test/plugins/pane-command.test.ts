@@ -1,6 +1,7 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
+import { resolveLoginShell } from "@sma1lboy/kobe-daemon/daemon/platform-shell"
 import { buildPaneArgv, listPaneLaunches } from "@sma1lboy/kobe-daemon/plugins/pane-command"
 import { savePluginRegistry } from "@sma1lboy/kobe-daemon/plugins/registry"
 import { afterEach, describe, expect, it } from "vitest"
@@ -18,14 +19,14 @@ afterEach(() => {
 const OPTS = { socketPath: "/tmp/x.sock", binPath: "kobe" }
 
 describe("buildPaneArgv", () => {
-  it("wraps the command in sh -lc with the env contract and root expansion", () => {
+  it("wraps the command in the login shell's -ilc with the env contract and root expansion", () => {
     const argv = buildPaneArgv(
       "p.id",
       "/plug/root",
       { id: "b", title: "B", placement: "split", command: ["sh", "$ROVE_PLUGIN_ROOT/run.sh", "it's"] },
       OPTS,
     )
-    expect(argv.slice(0, 2)).toEqual(["sh", "-lc"])
+    expect(argv.slice(0, 2)).toEqual([resolveLoginShell(), "-ilc"])
     const script = argv[2] as string
     expect(script.startsWith("exec env ")).toBe(true)
     for (const frag of [
@@ -69,6 +70,6 @@ describe("listPaneLaunches", () => {
     const launches = listPaneLaunches({ ...OPTS, homeDir: home })
     expect(launches).toHaveLength(1)
     expect(launches[0]).toMatchObject({ pluginId: "p", paneId: "git", title: "lazygit", placement: "split" })
-    expect(launches[0]?.argv[0]).toBe("sh")
+    expect(launches[0]?.argv[0]).toBe(resolveLoginShell())
   })
 })
