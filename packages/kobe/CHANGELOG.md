@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.122
+
+### Patch Changes
+
+- 8b37c4c: Rove skill v27: document the cross-repo request flow — a project's main task is its standing inbox, and an agent that finds a defect in another product should file a report there (symptoms / root cause / why / non-prescriptive suggestions) instead of quietly working around it, addressing the engine tab explicitly with `--tab`. Raised by a field report: agents didn't know filing requests was possible, so every cross-product gap waited for a human who happened to know.
+- 80610e8: Rove skill v28: sharpen the cross-repo request protocol — send the report to the target project's main task, never `add` a task into someone else's repo. The reporter holds problem-side context only; the receiving main agent holds solution-side context and owns decomposing the report into tasks.
+
 ## 0.8.121
 
 ### Patch Changes
