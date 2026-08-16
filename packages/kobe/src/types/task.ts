@@ -164,11 +164,26 @@ export interface Task {
    */
   readonly pinned?: boolean
   /**
-   * Engine vendor hint — tells the monitor's history reader which
+   * Engine PROTOCOL hint — tells the monitor's history reader which
    * adapter to use when parsing this task's transcript. Optional;
    * missing values normalize to {@link DEFAULT_TASK_VENDOR}.
+   *
+   * Derived from {@link command}, not declared beside it: `rove api add
+   * --command …` resolves the protocol from the command's argv[0]
+   * (`engine/engine-presets.ts`), and a command kobe cannot name records
+   * the generic protocol until a live session is sniffed. Records that
+   * predate `command` carry a preset id here and launch from it, so the
+   * two fields stay interchangeable at the launch site.
    */
   readonly vendor?: VendorId
+  /**
+   * The RAW launch command for this task's engine — what the dispatch
+   * face (`add --command` / `set-command`) was given, verbatim. Either a
+   * registered preset id (built-in or custom, whose `engineCommand.<id>`
+   * override still applies) or a full command line. Absent on records
+   * created before the field, which launch from {@link vendor} instead.
+   */
+  readonly command?: string
   readonly prStatus?: TaskPRStatus
   /**
    * Manual ordering key within a status column on the WEB BOARD only —

@@ -78,6 +78,8 @@ export interface DaemonTask {
   readonly archived: boolean
   readonly pinned?: boolean
   readonly vendor?: VendorId
+  /** Raw engine launch command; `vendor` carries its resolved protocol. */
+  readonly command?: string
   readonly prStatus?: TaskPRStatus
   readonly position?: number
   readonly modelEffort?: string
@@ -122,6 +124,8 @@ export interface DaemonOrchestrator {
     branch?: string
     baseRef?: string
     vendor?: VendorId
+    /** Raw engine launch command; `vendor` carries its resolved protocol. */
+    command?: string
     modelEffort?: string
     groupId?: string
     dispatcher?: TaskDispatcher
@@ -134,6 +138,8 @@ export interface DaemonOrchestrator {
   setTitle(id: string, title: string): Promise<void>
   setBranch(id: string, branch: string): Promise<void>
   setVendor(id: string, vendor: VendorId): Promise<void>
+  /** Pin a raw launch command (and its caller-resolved protocol) on a task. */
+  setCommand(id: string, command: string, vendor?: VendorId): Promise<void>
   setPinned(id: string, pinned?: boolean): Promise<void>
   moveTask(id: string, delta: -1 | 1): Promise<void>
   setArchived(id: string, archived?: boolean): Promise<void>

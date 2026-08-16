@@ -90,13 +90,16 @@ export interface VerbSpec {
   readonly handler: VerbHandler
 }
 
-// ── Prompt delivery (shared by add / fan-out / send) ─────────────────────────
+// ── Prompt delivery (shared by add / send) ───────────────────────────────────
 
 export interface PromptTarget {
   readonly id: string
   readonly worktreePath: string
   readonly kind?: "main" | "task" | "dir"
+  /** Resolved PROTOCOL (history reader / trust store / delivery mode). */
   readonly vendor?: VendorId
+  /** Raw launch command pinned on the task; wins over {@link vendor} at spawn. */
+  readonly command?: string
   readonly modelEffort?: string
   readonly repo?: string
   /**
@@ -106,15 +109,21 @@ export interface PromptTarget {
    */
   readonly tab?: string
   /**
-   * Engine to PIN on a `--tab new` tab (`send --vendor`), when it should not
+   * Engine PROTOCOL to pin on a `--tab new` tab, when the tab should not
    * simply inherit the task's. Recorded on the minted tab exactly like the
    * TUI's ctrl+e pick, so the tab keeps that engine across restarts and a
-   * later `set-vendor` on the task does not silently move it.
+   * later `set-command` on the task does not silently move it.
    */
   readonly tabVendor?: VendorId
   /**
+   * Raw launch command to pin on a `--tab new` tab (`send --tab new
+   * --command …`) — the command half of {@link tabVendor}. Lets one
+   * worktree run two different agents without changing the task's own.
+   */
+  readonly tabCommand?: string
+  /**
    * This delivery is the FIRST prompt of a task the caller just created
-   * (`add --prompt` / `fan-out`) — it gets the branch-rename coda (see
+   * (`add --prompt`, single or `--count`) — it gets the branch-rename coda (see
    * `PromptDeliveryIntent`'s `new-task` kind). `send` never sets it.
    */
   readonly newTask?: boolean
@@ -128,7 +137,7 @@ export interface DeliveredPrompt {
   /**
    * Whether the paste was CONFIRMED in the engine's composer (its tail
    * appeared on capture). `false` on a cold boot where the pane never
-   * settled — surfaced so a scripted fan-out's dropped first prompt never
+   * settled — surfaced so a scripted parallel round's dropped first prompt never
    * looks like a clean success.
    */
   readonly delivered: boolean

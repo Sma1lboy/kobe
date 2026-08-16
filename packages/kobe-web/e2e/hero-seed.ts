@@ -92,7 +92,7 @@ for (const seed of SEEDS) {
     console.log(`[hero] reusing session: ${seed.title}`)
     continue
   }
-  const created = heroApi(["add", "--repo", HERO_REPO, "--title", seed.title, "--vendor", "claude"]) as {
+  const created = heroApi(["add", "--repo", HERO_REPO, "--title", seed.title, "--command", "claude"]) as {
     taskId?: string
   }
   if (!created.taskId) throw new Error(`hero seed created no task for ${seed.title}`)

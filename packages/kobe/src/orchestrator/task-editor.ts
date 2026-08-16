@@ -138,6 +138,21 @@ export class TaskEditor {
     await this.store.update(task.id, { vendor })
   }
 
+  /**
+   * Pin a RAW launch command on a task (the dispatch face's `set-command`).
+   * Same pure-metadata contract as {@link setVendor}: the next fresh engine
+   * session launches it. `vendor` is the command's protocol as resolved by
+   * the caller (the CLI, which can read the preset registry); omitting it
+   * leaves the recorded protocol alone rather than guessing.
+   */
+  async setCommand(id: TaskId | string, command: string, vendor?: VendorId): Promise<void> {
+    const trimmed = command.trim()
+    if (!trimmed) throw new Error("setCommand: command is required (empty or whitespace-only rejected)")
+    const task = this.requireTask(id)
+    if (task.command === trimmed && (vendor === undefined || task.vendor === vendor)) return
+    await this.store.update(task.id, { command: trimmed, ...(vendor ? { vendor } : {}) })
+  }
+
   /** Toggle / set the `pinned` flag. No-op for `kind: "main"` (always pinned). */
   async setPinned(id: TaskId | string, pinned?: boolean): Promise<void> {
     const task = this.requireTask(id)
