@@ -174,6 +174,38 @@ describe("activity observer", () => {
     expect(w.row("tab-2")?.state).toBe("running")
   })
 
+  it("a pty-host outage never resurrects an already-corrected idle as phantom running (#27)", async () => {
+    // Regression for 073deeaf: after an ESC correction the tab held
+    // {hook: running@T0, observed: idle}. The host-unreachable retire path
+    // calls observeTab with NO correction gate, so the Infinity default
+    // re-elected the stale hook claim and republished `running` — at the
+    // stale T0 — for the whole outage.
+    const w = world()
+    w.registry.report(TASK, "turn-start", undefined, "tab-1", { id: "s1" }, "claude")
+    w.state.sessions = [{ key: KEY, alive: true, pid: 42, title: "✳ 修复构建失败", totalBytes: 100 }]
+    w.state.engines.set(42, "claude")
+    await waitFor(() => w.row("tab-1")?.state === "idle")
+
+    w.state.sessions = null // host blips
+    await wait(80)
+    expect(w.row("tab-1")?.state).toBe("idle")
+
+    // …and it stays idle once the host comes back still resting.
+    w.state.sessions = [{ key: KEY, alive: true, pid: 42, title: "✳ 修复构建失败", totalBytes: 100 }]
+    await wait(80)
+    expect(w.row("tab-1")?.state).toBe("idle")
+  })
+
+  it("a fresh hook turn after a correction relights the tab (the retire is not permanent)", async () => {
+    const w = world()
+    w.registry.report(TASK, "turn-start", undefined, "tab-1", { id: "s1" }, "claude")
+    w.state.sessions = [{ key: KEY, alive: true, pid: 42, title: "✳ resting", totalBytes: 100 }]
+    w.state.engines.set(42, "claude")
+    await waitFor(() => w.row("tab-1")?.state === "idle")
+    w.registry.report(TASK, "turn-start", undefined, "tab-1", { id: "s1" }, "claude")
+    expect(w.row("tab-1")?.state).toBe("running")
+  })
+
   it("hook events outrank observation: a sticky badge is never overwritten", async () => {
     const w = world()
     w.registry.report(TASK, "awaiting-input", { waiting: "permission" }, "tab-1", { id: "s1" }, "claude")
