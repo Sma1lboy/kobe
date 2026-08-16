@@ -164,6 +164,21 @@ async function addParallel(
       helpStep("add"),
     )
   }
+  // `--agents` already names an engine per sibling AND how many of each, so
+  // `--command` / `--count` alongside it have nothing left to say. Refuse
+  // rather than silently ignore — a caller who wrote both believes both
+  // applied, and a fleet is expensive to spawn wrong (same reasoning as
+  // `send --command` without `--tab new`).
+  if (agentsSpec) {
+    const conflict = count !== undefined ? "--count" : args.str("command") ? "--command" : null
+    if (conflict) {
+      throw new ApiError(
+        `${conflict} conflicts with --agents, which already names each sibling's engine and how many — pass one or the other`,
+        "BAD_FLAG",
+        helpStep("add"),
+      )
+    }
+  }
   const title = args.str("title")
   const baseRef = args.str("base-branch")
 

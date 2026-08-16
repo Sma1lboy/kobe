@@ -121,6 +121,23 @@ describe("add handler", () => {
     expect(client.requests).toEqual([])
   })
 
+  it.each([
+    ["--count", ["--count", "2"]],
+    ["--command", ["--command", "codex"]],
+  ])("refuses %s alongside --agents instead of silently ignoring it", async (_label, extra) => {
+    const client = new FakeClient({ "task.create": () => ({ taskId: "t1", task: taskFixture() }) })
+    await expectApiError(
+      () =>
+        invokeVerb("add", ["--repo", "/repo/x", "--prompt", "go", "--agents", "claude:2", ...extra], {
+          client,
+          runtime: stubRuntime(),
+        }),
+      "BAD_FLAG",
+    )
+    // A fleet is expensive to spawn wrong — nothing may be created.
+    expect(client.requests).toEqual([])
+  })
+
   it("refuses --branch on a parallel round (siblings cannot share one branch)", async () => {
     const client = new FakeClient({ "task.create": () => ({ taskId: "t1", task: taskFixture() }) })
     await expectApiError(
