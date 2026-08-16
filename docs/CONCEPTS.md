@@ -24,13 +24,25 @@ the same directory. Only managed tasks get Rove-created branch/worktree
 isolation; project-main and directory tasks deliberately reuse directories you
 already own.
 
+**Scratch shells** are directory Tasks with an unsettled home: the "scratch
+shell" choice at the tail of the `ctrl+e` new-conversation dialog opens one
+as a bare shell in `$HOME`. It
+lives in the sidebar's Scratch section above every project, and follows a
+zero-ceremony lifecycle — the shell exiting removes the row (no archive, no
+confirm; nothing on disk is touched). A scratch row earns a permanent place
+two ways: rename it (naming is the keep gesture), or start a coding harness
+inside a git repository — Rove detects the live harness plus the shell's
+settled directory and quietly migrates the row into that repository's project
+group.
+
 Each Task has a `status` you set yourself — `backlog`, `in_progress`,
 `in_review`, `done`, `canceled`, `error` — and a separate `archived` flag.
 
 **Archiving a managed or directory Task is safe.** It stops the Task's live
-sessions and moves it to Archives. Its directory and engine-owned conversation
-history stay. Archive, `done`, and `canceled` never delete files. Project-main
-Tasks cannot be archived.
+sessions and removes the row from the sidebar (archived Tasks remain listed by
+`rove api list` and on the web board). Its directory and engine-owned
+conversation history stay. Archive, `done`, and `canceled` never delete files.
+Project-main Tasks cannot be archived.
 
 **Delete is explicit and kind-aware.** A project-main Task cannot go through
 Task deletion; pressing `d` on its row instead forgets the saved project and
@@ -160,7 +172,7 @@ avoids touching your real `~/.rove` task data or `.kobe` runtime.
 **Many attempts at one prompt.** Press `n` in the TUI, or script it:
 
 ```bash
-rove api fan-out --repo "$PWD" \
+rove api add --repo "$PWD" \
   --agents claude:2,codex:2 \
   --prompt "Try independent approaches to simplify the auth flow."
 ```

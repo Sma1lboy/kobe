@@ -10,7 +10,6 @@ import { describe, expect, it } from "vitest"
 import {
   BRANCH_LABEL_MAX,
   type SearchKeystroke,
-  cycleViewTarget,
   projectScrollMaxHeightFor,
   searchQueryKeystroke,
   sidebarEmptyStateKey,
@@ -20,15 +19,6 @@ import {
   truncateBranchLabel,
   truncateProjectFilterLabel,
 } from "../../src/tui/panes/sidebar/view-core"
-
-describe("view tabs", () => {
-  it("cycles with wrap-around in both directions", () => {
-    expect(cycleViewTarget("active", 1)).toBe("archived")
-    expect(cycleViewTarget("archived", 1)).toBe("active")
-    expect(cycleViewTarget("active", -1)).toBe("archived")
-    expect(cycleViewTarget("archived", -1)).toBe("active")
-  })
-})
 
 describe("line budgets", () => {
   it("reserves 5 cells on both lines (cards subtract live clusters), floored at 6", () => {
@@ -68,22 +58,10 @@ describe("line budgets", () => {
 })
 
 describe("i18n key selection", () => {
-  it("picks the empty-state key by search > project filter > view", () => {
-    expect(sidebarEmptyStateKey({ searching: true, projectFilter: true, view: "active" })).toBe(
-      "tasks.empty.noMatchSearch",
-    )
-    expect(sidebarEmptyStateKey({ searching: false, projectFilter: true, view: "active" })).toBe(
-      "tasks.empty.noActiveProject",
-    )
-    expect(sidebarEmptyStateKey({ searching: false, projectFilter: true, view: "archived" })).toBe(
-      "tasks.empty.noArchivedProject",
-    )
-    expect(sidebarEmptyStateKey({ searching: false, projectFilter: false, view: "active" })).toBe(
-      "tasks.empty.noActive",
-    )
-    expect(sidebarEmptyStateKey({ searching: false, projectFilter: false, view: "archived" })).toBe(
-      "tasks.empty.noArchived",
-    )
+  it("picks the empty-state key by search > project filter > plain", () => {
+    expect(sidebarEmptyStateKey({ searching: true, projectFilter: true })).toBe("tasks.empty.noMatchSearch")
+    expect(sidebarEmptyStateKey({ searching: false, projectFilter: true })).toBe("tasks.empty.noActiveProject")
+    expect(sidebarEmptyStateKey({ searching: false, projectFilter: false })).toBe("tasks.empty.noActive")
   })
 })
 

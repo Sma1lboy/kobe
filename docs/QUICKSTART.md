@@ -75,7 +75,7 @@ One prompt, N isolated attempts, one command:
 ![One prompt fans out to three tasks, each with its own worktree, engine session, and branch](assets/fan-out.png)
 
 ```bash
-rove api fan-out --repo "$PWD" \
+rove api add --repo "$PWD" \
   --agents claude:2,codex:2 \
   --prompt "Try independent approaches to simplify the auth flow."
 ```
@@ -94,6 +94,19 @@ Install the companion skill so your coding agent can run this loop itself:
 ```bash
 rove skill install
 ```
+
+**Claude Code users have a one-stop alternative**: the Rove plugin carries the
+skill AND the activity hooks in one install, with no PATH or settings.json
+setup:
+
+```text
+/plugin marketplace add Sma1lboy/rove
+/plugin install rove@rove
+```
+
+If you were already running Rove before installing the plugin, run
+`rove hook cleanup` once afterwards — details in
+[Configuration → Claude Code plugin](CONFIGURATION.md#claude-code-plugin).
 
 ## If something's wrong
 

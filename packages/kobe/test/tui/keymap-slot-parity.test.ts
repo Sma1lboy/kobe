@@ -100,8 +100,8 @@ describe("slot dispatch parity with default keys", () => {
     expect(calls).toEqual(["collapse", "expand", "collapse", "expand"])
   })
 
-  test("sidebar.view and files.tab: [ → prev, ] → next", () => {
-    for (const id of ["sidebar.view", "files.tab"]) {
+  test("files.tab: [ → prev, ] → next", () => {
+    for (const id of ["files.tab"]) {
       const calls: number[] = []
       const handlers = {
         [id]: (_evt: unknown, slot?: number) => {

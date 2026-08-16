@@ -49,6 +49,7 @@ export const TASK_HANDLERS: readonly DaemonRequestHandler[] = [
         branch: optionalString(payload, "branch"),
         baseRef: optionalString(payload, "baseRef"),
         vendor: optionalVendor(payload, "vendor"),
+        command: optionalString(payload, "command"),
         modelEffort: optionalString(payload, "effort"),
         groupId: optionalString(payload, "groupId"),
         dispatcher,
@@ -94,6 +95,19 @@ export const TASK_HANDLERS: readonly DaemonRequestHandler[] = [
       const vendor = optionalVendor(payload, "vendor")
       if (!vendor) throw new Error("task.setVendor: vendor is required")
       await ctx.orch.setVendor(taskId, vendor)
+      return {}
+    },
+  },
+  {
+    name: "task.setCommand",
+    web: true,
+    async handle(payload, ctx) {
+      const taskId = requireString(payload, "taskId")
+      // The PROTOCOL rides along rather than being derived here: engine
+      // presets live in kobe's state.json (`customEngineIds` /
+      // `engineProtocol.<id>`), which this process deliberately cannot read.
+      // Absent = the caller had no verdict; the task keeps its current one.
+      await ctx.orch.setCommand(taskId, requireString(payload, "command"), optionalVendor(payload, "vendor"))
       return {}
     },
   },
@@ -216,8 +230,23 @@ export const TASK_HANDLERS: readonly DaemonRequestHandler[] = [
     web: true,
     async handle(payload, ctx) {
       const dir = requireString(payload, "dir")
-      const task = await ctx.orch.openDirectoryTask({ dir, vendor: optionalVendor(payload, "vendor") })
+      const task = await ctx.orch.openDirectoryTask({
+        dir,
+        vendor: optionalVendor(payload, "vendor"),
+        scratch: optionalBoolean(payload, "scratch"),
+      })
       return { taskId: task.id, task: serializeTask(task) }
+    },
+  },
+  {
+    // Scratch → project migration (issue #33): repoint a scratch task at the
+    // repo its shell settled in and clear the flag. No-op on non-scratch rows.
+    name: "task.adoptScratchRepo",
+    web: true,
+    async handle(payload, ctx) {
+      const taskId = requireString(payload, "taskId")
+      await ctx.orch.adoptScratchRepo(taskId, requireString(payload, "repo"))
+      return {}
     },
   },
   {

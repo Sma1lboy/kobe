@@ -98,3 +98,44 @@ describe("openDirectoryTask", () => {
     await expect(orch.setBranch(task.id, "x")).rejects.toThrow(/directory task/)
   })
 })
+
+describe("scratch tasks (issue #33)", () => {
+  it("openDirectoryTask({scratch:true}) marks the row; a plain open does not", async () => {
+    const scratch = await orch.openDirectoryTask({ dir, scratch: true })
+    const plain = await orch.openDirectoryTask({ dir })
+    expect(scratch.scratch).toBe(true)
+    expect(plain.scratch).toBeUndefined()
+  })
+
+  it("adoptScratchRepo repoints the task at the repo and clears the flag", async () => {
+    const scratch = await orch.openDirectoryTask({ dir, scratch: true })
+    await orch.adoptScratchRepo(scratch.id, home) // any existing dir works as "the repo"
+    const adopted = orch.getTask(scratch.id)
+    expect(adopted?.scratch).toBe(false)
+    // canonPath realpaths (macOS /var → /private/var) — compare the tail.
+    expect(adopted?.repo.endsWith(home.replace(/^\/private/, ""))).toBe(true)
+    expect(adopted?.worktreePath).toBe(adopted?.repo)
+    expect(adopted?.kind).toBe("dir")
+  })
+
+  it("adoptScratchRepo is a no-op on non-scratch rows", async () => {
+    const plain = await orch.openDirectoryTask({ dir })
+    await orch.adoptScratchRepo(plain.id, home)
+    expect(orch.getTask(plain.id)?.repo).toBe(plain.repo)
+  })
+
+  it("renaming a scratch task clears the flag — naming is the keep gesture", async () => {
+    const scratch = await orch.openDirectoryTask({ dir, scratch: true })
+    await orch.setTitle(scratch.id, "my bench")
+    const kept = orch.getTask(scratch.id)
+    expect(kept?.scratch).toBe(false)
+    expect(kept?.title).toBe("my bench")
+  })
+
+  it("the scratch flag survives a store reload (codec round-trip)", async () => {
+    const scratch = await orch.openDirectoryTask({ dir, scratch: true })
+    const reloaded = new TaskIndexStore({ homeDir: home })
+    await reloaded.load()
+    expect(reloaded.get(scratch.id)?.scratch).toBe(true)
+  })
+})

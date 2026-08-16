@@ -96,18 +96,21 @@ export function engineTabSpawnFor(
     argv: engineTabArgv(tab, base, live),
     promptIntent,
     protocolGates: opts.protocolGates,
-    // The TUI owns no post-spawn paste hook, so it keeps argv delivery even
-    // for paste vendors (kimi). That preserves the pre-#25 behavior here —
-    // a kimi tab-level prompt still fails loud in the engine — rather than
-    // silently dropping the prompt. Wiring the TUI's own paste-after-ready
-    // is the tracked follow-up.
-    firstMessageDelivery: "argv",
+    // No firstMessageDelivery override: the registry contract applies, so a
+    // paste vendor's (kimi — issue #25) first message comes back as
+    // `launch.firstMessage` instead of riding the argv (its positional slot
+    // is a subcommand — the text would kill the launch as an unknown
+    // command). The hosted PTY backend pastes it post-spawn
+    // (`TaskPtyOpts.firstMessage` → `pastePromptWhenEngineUp`).
     // Tab identity → exported env in the launch script: the engine's hook
     // subprocesses inherit it, so `kobe hook` can attribute activity to
     // THIS tab — cwd alone can't (every tab of a task shares the worktree).
     tabId: ref ? "tab-1" : tab.id,
   })
-  return { command: launch.command }
+  return {
+    command: launch.command,
+    ...(launch.firstMessage ? { firstMessage: launch.firstMessage, engineBin: base[0] } : {}),
+  }
 }
 
 export type TabExitAction = "close" | "resume"

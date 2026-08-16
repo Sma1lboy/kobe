@@ -43,13 +43,15 @@ export class TaskEditor {
     return task
   }
 
-  /** Rename a task. Empty / whitespace-only titles are rejected. */
+  /** Rename a task. Empty / whitespace-only titles are rejected. Naming a
+   *  SCRATCH task is the "keep this" gesture (issue #33) — it clears the
+   *  flag, so the row survives its shell exiting. */
   async setTitle(id: TaskId | string, title: string): Promise<void> {
     const trimmed = title.trim()
     if (!trimmed) throw new Error("setTitle: title is required (empty or whitespace-only rejected)")
     const task = this.requireTask(id)
-    if (task.title === trimmed) return
-    await this.store.update(task.id, { title: trimmed })
+    if (task.title === trimmed && task.scratch !== true) return
+    await this.store.update(task.id, { title: trimmed, ...(task.scratch === true ? { scratch: false } : {}) })
     await this.followBranchToTitle(task, trimmed)
   }
 
@@ -136,6 +138,21 @@ export class TaskEditor {
     const task = this.requireTask(id)
     if (task.vendor === vendor) return
     await this.store.update(task.id, { vendor })
+  }
+
+  /**
+   * Pin a RAW launch command on a task (the dispatch face's `set-command`).
+   * Same pure-metadata contract as {@link setVendor}: the next fresh engine
+   * session launches it. `vendor` is the command's protocol as resolved by
+   * the caller (the CLI, which can read the preset registry); omitting it
+   * leaves the recorded protocol alone rather than guessing.
+   */
+  async setCommand(id: TaskId | string, command: string, vendor?: VendorId): Promise<void> {
+    const trimmed = command.trim()
+    if (!trimmed) throw new Error("setCommand: command is required (empty or whitespace-only rejected)")
+    const task = this.requireTask(id)
+    if (task.command === trimmed && (vendor === undefined || task.vendor === vendor)) return
+    await this.store.update(task.id, { command: trimmed, ...(vendor ? { vendor } : {}) })
   }
 
   /** Toggle / set the `pinned` flag. No-op for `kind: "main"` (always pinned). */

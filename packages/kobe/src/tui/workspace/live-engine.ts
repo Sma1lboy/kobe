@@ -40,6 +40,17 @@ export interface LiveEngineStore {
    * cover the spawn window without also resurrecting a dead engine's name.
    */
   resolve(key: string): VendorId | null | undefined
+  /**
+   * Auxiliary ptyKey → shell pid pairs to probe ALONGSIDE the local PTY
+   * registry (issue #33): the registry only knows PTYs this process
+   * attached, but the sidebar tree renders every task's hosted tabs — the
+   * pty host's `pty.list` inventory carries their pids, and feeding them
+   * here lights a shell-turned-agent row for tasks never opened in this
+   * TUI. Hosted sessions only, by construction — the map's source is the
+   * host's own inventory, so a foreign terminal can never be probed.
+   * A key present in both sources uses the registry's pid.
+   */
+  setAuxPids(pids: ReadonlyMap<string, number>): void
   /** Subscribe to identity changes (fires when any key's vendor moved). */
   subscribe(listener: () => void): () => void
   /** Run one probe pass now — the interval calls this; tests await it. */
@@ -52,16 +63,30 @@ export type LiveEngineOpts = {
   snapshot?: PsSnapshot
   /** Engines start and stop on human timescales — one `ps` every 2s. */
   intervalMs?: number
+  /**
+   * Debounce for the OFF edge (issue #33): a lit identity goes dark only
+   * after this many CONSECUTIVE engine-free walks. Engines briefly show an
+   * empty tree mid-restart (claude relaunching after /login, a wrapper
+   *  re-exec), and a 1-probe flicker would strobe the sidebar badge. The ON
+   * edge stays immediate — lighting up needs no debounce, the walk only
+   * answers a vendor on positive argv evidence.
+   */
+  releaseAfterMisses?: number
 }
 
 export function createLiveEngines(opts: LiveEngineOpts = {}): LiveEngineStore {
   const entries = opts.entries ?? (() => getDefaultPtyRegistry().entries())
   const snapshot = opts.snapshot ?? psSnapshot
+  const releaseAfterMisses = Math.max(1, opts.releaseAfterMisses ?? 2)
   const vendors = new Map<string, VendorId>()
+  /** Consecutive engine-free walks per lit key — the OFF-edge debounce. */
+  const misses = new Map<string, number>()
   /** Keys the last successful probe actually walked — the resolve() tri-state:
    *  in here with no vendor means "shell confirmed engine-free", absent means
    *  "couldn't look" (no PTY / no pid / ps failed). */
   const answered = new Set<string>()
+  /** Hosted-session pids the local registry can't see — see setAuxPids. */
+  let auxPids: ReadonlyMap<string, number> = new Map()
   const listeners = new Set<() => void>()
   let disposed = false
 
@@ -74,9 +99,16 @@ export function createLiveEngines(opts: LiveEngineOpts = {}): LiveEngineStore {
       if (disposed) return
       const pids = new Map<string, number>()
       const live = new Set<string>()
+      for (const [key, pid] of auxPids) {
+        live.add(key)
+        pids.set(key, pid)
+      }
       for (const [key, pty] of entries()) {
         live.add(key)
         const pid = pty.shellPid ?? null
+        // The registry's attached PTY outranks the host inventory's row for
+        // the same key — but an attached-yet-unspawned PTY (pid null) must
+        // not erase a host pid we can walk.
         if (pid !== null) pids.set(key, pid)
       }
       let changed = false
@@ -85,6 +117,7 @@ export function createLiveEngines(opts: LiveEngineOpts = {}): LiveEngineStore {
       for (const key of [...vendors.keys()]) {
         if (live.has(key) && pids.has(key)) continue
         vendors.delete(key)
+        misses.delete(key)
         changed = true
       }
       for (const key of [...answered]) {
@@ -104,9 +137,23 @@ export function createLiveEngines(opts: LiveEngineOpts = {}): LiveEngineStore {
           const vendor = foregroundEngineIn(rows, pid)?.vendor ?? null
           answered.add(key)
           const prev = vendors.get(key) ?? null
-          if (prev === vendor) continue
-          if (vendor) vendors.set(key, vendor)
-          else vendors.delete(key)
+          if (vendor) {
+            misses.delete(key)
+            if (prev === vendor) continue
+            vendors.set(key, vendor)
+            changed = true
+            continue
+          }
+          if (prev === null) continue
+          // OFF-edge debounce: hold a lit identity through brief engine-free
+          // walks; only consecutive misses confirm the exit.
+          const count = (misses.get(key) ?? 0) + 1
+          if (count < releaseAfterMisses) {
+            misses.set(key, count)
+            continue
+          }
+          misses.delete(key)
+          vendors.delete(key)
           changed = true
         }
       }
@@ -120,6 +167,9 @@ export function createLiveEngines(opts: LiveEngineOpts = {}): LiveEngineStore {
       if (vendor) return vendor
       return answered.has(key) ? null : undefined
     },
+    setAuxPids(pids) {
+      auxPids = pids
+    },
     subscribe(listener) {
       listeners.add(listener)
       return () => {
@@ -130,6 +180,7 @@ export function createLiveEngines(opts: LiveEngineOpts = {}): LiveEngineStore {
       disposed = true
       listeners.clear()
       vendors.clear()
+      misses.clear()
       answered.clear()
       clearInterval(handle)
     },

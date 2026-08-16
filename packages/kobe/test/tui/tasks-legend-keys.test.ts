@@ -36,7 +36,6 @@ const SINGLE_ROWS: ReadonlyArray<readonly [id: string, cap: string]> = [
   ["task.new", "n"], // "new task"
   ["settings.open.sidebar", "s"], // "settings"
   ["tasks.openWorktree", "o"], // "open wt"
-  ["sidebar.view", "[/]"], // "views"
   ["sidebar.sort", "t"], // "sort"
   ["sidebar.localMerge", "M"], // "move task"
   ["help.open", "F1"], // "help"

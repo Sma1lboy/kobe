@@ -160,6 +160,26 @@ export function createPtySessionManager({
     return entry
   }
 
+  /** Bracketed-paste `text` into the session and submit, after `pasteDelay`
+   *  ms — shared by sendText and a fresh spawn's spec-carried first message
+   *  (paste-delivery vendors, issue #25: the message can't ride the argv). */
+  function schedulePaste(entry, text, pasteDelay) {
+    setTimeoutFn(() => {
+      try {
+        entry.pty.write(`\x1b[200~${text}\x1b[201~`)
+      } catch {
+        return
+      }
+      setTimeoutFn(() => {
+        try {
+          entry.pty.write("\r")
+        } catch {
+          /* best-effort */
+        }
+      }, submitDelays.enterMs)
+    }, pasteDelay)
+  }
+
   async function ensureSession(tabId, taskId, mode, cols, rows) {
     const existing = sessions.get(tabId)
     if (existing) return existing
@@ -167,7 +187,15 @@ export function createPtySessionManager({
     if (inflight) return inflight
     const p = (async () => {
       const spec = await fetchSpec(taskId, mode)
-      return sessions.get(tabId) ?? spawnSession(tabId, spec, cols, rows)
+      let entry = sessions.get(tabId)
+      const spawned = !entry
+      if (!entry) entry = spawnSession(tabId, spec, cols, rows)
+      // Paste-delivery vendor (kimi — issue #25): the daemon kept the first
+      // message OUT of the launch argv, so a FRESH spawn owes it a paste —
+      // same fixed-delay rule as sendText's spawn-on-send path. An existing
+      // session already received (or never had) it.
+      if (spawned && spec.firstMessage) schedulePaste(entry, spec.firstMessage, submitDelays.spawnedPasteMs)
+      return entry
     })()
     pendingSpawns.set(tabId, p)
     try {
@@ -240,20 +268,7 @@ export function createPtySessionManager({
 
     const target = entry
     const pasteDelay = spawned ? submitDelays.spawnedPasteMs : submitDelays.existingPasteMs
-    setTimeoutFn(() => {
-      try {
-        target.pty.write(`\x1b[200~${text}\x1b[201~`)
-      } catch {
-        return
-      }
-      setTimeoutFn(() => {
-        try {
-          target.pty.write("\r")
-        } catch {
-          /* best-effort */
-        }
-      }, submitDelays.enterMs)
-    }, pasteDelay)
+    schedulePaste(target, text, pasteDelay)
     return { sent: true, spawned }
   }
 

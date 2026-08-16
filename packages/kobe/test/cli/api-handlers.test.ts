@@ -1,7 +1,9 @@
-/** Request-traffic tests for API creation, send, and fan-out handlers. */
+/** Request-traffic tests for single-task `add` and the `send` handler.
+ *  The parallel `add --count` round lives in `./api-add-parallel.test.ts`. */
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { ApiError, type ApiRuntime, invokeVerb } from "../../src/cli/api-cmd.ts"
+import { resetVerifiedSelfSession, verifiedSelfSession } from "../../src/cli/api/dispatcher.ts"
 import { FakeClient, expectApiError, recordingDelivery, stubRuntime, taskFixture } from "./api-handler-fixtures.ts"
 
 // Peer provenance AND dispatcher provenance both key off the caller's own
@@ -45,13 +47,15 @@ describe("add handler", () => {
     expect(client.requests[1].payload).toEqual({ taskId: "t1" })
   })
 
-  it("canonicalizes repo and uses the configured default vendor", async () => {
+  it("canonicalizes repo and uses the configured default engine", async () => {
     const client = new FakeClient({ "task.create": () => ({ taskId: "t1", task: taskFixture() }) })
     await invokeVerb("add", ["--repo", "/repo/x/worktree"], {
       client,
       runtime: stubRuntime({ resolveRepoRoot: async () => "/repo/x", defaultVendor: async () => "codex" }),
     })
-    expect(client.requests[0].payload).toEqual({ repo: "/repo/x", vendor: "codex" })
+    // The default engine is a preset id, so it lands in BOTH fields: the raw
+    // command to launch and the protocol it speaks.
+    expect(client.requests[0].payload).toEqual({ repo: "/repo/x", command: "codex", vendor: "codex" })
   })
 
   it("applies status and pin then returns the refreshed task", async () => {
@@ -71,13 +75,43 @@ describe("add handler", () => {
     expect(result.task).toEqual(fresh)
   })
 
-  it("passes branch, base branch, and vendor to creation", async () => {
+  it("passes branch, base branch, and command to creation", async () => {
     const client = new FakeClient({ "task.create": () => ({ taskId: "t1", task: taskFixture() }) })
-    await invokeVerb("add", ["--repo", "/repo/x", "--branch", "feat/x", "--base-branch", "main", "--vendor", "codex"], {
+    await invokeVerb(
+      "add",
+      ["--repo", "/repo/x", "--branch", "feat/x", "--base-branch", "main", "--command", "codex"],
+      {
+        client,
+        runtime: stubRuntime(),
+      },
+    )
+    expect(client.requests[0].payload).toEqual({
+      repo: "/repo/x",
+      branch: "feat/x",
+      baseRef: "main",
+      command: "codex",
+      vendor: "codex",
+    })
+  })
+
+  it("records a RAW command line verbatim with its resolved protocol", async () => {
+    const client = new FakeClient({ "task.create": () => ({ taskId: "t1", task: taskFixture() }) })
+    await invokeVerb("add", ["--repo", "/repo/x", "--command", "codex --search"], {
       client,
       runtime: stubRuntime(),
     })
-    expect(client.requests[0].payload).toEqual({ repo: "/repo/x", branch: "feat/x", baseRef: "main", vendor: "codex" })
+    // The command is whatever the caller typed; the protocol is derived from
+    // its argv[0], never declared alongside it.
+    expect(client.requests[0].payload).toEqual({ repo: "/repo/x", command: "codex --search", vendor: "codex" })
+  })
+
+  it("records the generic protocol for a command naming no known engine", async () => {
+    const client = new FakeClient({ "task.create": () => ({ taskId: "t1", task: taskFixture() }) })
+    await invokeVerb("add", ["--repo", "/repo/x", "--command", "my-wrapper --go"], {
+      client,
+      runtime: stubRuntime(),
+    })
+    expect(client.requests[0].payload).toEqual({ repo: "/repo/x", command: "my-wrapper --go", vendor: "generic" })
   })
 
   it("delivers an explicit prompt to the created task", async () => {
@@ -172,21 +206,22 @@ describe("send handler", () => {
   it("a new tab can run a DIFFERENT engine than the task (two agents, one worktree)", async () => {
     const client = new FakeClient({ "task.get": () => ({ task: taskFixture({ id: "abc", vendor: "claude" }) }) })
     const { calls, deliver } = recordingDelivery()
-    await invokeVerb("send", ["--task-id", "abc", "--prompt", "hi", "--tab", "new", "--vendor", "codex"], {
+    await invokeVerb("send", ["--task-id", "abc", "--prompt", "hi", "--tab", "new", "--command", "codex"], {
       client,
       runtime: stubRuntime({ deliverPrompt: deliver }),
     })
-    // The delivery runs codex and the tab records it, while the TASK's own
-    // vendor is untouched — a second agent in the worktree is not a switch.
-    expect(calls[0].target).toMatchObject({ vendor: "codex", tabVendor: "codex" })
-    expect(client.requests.some((r) => r.name === "task.setVendor")).toBe(false)
+    // The delivery runs codex and the tab records it (command + its resolved
+    // protocol), while the TASK's own engine is untouched — a second agent in
+    // the worktree is not a switch.
+    expect(calls[0].target).toMatchObject({ tabCommand: "codex", tabVendor: "codex" })
+    expect(client.requests.some((r) => r.name === "task.setCommand")).toBe(false)
   })
 
-  it("refuses --vendor without --tab new instead of silently running the task's engine", async () => {
+  it("refuses --command without --tab new instead of silently running the task's engine", async () => {
     const client = new FakeClient({ "task.get": () => ({ task: taskFixture({ id: "abc" }) }) })
     await expectApiError(
       () =>
-        invokeVerb("send", ["--task-id", "abc", "--prompt", "hi", "--tab", "tab-3", "--vendor", "codex"], {
+        invokeVerb("send", ["--task-id", "abc", "--prompt", "hi", "--tab", "tab-3", "--command", "codex"], {
           client,
           runtime: stubRuntime(),
         }),
@@ -208,10 +243,22 @@ describe("send handler", () => {
 
   describe("peer provenance ($KOBE_TASK_ID)", () => {
     const saved = process.env.KOBE_TASK_ID
-    beforeEach(() => {
+    beforeEach(async () => {
       process.env.KOBE_TASK_ID = "sender-1"
+      // Identity is the VERIFIED env pair (issue #24) — prime the memo with a
+      // process tree where this process really does descend from the tab's
+      // shell, so no real pty-host/ps read happens here.
+      await verifiedSelfSession(
+        { KOBE_TASK_ID: "sender-1", KOBE_TAB_ID: "tab-1" },
+        {
+          pid: 500,
+          sessions: async () => [{ key: "sender-1::tab-1", pid: 100, alive: true }],
+          ps: async () => "  100     1 /bin/zsh -il\n  500   100 bun kobe api send",
+        },
+      )
     })
     afterEach(() => {
+      resetVerifiedSelfSession()
       if (saved === undefined) {
         // biome-ignore lint/performance/noDelete: env must fully unset (assigning undefined leaves the string "undefined").
         delete process.env.KOBE_TASK_ID
@@ -276,6 +323,7 @@ describe("send handler", () => {
     })
 
     it("a send from outside any kobe task stays untouched", async () => {
+      resetVerifiedSelfSession()
       // biome-ignore lint/performance/noDelete: env must fully unset (assigning undefined leaves the string "undefined").
       delete process.env.KOBE_TASK_ID
       const { calls, deliver } = recordingDelivery()
@@ -285,149 +333,5 @@ describe("send handler", () => {
       })
       expect(calls[0].prompt).toBe("hi")
     })
-  })
-})
-
-describe("fan-out handler", () => {
-  const fanClient = () =>
-    new FakeClient({
-      "task.create": (_payload, index) => ({ taskId: `t${index + 1}`, task: taskFixture({ id: `t${index + 1}` }) }),
-    })
-
-  it("creates and delivers the requested count", async () => {
-    const client = fanClient()
-    const { calls, deliver } = recordingDelivery()
-    const result = (await invokeVerb("fan-out", ["--repo", "/repo/x", "--prompt", "go", "--count", "3"], {
-      client,
-      runtime: stubRuntime({ deliverPrompt: deliver }),
-    })) as { count: number; tasks: Array<{ taskId: string }> }
-    expect(result.count).toBe(3)
-    expect(result.tasks.map((task) => task.taskId)).toEqual(["t1", "t2", "t3"])
-    expect(calls.map((call) => call.prompt)).toEqual(["go", "go", "go"])
-    // Every sibling is a fresh worktree task → first-prompt coda applies.
-    expect(calls.every((call) => call.target.newTask === true)).toBe(true)
-  })
-
-  it("expands per-vendor agent counts in order", async () => {
-    const { calls, deliver } = recordingDelivery()
-    await invokeVerb("fan-out", ["--repo", "/repo/x", "--prompt", "go", "--agents", "claude:2,codex:1"], {
-      client: fanClient(),
-      runtime: stubRuntime({ deliverPrompt: deliver }),
-    })
-    expect(calls.map((call) => call.target.vendor)).toEqual(["claude", "claude", "codex"])
-  })
-
-  it("rejects a plan above the cap before creation", async () => {
-    const client = fanClient()
-    await expectApiError(
-      () =>
-        invokeVerb("fan-out", ["--repo", "/repo/x", "--prompt", "go", "--count", "11"], {
-          client,
-          runtime: stubRuntime(),
-        }),
-      "BAD_FLAG",
-    )
-    expect(client.requests).toEqual([])
-  })
-
-  it("stamps a shared groupId and #i/N titles on every sibling", async () => {
-    const client = fanClient()
-    const { deliver } = recordingDelivery()
-    const result = (await invokeVerb(
-      "fan-out",
-      ["--repo", "/repo/x", "--prompt", "go", "--count", "2", "--title", "auth attempt"],
-      { client, runtime: stubRuntime({ deliverPrompt: deliver }) },
-    )) as { groupId: string }
-    const creates = client.requests.filter((r) => r.name === "task.create").map((r) => r.payload) as Array<
-      Record<string, string>
-    >
-    expect(creates).toHaveLength(2)
-    expect(creates[0].groupId).toBe(creates[1].groupId)
-    expect(creates[0].groupId).toBe(result.groupId)
-    expect(creates.map((p) => p.title)).toEqual(["auth attempt #1/2", "auth attempt #2/2"])
-  })
-
-  it("leaves a single-task title un-suffixed and titleless siblings placeholder", async () => {
-    const client = fanClient()
-    const { deliver } = recordingDelivery()
-    await invokeVerb("fan-out", ["--repo", "/repo/x", "--prompt", "go", "--count", "1", "--title", "solo"], {
-      client,
-      runtime: stubRuntime({ deliverPrompt: deliver }),
-    })
-    await invokeVerb("fan-out", ["--repo", "/repo/x", "--prompt", "go", "--count", "2"], {
-      client,
-      runtime: stubRuntime({ deliverPrompt: deliver }),
-    })
-    const creates = client.requests.filter((r) => r.name === "task.create").map((r) => r.payload) as Array<
-      Record<string, string | undefined>
-    >
-    expect(creates[0].title).toBe("solo")
-    // No --title → no title in the payload: the daemon's placeholder +
-    // auto-title pass (which appends the group ordinal) owns naming.
-    expect(creates[1].title).toBeUndefined()
-    expect(creates[2].title).toBeUndefined()
-  })
-
-  it("carries already-created taskIds when a mid-loop create fails (no orphans)", async () => {
-    const client = new FakeClient({
-      "task.create": (_payload, index) => {
-        if (index === 2) throw new ApiError("store exploded", "RPC_ERROR")
-        return { taskId: `t${index + 1}`, task: taskFixture({ id: `t${index + 1}` }) }
-      },
-    })
-    const { calls, deliver } = recordingDelivery()
-    try {
-      await invokeVerb("fan-out", ["--repo", "/repo/x", "--prompt", "go", "--count", "3"], {
-        client,
-        runtime: stubRuntime({ deliverPrompt: deliver }),
-      })
-      expect.unreachable("should throw")
-    } catch (error) {
-      expect(error).toBeInstanceOf(ApiError)
-      expect((error as ApiError).code).toBe("PARTIAL_FANOUT")
-      const data = (error as ApiError).data as {
-        count: number
-        requested: number
-        tasks: Array<{ taskId: string }>
-        failures: Array<{ taskId?: string; error: { code: string } }>
-      }
-      // The two tasks created before the failure are real and delivered —
-      // their ids MUST reach the caller so a retry doesn't double-spawn.
-      expect(data.count).toBe(2)
-      expect(data.requested).toBe(3)
-      expect(data.tasks.map((t) => t.taskId)).toEqual(["t1", "t2"])
-      expect(data.failures).toEqual([
-        { ok: false, vendor: "claude", error: { message: "store exploded", code: "RPC_ERROR" } },
-      ])
-      expect(calls).toHaveLength(2)
-    }
-  })
-
-  it("reports every id on partial delivery failure", async () => {
-    const deliver: ApiRuntime["deliverPrompt"] = async (_client, target) => {
-      if (target.id === "t2") throw new ApiError("boom", "SESSION_FAILED")
-      return {
-        session: `${target.id}::tab-1`,
-        pane: `${target.id}::tab-1`,
-        started: true,
-        engineReady: true,
-        delivered: true,
-      }
-    }
-    try {
-      await invokeVerb("fan-out", ["--repo", "/repo/x", "--prompt", "go", "--count", "3"], {
-        client: fanClient(),
-        runtime: stubRuntime({ deliverPrompt: deliver }),
-      })
-      expect.unreachable("should throw")
-    } catch (error) {
-      expect(error).toBeInstanceOf(ApiError)
-      expect((error as ApiError).code).toBe("PARTIAL_FANOUT")
-      expect((error as ApiError).data).toMatchObject({
-        count: 3,
-        tasks: [{ taskId: "t1" }, { taskId: "t3" }],
-        failures: [{ taskId: "t2", error: { code: "SESSION_FAILED" } }],
-      })
-    }
   })
 })

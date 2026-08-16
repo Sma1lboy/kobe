@@ -383,6 +383,7 @@ export function deserializeTask(s: SerializedTask): Task {
     branch: s.branch,
     worktreePath: s.worktreePath,
     kind: s.kind,
+    ...(s.scratch ? { scratch: true } : {}),
     status: s.status,
     archived: s.archived,
     pinned: s.pinned,

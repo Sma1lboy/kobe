@@ -44,7 +44,7 @@ import { getPersistedString, setPersistedString } from "../state/repos.ts"
  * didn't, so we prompt the developer to re-run the active CLI's
  * `skill install` command.
  */
-export const KOBE_SKILL_VERSION = 23
+export const KOBE_SKILL_VERSION = 28
 
 /**
  * Where an installed kobe skill can be FOUND, relative to a home/project
@@ -230,6 +230,15 @@ function promptLine(): Promise<string> {
  * Safe to call on every startup.
  */
 export async function maybeHintSkillInstall(io: SkillHintIO = {}): Promise<void> {
+  // Plugin takeover (issue #37): when the Rove Claude Code plugin is enabled
+  // it BUNDLES the skill, and that copy versions with the plugin — not with
+  // KOBE_SKILL_VERSION. Both the install nudge and the staleness prompt step
+  // aside: nagging the user to `skill install` alongside the plugin's copy
+  // would create exactly the double registration the migration gate warns
+  // about. `kobe skill status` still reports the npx-installed state for
+  // anyone running both deliberately (e.g. for non-Claude agents).
+  const { isRovePluginEnabled } = await import("../engine/claude-code-local/plugin-migration.ts")
+  if (isRovePluginEnabled()) return
   const cliName = activeCliName()
   const installCommand = skillInstallCommand()
   const state = kobeSkillState()

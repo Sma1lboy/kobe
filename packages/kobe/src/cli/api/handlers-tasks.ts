@@ -6,11 +6,11 @@
  */
 
 import type { SerializedTask } from "@sma1lboy/kobe-daemon/daemon/protocol"
+import { resolveCommandProtocol } from "../../engine/engine-presets.ts"
 import { kobeApiInvocation } from "../../engine/interactive-command.ts"
-import type { TaskStatus } from "../../types/task.ts"
 import type { VendorId } from "../../types/vendor.ts"
 import type { DaemonRpc } from "../daemon-session.ts"
-import { dispatcherEnvPayload, readOwnDispatcher, resolveDispatcherTab } from "./dispatcher.ts"
+import { readOwnDispatcher, resolveDispatcherTab, verifiedSelfSession } from "./dispatcher.ts"
 import { F } from "./flags.ts"
 import { daemonOf, simpleRpc } from "./handler-helpers.ts"
 import { resolveActiveTaskId } from "./runtime.ts"
@@ -22,11 +22,14 @@ import { ApiError, type VerbContext, type VerbSpec, helpStep } from "./types.ts"
  * carries — who is talking and how to answer. Same convention as field
  * notes (`[KOBE FIELD NOTE] from "<label>" (task <id>)`), plus the reply
  * command so a peer conversation is symmetric without any coordinator.
- * Sender identity comes from $KOBE_TASK_ID (exported into every engine
- * tab); a send from a plain shell (no env) or to yourself stays untouched.
+ * Sender identity is the VERIFIED $KOBE_TASK_ID/$KOBE_TAB_ID pair, not the
+ * raw env: an unverified one names a stranger's session as the sender and
+ * bakes their tab into the reply command (issue #24). A send from a plain
+ * shell, an unverified process, or to yourself stays untouched.
  */
 async function withPeerProvenance(daemon: DaemonRpc, targetTaskId: string, prompt: string): Promise<string> {
-  const senderId = process.env.KOBE_TASK_ID
+  const self = await verifiedSelfSession()
+  const senderId = self?.taskId
   if (!senderId || senderId === targetTaskId) return prompt
   let label = senderId
   try {
@@ -41,8 +44,7 @@ async function withPeerProvenance(daemon: DaemonRpc, targetTaskId: string, promp
   // which is exactly the link that breaks (#19) — tab-precise addressing is
   // the loop's durable route home. $KOBE_TAB_ID is exported into every
   // engine tab alongside $KOBE_TASK_ID (session-launch.ts).
-  const senderTab = process.env.KOBE_TAB_ID
-  const replyTarget = `--task-id ${senderId}${senderTab ? ` --tab ${senderTab}` : ""}`
+  const replyTarget = `--task-id ${senderId} --tab ${self.tabId}`
   // The trailing pointer closes the loop for a receiver that has never seen
   // kobe: reply command baked in, and where to learn the rest (the herdr
   // "--skill first" trick) — a pointer, not a curriculum, since every peer
@@ -76,79 +78,6 @@ export async function issueUpdate(ctx: VerbContext): Promise<unknown> {
   return result
 }
 
-export async function add(ctx: VerbContext): Promise<unknown> {
-  const daemon = daemonOf(ctx)
-  const { args, runtime } = ctx
-  const repo = await runtime.resolveRepoRoot(args.requirePath("repo"))
-  // Record who dispatched this create (issue #21) — the reply address a
-  // sub-task's bare `send` routes its outcome back to.
-  const payload: Record<string, string> = { repo, ...dispatcherEnvPayload() }
-  const title = args.str("title")
-  if (title) payload.title = title
-  const branch = args.str("branch")
-  if (branch) payload.branch = branch
-  const baseRef = args.str("base-branch")
-  if (baseRef) payload.baseRef = baseRef
-  const vendor = args.vendor() ?? (await runtime.defaultVendor(repo))
-  if (vendor) payload.vendor = vendor
-
-  const res = await daemon.request<{ taskId: string; task: SerializedTask }>("task.create", payload)
-  const taskId = res.taskId
-  // Only steal the shared active-task focus (which every mounted TUI's Tasks
-  // pane follows) when explicitly asked — a background agent/cron building
-  // tasks must not yank the user's focus on every create. Matches fan-out,
-  // which never setActive, and the "opening content doesn't pull focus" taste.
-  if (args.bool("activate")) await daemon.request("task.setActive", { taskId })
-
-  // status / pin aren't create-time fields on the RPC — apply them as
-  // follow-ups so `add` is the one-stop "make me a task exactly like this".
-  const status = args.enumOf<TaskStatus>("status")
-  if (status) await daemon.request("task.status", { taskId, status })
-  const pin = args.bool("pin")
-  if (pin !== undefined) await daemon.request("task.pin", { taskId, pinned: pin })
-
-  let task = res.task
-  if (status || pin !== undefined) {
-    task = (await daemon.request<{ task: SerializedTask }>("task.get", { taskId })).task
-  }
-
-  const prompt = args.str("prompt")
-  if (!prompt) return { taskId, task, started: false }
-  const delivered = await ctx.runtime.deliverPrompt(
-    daemon,
-    {
-      id: taskId,
-      worktreePath: task.worktreePath,
-      kind: task.kind,
-      vendor: task.vendor as VendorId | undefined,
-      modelEffort: task.modelEffort,
-      repo: task.repo,
-      newTask: true,
-    },
-    prompt,
-  )
-  task = (await daemon.request<{ task: SerializedTask }>("task.get", { taskId })).task
-  // A prompt that never confirmed in the composer is a failure — but the task
-  // IS created, so carry the taskId in the error so a script can find it.
-  if (!delivered.delivered) {
-    throw new ApiError(
-      `task ${taskId} created but the prompt was not delivered (paste did not land)`,
-      "NOT_DELIVERED",
-      {
-        taskId,
-      },
-    )
-  }
-  return {
-    taskId,
-    task,
-    started: delivered.started,
-    engineReady: delivered.engineReady,
-    session: delivered.session,
-    delivered: delivered.delivered,
-  }
-}
-
 export async function send(ctx: VerbContext): Promise<unknown> {
   const daemon = daemonOf(ctx)
   const prompt = ctx.args.require("prompt")
@@ -158,16 +87,19 @@ export async function send(ctx: VerbContext): Promise<unknown> {
   }
   // A pinned engine only means something on a tab being CREATED: an alive
   // tab already runs whatever it runs, and the canonical tab belongs to the
-  // task's own vendor. Refuse rather than silently ignore — a caller that
+  // task's own engine. Refuse rather than silently ignore — a caller that
   // asked for codex must not get claude and a success exit.
-  const tabVendor = ctx.args.vendor()
-  if (tabVendor && tab !== "new") {
+  const tabCommand = ctx.args.str("command")
+  if (tabCommand && tab !== "new") {
     throw new ApiError(
-      `--vendor only applies to a new tab; pass --tab new (got --tab ${tab ?? "<canonical>"})`,
+      `--command only applies to a new tab; pass --tab new (got --tab ${tab ?? "<canonical>"})`,
       "BAD_FLAG",
       helpStep("send"),
     )
   }
+  // Protocol resolution happens HERE, in the CLI, because the preset
+  // registry lives in kobe's state.json — the same tier-(a) read `add` does.
+  const tabVendor = tabCommand ? resolveCommandProtocol(tabCommand) : undefined
   let taskId = ctx.args.str("task-id")
   if (!taskId) {
     // Inside a sub-task, a bare `send` is the reply verb: it defaults to the
@@ -200,13 +132,15 @@ export async function send(ctx: VerbContext): Promise<unknown> {
       worktreePath: res.task.worktreePath,
       kind: res.task.kind,
       // The pinned engine wins for THIS delivery's argv; the task's own
-      // vendor stays untouched (a second agent in the worktree is not a
-      // change of the task's engine).
-      vendor: tabVendor ?? (res.task.vendor as VendorId | undefined),
-      modelEffort: tabVendor ? undefined : res.task.modelEffort,
+      // command/protocol stays untouched (a second agent in the worktree is
+      // not a change of the task's engine).
+      vendor: res.task.vendor as VendorId | undefined,
+      command: res.task.command,
+      modelEffort: tabCommand ? undefined : res.task.modelEffort,
       repo: res.task.repo,
       tab,
       tabVendor,
+      tabCommand,
     },
     text,
   )
@@ -347,8 +281,11 @@ export async function adopt(ctx: VerbContext): Promise<unknown> {
   }
   const branch = args.str("branch")
   if (branch) input.branch = branch
-  const vendor = args.vendor()
-  if (vendor) input.vendor = vendor
+  const command = args.str("command")
+  if (command) {
+    input.command = command
+    input.vendor = resolveCommandProtocol(command)
+  }
   const title = args.str("title")
   if (title) input.title = title
   return daemon.request<{ task: SerializedTask }>("worktree.adopt", input)

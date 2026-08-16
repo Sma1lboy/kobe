@@ -200,6 +200,21 @@ engine a doomed `gh pr create`.
 
 ## Other placements
 
+- **2026-08-16 — Scratch shell gets NO chord; entry is the ctrl+e dialog's
+  tail.** The PROPOSED `prefix+t` (issue #33 PR-2) was rejected: an unproven
+  gesture doesn't earn a chord — Scratch entry joins the unified
+  new-conversation dialog (`chat.tab.chooseEngine`) as a choice instead,
+  reusing the real dialog per the "no simplified stand-in dialogs" rule.
+  Placement inside the dialog is also deliberate: LAST in the choice
+  sequence, after shell and plugin panes, with the default highlight and
+  every existing choice's position untouched — `ctrl+e`→`enter` muscle
+  memory must keep opening a fresh engine tab. Promotion to a direct or
+  prefix chord (and forward in the sequence) waits on observed frequency.
+- **2026-08-16 — the `[`/`]` archived-view cycle is retired, approved.**
+  `sidebar.view` left with the Archived sidebar view (issue #33 PR-3): with
+  one view there is nothing to cycle. The bracket pair returns to the free
+  pool for the sidebar scope (`files.tab` keeps its own `[`/`]` in the files
+  pane).
 - **2026-07-27 — diff review letters** (`j/k`, `v`, `c`, `s`) are plain
   direct letters, diff-tab-scoped. They follow the same raw-binding precedent
   as the preview's `o` (system open), so they cannot shadow the composer,

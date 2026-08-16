@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
   listSessions: vi.fn(async () => [{ key: "task-3::tab-1", alive: true }]),
   taskKeys: vi.fn(() => ["task-3::tab-1"]),
   killSessions: vi.fn(async () => {}),
-  buildLaunch: vi.fn((input: { task: { id: string } }) => ({
+  buildLaunch: vi.fn((input: { task: { id: string } }): { key: string; command: string[]; firstMessage?: string } => ({
     key: `${input.task.id}::tab-1`,
     command: ["/bin/zsh", "-ilc", "claude 'repo prompt'"],
   })),
@@ -95,6 +95,20 @@ describe("daemon session adapter", () => {
       cwd: "/worktrees/story",
       command: [resolveLoginShell({ fallback: "/bin/zsh" }), "-il"],
     })
+  })
+
+  it("surfaces a paste-delivery vendor's first message in the engine spec (issue #25)", async () => {
+    // kimi's repo init-prompt rides OUTSIDE the launch argv; the web PTY
+    // sidecar pastes it post-spawn, so the spec must carry it — dropping it
+    // here would silently lose the message.
+    mocks.buildLaunch.mockReturnValueOnce({
+      key: "task-7::tab-1",
+      command: ["/bin/zsh", "-ilc", "kimi"],
+      firstMessage: "repo init prompt",
+    })
+    const engine = await engineSpecAdapter(link(), "task-7")
+    expect(engine.command).toEqual(["/bin/zsh", "-ilc", "kimi"])
+    expect(engine.firstMessage).toBe("repo init prompt")
   })
 
   it("tears down a task session best-effort", async () => {

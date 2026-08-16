@@ -38,7 +38,9 @@ than guessing.
 
 Per task, at creation time, or with `v` in the sidebar. The default for new
 tasks comes from Settings → Engines (`defaultVendor`), and Rove remembers the
-last engine you used per project.
+last engine you used per project. From a script it is
+`rove api add --command <engine-or-command-line>` — see
+[engine presets and protocols](#engine-presets-and-protocols).
 
 Engines whose CLI isn't installed are hidden from the new-task dialog. Custom
 engines always show — you added it, so Rove assumes you meant it.
@@ -139,26 +141,57 @@ case is refused with a reason. A handoff *to* a custom engine works fine.
 
 ## Custom engines
 
-Any CLI can be an engine. **Settings → Engines → + Add engine** asks for an
-id, a launch command, and an optional display name. Or by hand:
+Any CLI can be an engine. A custom engine is a **named preset**: an id, a
+launch command, an optional display name, and — declared once at
+registration — the *protocol* Rove speaks to it. **Settings → Engines → + Add
+engine** asks for each. Or by hand:
 
 ```json
 {
   "customEngineIds": ["aider"],
   "engineCommand.aider": "aider --model sonnet",
-  "engineName.aider": "Aider"
+  "engineName.aider": "Aider",
+  "engineProtocol.aider": "claude"
 }
 ```
 
 Being in `customEngineIds` *is* the registration.
 
-**What you get:** a real hosted session with the full keep-alive and per-repo
-init treatment. **What you don't:** no history reader, no account detection,
-no activity badge, no session resume. Rove launches your CLI and stays out of
-the way rather than pretending to understand its internals.
+`engineProtocol.<id>` is optional and says "talk to my binary the way you talk
+to `claude`" — set it when your CLI is a wrapper around a built-in (a
+different binary name, a fixed set of flags, a company shim) so the transcript
+reader, workspace-trust pre-answer, and first-message delivery all apply.
+Leave it out and the preset gets the **generic** protocol: it launches and
+runs fine, but Rove reads no history, pre-answers no trust dialog, and falls
+back to silence-window liveness with settle-then-paste delivery.
 
 Press `x` on an engine row in Settings to reset a built-in's overrides, or
 remove a custom engine entirely.
+
+## Engine presets and protocols
+
+Rove separates two things a "vendor" used to conflate:
+
+- **the command** — what actually runs. A preset id (`claude`) or a full
+  command line (`codex --search`). Nothing validates its flags; probe an
+  unfamiliar CLI with `<cmd> --help` first.
+- **the protocol** — which adapter Rove uses for that command: whose
+  transcripts to read, whose trust store to pre-answer, whether the first
+  message may ride the launch argv.
+
+The protocol is **derived** from the command, never declared beside it:
+
+1. `argv[0]` names a registered preset (built-in or yours) → that preset's
+   protocol. Deterministic, and it answers before anything spawns — the
+   normal path.
+2. Otherwise Rove can recognise a known engine binary through wrappers
+   (`env FOO=1 claude`, `node …/codex.js`), the same walk the process probe
+   uses at runtime.
+3. Neither → **generic**, described above.
+
+`rove api engine-list` prints every entry with its raw command and resolved
+protocol; copy one into `rove api add --command` verbatim, or edit a flag
+first. See [API.md](./API.md) for the dispatch verbs.
 
 ## Where conversations are stored
 

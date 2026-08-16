@@ -106,15 +106,9 @@ export const SIDEBAR_BINDINGS: readonly KobeBinding[] = [
     description: "Toggle live preview for task (i)",
     hint: { keys: "i" },
   },
-  {
-    // POSITIONAL: [previous view, next view] pairs (slot dispatch).
-    id: "sidebar.view",
-    scope: "sidebar",
-    keys: ["[", "]"],
-    category: "Sidebar",
-    description: "Switch view (Working session ↔ Archives)",
-    hint: { keys: "[/]" },
-  },
+  // `sidebar.view` ([/]) retired with the Archived view (issue #33 IA
+  // convergence) — the sidebar shows only the working set now; the chord is
+  // free again.
   {
     id: "sidebar.sort",
     scope: "sidebar",

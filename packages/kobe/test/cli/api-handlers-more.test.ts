@@ -1,7 +1,7 @@
 /**
  * `kobe api` verb handlers not covered by api-handlers.test.ts: the leveled
  * schema drill-ins (--verb / --group), the simple-RPC edit verbs (rename /
- * set-branch / set-vendor / set-status / pin), the issue verbs, and the
+ * set-branch / set-command / set-status / pin), the issue verbs, and the
  * dispatch / note delivery verbs — plus the VerbArgs coercion errors that
  * only a handler (not spec validation) can raise. Same technique as the
  * sibling file: `invokeVerb` against a fake daemon client that records
@@ -91,6 +91,46 @@ describe("schema drill-ins", () => {
     await expectApiError(() => invokeVerb("schema", ["--verb", "frobnicate"], offline), "BAD_VERB")
   })
 
+  // Issue #30 removed `fan-out` and `set-vendor` with NO aliases, because both
+  // changed their flag contract in the process — an alias would accept the old
+  // flags and do something subtly different. What replaces the alias is a
+  // distinct code (`UNKNOWN_VERB`, not the typo code) plus argv an agent that
+  // learned the old name from a stale skill can run verbatim.
+  describe("retired verbs point at their replacement", () => {
+    /** The thrown ApiError itself — this suite asserts on its `data`. */
+    async function rejectionOf(verb: string): Promise<ApiError> {
+      try {
+        await invokeVerb(verb, [], offline)
+      } catch (error) {
+        expect(error).toBeInstanceOf(ApiError)
+        return error as ApiError
+      }
+      throw new Error(`invokeVerb("${verb}") resolved instead of throwing`)
+    }
+
+    it.each([
+      ["fan-out", ["api", "add", "--help"], /--count/],
+      ["set-vendor", ["api", "set-command", "--help"], /set-command/],
+    ])("%s fails with UNKNOWN_VERB and the replacement command", async (verb, nextArgs, hintPattern) => {
+      const err = await rejectionOf(verb)
+      expect(err.code).toBe("UNKNOWN_VERB")
+      expect(err.message).toContain("removed")
+      expect(err.data?.nextCommandArgs).toEqual(nextArgs)
+      expect(String(err.data?.hint)).toMatch(hintPattern)
+    })
+
+    it("a verb that never existed keeps the plain BAD_VERB + schema step", async () => {
+      const err = await rejectionOf("frobnicate")
+      expect(err.code).toBe("BAD_VERB")
+      expect(err.data?.nextCommandArgs).toEqual(["api", "schema"])
+    })
+
+    it("neither retired name resolves through the alias table", () => {
+      expect(findVerb("fan-out")).toBeUndefined()
+      expect(findVerb("set-vendor")).toBeUndefined()
+    })
+  })
+
   it("--group lists that group's verbs compactly (name + summary only)", async () => {
     const result = (await invokeVerb("schema", ["--group", "read"], offline)) as {
       group: string
@@ -102,6 +142,7 @@ describe("schema drill-ins", () => {
       "get-task",
       "collect",
       "digest",
+      "agent-turns",
       "pty-list",
       "read-output",
       "inspect",
@@ -140,10 +181,15 @@ describe("edit verbs — RPC name + payload", () => {
     expect(client.requests).toEqual([{ name: "task.setBranch", payload: { taskId: "t1", branch: "feat/x" } }])
   })
 
-  it("set-vendor → task.setVendor with a validated vendor", async () => {
-    const client = new FakeClient({ "task.setVendor": () => ({}) })
-    await invokeVerb("set-vendor", ["--task-id", "t1", "--vendor", "codex"], { client, runtime: stubRuntime() })
-    expect(client.requests).toEqual([{ name: "task.setVendor", payload: { taskId: "t1", vendor: "codex" } }])
+  it("set-command → task.setCommand with the command's resolved protocol", async () => {
+    const client = new FakeClient({ "task.setCommand": () => ({}) })
+    await invokeVerb("set-command", ["--task-id", "t1", "--command", "codex --search"], {
+      client,
+      runtime: stubRuntime(),
+    })
+    expect(client.requests).toEqual([
+      { name: "task.setCommand", payload: { taskId: "t1", command: "codex --search", vendor: "codex" } },
+    ])
   })
 
   it("set-status → task.status with a validated status", async () => {

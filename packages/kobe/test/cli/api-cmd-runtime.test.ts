@@ -81,6 +81,7 @@ vi.mock("../../src/cli/api/pty-delivery.ts", () => ({
 }))
 
 import { defaultApiRuntime, deliverPrompt, invokeVerb } from "../../src/cli/api-cmd.ts"
+import { resetVerifiedSelfSession, verifiedSelfSession } from "../../src/cli/api/dispatcher.ts"
 import type { DaemonRpc } from "../../src/cli/daemon-session.ts"
 
 beforeEach(() => {
@@ -113,7 +114,9 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.clearAllMocks()
+  vi.restoreAllMocks()
   vi.unstubAllEnvs()
+  resetVerifiedSelfSession()
 })
 
 describe("defaultApiRuntime", () => {
@@ -294,10 +297,19 @@ describe("realPromptDeliveryOps (deliverPrompt with the default ops)", () => {
     )
   })
 
-  it("threads the CLI process's own $KOBE_TASK_ID as the new task's spawner", async () => {
+  it("threads the VERIFIED session as the new task's spawner", async () => {
     // An `add` run from inside another task's engine tab carries that task's
     // id; the coda then tells the new agent where to `send` its outcome.
     vi.stubEnv("KOBE_TASK_ID", "spawner-1")
+    vi.stubEnv("KOBE_TAB_ID", "tab-1")
+    await verifiedSelfSession(
+      { KOBE_TASK_ID: "spawner-1", KOBE_TAB_ID: "tab-1" },
+      {
+        pid: 500,
+        sessions: async () => [{ key: "spawner-1::tab-1", pid: 100, alive: true }],
+        ps: async () => "  100     1 /bin/zsh -il\n  500   100 bun kobe api add",
+      },
+    )
     await deliverPrompt(
       client,
       { id: "t1", kind: "task", worktreePath: "/wt/t1", vendor: "claude", repo: "/repo/x", newTask: true },
@@ -305,6 +317,30 @@ describe("realPromptDeliveryOps (deliverPrompt with the default ops)", () => {
     )
     expect(mocks.buildEngineSessionLaunch).toHaveBeenLastCalledWith(
       expect.objectContaining({ promptIntent: { kind: "new-task", prompt: "go", spawnerTaskId: "spawner-1" } }),
+    )
+  })
+
+  it("omits the spawner when $KOBE_TASK_ID was merely INHERITED (issue #24)", async () => {
+    // The coda is the one address that outlives the record — it is baked
+    // into the worker's own instructions, so a stranger's id here sends
+    // every future report to them. Unproven identity = no coda address.
+    vi.stubEnv("KOBE_TASK_ID", "boccha")
+    await verifiedSelfSession(
+      { KOBE_TASK_ID: "boccha", KOBE_TAB_ID: "tab-1" },
+      {
+        pid: 500,
+        sessions: async () => [{ key: "boccha::tab-1", pid: 100, alive: true }],
+        // Reparented to init: alive tab, but this process is not under it.
+        ps: async () => "  100     1 /bin/zsh -il\n  500     1 bun kobe api add",
+      },
+    )
+    await deliverPrompt(
+      client,
+      { id: "t1", kind: "task", worktreePath: "/wt/t1", vendor: "claude", repo: "/repo/x", newTask: true },
+      "go",
+    )
+    expect(mocks.buildEngineSessionLaunch).toHaveBeenLastCalledWith(
+      expect.objectContaining({ promptIntent: { kind: "new-task", prompt: "go", spawnerTaskId: undefined } }),
     )
   })
 

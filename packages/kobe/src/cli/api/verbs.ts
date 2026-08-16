@@ -6,13 +6,15 @@ import { DEFAULT_FEEDBACK_CATEGORY_SLUG } from "../../lib/feedback.ts"
 import type { TaskStatus } from "../../types/task.ts"
 import { F, FANOUT_CAP } from "./flags.ts"
 import { handlePtyList, simpleRpc } from "./handler-helpers.ts"
+import { add } from "./handlers-add.ts"
+import { AGENT_TURNS_VERB } from "./handlers-agent-turns.ts"
 import { DIGEST_VERB } from "./handlers-digest.ts"
-import { collect, fanOut, feedback } from "./handlers-fanout.ts"
+import { ENGINE_LIST_VERB, SET_COMMAND_VERB } from "./handlers-engines.ts"
+import { collect, feedback } from "./handlers-fanout.ts"
 import { INSPECT_VERB } from "./handlers-inspect.ts"
 import { PANE_CLOSE_VERB, PANE_VERB } from "./handlers-pane.ts"
 import {
   DISPATCH_VERB,
-  add,
   adopt,
   archive,
   deleteTask,
@@ -64,16 +66,37 @@ const TASK_STATUSES: readonly TaskStatus[] = ["backlog", "in_progress", "in_revi
 export const VERB_ALIASES: Readonly<Record<string, string>> = { "spawn-task": "add" }
 
 /**
+ * Verbs that were REMOVED, mapped to the argv that replaces them.
+ *
+ * Deliberately not aliases: `fan-out` folded into `add --count` and
+ * `set-vendor` became `set-command`, and both changed their flag contract in
+ * the process — an alias would silently accept the old flags and do
+ * something subtly different. A retired verb instead fails loud with
+ * `UNKNOWN_VERB` plus the `nextCommandArgs` an agent can run verbatim, which
+ * is the same self-healing contract every other high-traffic rejection uses.
+ */
+export const RETIRED_VERBS: Readonly<Record<string, { hint: string; nextCommandArgs: readonly string[] }>> = {
+  "fan-out": {
+    hint: "fan-out was folded into `add`: pass --count N (or --agents claude:2,codex:1) to spawn N parallel tasks of one prompt",
+    nextCommandArgs: ["api", "add", "--help"],
+  },
+  "set-vendor": {
+    hint: "set-vendor was replaced by `set-command`, which takes the engine's raw launch command (an engine id from `engine-list`, or a full command line)",
+    nextCommandArgs: ["api", "set-command", "--help"],
+  },
+}
+
+/**
  * Verb groups for LEVELED exploration. An agent reads the compact index
  * (groups + verb summaries), then drills into one verb or one group —
  * instead of slurping every flag of every verb and polluting its context.
  */
 export const VERB_GROUPS: Readonly<Record<string, readonly string[]>> = {
-  discover: ["schema"],
-  read: ["list", "get-task", "collect", "digest", "pty-list", "read-output", "inspect"],
-  create: ["add", "fan-out"],
+  discover: ["schema", "engine-list"],
+  read: ["list", "get-task", "collect", "digest", "agent-turns", "pty-list", "read-output", "inspect"],
+  create: ["add"],
   drive: ["send", "dispatch", "note", "note-list", "set-active", "pane-open", "pane-close", "notify"],
-  edit: ["rename", "set-branch", "set-vendor", "set-status"],
+  edit: ["rename", "set-branch", "set-command", "set-status"],
   issues: ["issue-list", "issue-create", "issue-set-status", "issue-update"],
   workitems: ["workitem-list", "workitem-start"],
   routine: [
@@ -121,8 +144,7 @@ export const VERBS: readonly VerbSpec[] = [
   },
   {
     name: "add",
-    summary:
-      "Create a task (shows in the sidebar immediately). With --prompt it also starts the engine and delivers it. Does NOT steal focus — pass --activate to make it the active task. Alias: spawn-task.",
+    summary: `Create a task (shows in the sidebar immediately). With --prompt it also starts the engine and delivers it. PARALLEL ATTEMPTS: --count N spawns N sibling tasks of the SAME prompt, each in its own worktree/branch (--agents claude:2,codex:1 for a mixed fleet); capped at ${FANOUT_CAP}, prefer 3-4. Does NOT steal focus — pass --activate to make it the active task. Alias: spawn-task.`,
     flags: [
       F.repo(),
       F.title(),
@@ -130,10 +152,23 @@ export const VERBS: readonly VerbSpec[] = [
         name: "branch",
         type: "string",
         placeholder: "B",
-        description: "Explicit branch name (else auto rove/<slug>-<id>).",
+        description: "Explicit branch name (else auto rove/<slug>-<id>). Single task only.",
       },
       { name: "base-branch", type: "string", placeholder: "B", description: "Base ref the worktree branches from." },
-      F.vendor(),
+      F.command(),
+      {
+        name: "count",
+        type: "int",
+        placeholder: "N",
+        description: `Spawn N sibling tasks of one prompt (parallel attempts, cap ${FANOUT_CAP}). Requires --prompt.`,
+      },
+      {
+        name: "agents",
+        type: "string",
+        placeholder: "claude:2,codex:1",
+        description:
+          "Per-ENGINE counts for a mixed parallel round (alternative to --count). Engine ids only — see `engine-list`.",
+      },
       {
         name: "status",
         type: "enum",
@@ -150,30 +185,12 @@ export const VERBS: readonly VerbSpec[] = [
       },
       F.prompt(
         false,
-        "Optional first message — when set, materializes the worktree, starts the engine, and pastes it.",
+        "Optional first message — when set, materializes the worktree, starts the engine, and pastes it. Required with --count/--agents.",
       ),
     ],
     handler: add,
   },
-  {
-    name: "fan-out",
-    summary: `Spawn N tasks of ONE prompt in a single call (parallel attempts). Capped at ${FANOUT_CAP}.`,
-    flags: [
-      F.repo(),
-      F.prompt(true, "Shared prompt delivered to every spawned task."),
-      { name: "count", type: "int", placeholder: "N", description: "Number of tasks of one vendor (with --vendor)." },
-      {
-        name: "agents",
-        type: "string",
-        placeholder: "claude:2,codex:1",
-        description: "Per-vendor counts (alternative to --count).",
-      },
-      F.vendor(),
-      F.title(),
-      { name: "base-branch", type: "string", placeholder: "B", description: "Base ref for every worktree." },
-    ],
-    handler: fanOut,
-  },
+  ENGINE_LIST_VERB,
   {
     name: "send",
     summary:
@@ -190,9 +207,9 @@ export const VERBS: readonly VerbSpec[] = [
           'Tab addressing: "new" spawns the prompt in a fresh engine tab; "tab-N" delivers to that exact alive tab (error when dead/absent). Omitted = the canonical engine tab.',
       },
       {
-        ...F.vendor(),
+        ...F.command(),
         description:
-          "Engine for a `--tab new` tab — the API twin of the TUI's ctrl+e pick. Lets one worktree run two agents on the same files (e.g. hand the stuck work to codex without leaving the branch). Pinned to that tab, so it survives restarts and a later set-vendor. Only valid with --tab new.",
+          "Engine launch command for a `--tab new` tab — the API twin of the TUI's ctrl+e pick. Lets one worktree run two agents on the same files (e.g. hand the stuck work to codex without leaving the branch). An engine id from `engine-list` or a full command line; pinned to that tab, so it survives restarts and a later set-command on the task. Only valid with --tab new.",
       },
       {
         name: "plain",
@@ -338,6 +355,7 @@ export const VERBS: readonly VerbSpec[] = [
   // The ruler: an aggregate read over recent tasks + routine runs. Spec +
   // handler in ./handlers-digest.ts.
   DIGEST_VERB,
+  AGENT_TURNS_VERB,
   // Production diagnostics aggregate (daemon activity registry + pty
   // sessions with live foreground walk + persisted tab snapshots). Spec +
   // handler in ./handlers-inspect.ts.
@@ -360,20 +378,7 @@ export const VERBS: readonly VerbSpec[] = [
     handler: (ctx) =>
       simpleRpc(ctx, "task.setBranch", { taskId: ctx.args.require("task-id"), branch: ctx.args.require("branch") }),
   },
-  {
-    name: "set-vendor",
-    summary: "Change a task's engine vendor (takes effect on next session rebuild).",
-    flags: [F.taskId(), { ...F.vendor(), required: true }],
-    handler: (ctx) =>
-      simpleRpc(ctx, "task.setVendor", {
-        taskId: ctx.args.require("task-id"),
-        // `args.vendor()`, never `requireEnum` — engines are an open set and
-        // this verb is the one place that used the closed built-in list,
-        // which made every registered custom engine unsettable from the CLI.
-        // Presence is already enforced by the spec's `required: true`.
-        vendor: ctx.args.vendor(),
-      }),
-  },
+  SET_COMMAND_VERB,
   {
     name: "set-status",
     summary: "Set a task's lifecycle status.",
@@ -479,7 +484,7 @@ export const VERBS: readonly VerbSpec[] = [
         description: "Path of the worktree to adopt.",
       },
       { name: "branch", type: "string", placeholder: "B", description: "Branch override (else the worktree's own)." },
-      F.vendor(),
+      F.command(),
       F.title(),
     ],
     handler: adopt,

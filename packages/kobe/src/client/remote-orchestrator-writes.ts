@@ -44,6 +44,21 @@ export async function ensureMainTaskOp(client: KobeDaemonClient, repo: string): 
   return deserializeTask(res.task)
 }
 
+/** Open a directory as a `kind:"dir"` task; `scratch` marks a temp shell
+ *  task for the sidebar's Scratch section (issue #33). */
+export async function openDirectoryTaskOp(
+  client: KobeDaemonClient,
+  input: { dir: string; scratch?: boolean },
+): Promise<Task> {
+  const res = await client.request<{ task: SerializedTask }>("task.openDir", input)
+  return deserializeTask(res.task)
+}
+
+/** Scratch → project migration (issue #33): repoint + clear the flag. */
+export async function adoptScratchRepoOp(client: KobeDaemonClient, id: TaskId | string, repo: string): Promise<void> {
+  await client.request("task.adoptScratchRepo", { taskId: String(id), repo })
+}
+
 export async function ensureWorktreeOp(client: KobeDaemonClient, id: TaskId | string): Promise<string> {
   const res = await client.request<{ worktreePath: string }>("task.ensureWorktree", { taskId: String(id) })
   return res.worktreePath
@@ -74,6 +89,15 @@ export async function setBranchOp(client: KobeDaemonClient, id: TaskId | string,
 
 export async function setVendorOp(client: KobeDaemonClient, id: TaskId | string, vendor: VendorId): Promise<void> {
   await client.request("task.setVendor", { taskId: String(id), vendor })
+}
+
+export async function setCommandOp(
+  client: KobeDaemonClient,
+  id: TaskId | string,
+  command: string,
+  vendor?: VendorId,
+): Promise<void> {
+  await client.request("task.setCommand", { taskId: String(id), command, ...(vendor ? { vendor } : {}) })
 }
 
 export async function setPinnedOp(client: KobeDaemonClient, id: TaskId | string, pinned?: boolean): Promise<void> {

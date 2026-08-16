@@ -142,6 +142,9 @@ function coerceTask(value: unknown): Task | null {
   // complete." Archived `done` rows are left alone.
   const archived = typeof v.archived === "boolean" ? v.archived : false
   const kind: Task["kind"] = v.kind === "main" ? "main" : v.kind === "dir" ? "dir" : "task"
+  // Scratch only means anything on a dir task — a corrupt flag elsewhere is
+  // dropped rather than inventing a Scratch worktree row.
+  const scratch = kind === "dir" && v.scratch === true
   // A `main` (project root) task has NO session lifecycle that maintains
   // its status — nothing ever flips it to in_progress on a turn start or
   // back to backlog on a turn end. So a persisted in_progress/done on a
@@ -172,7 +175,12 @@ function coerceTask(value: unknown): Task | null {
     archived,
     pinned: typeof v.pinned === "boolean" ? v.pinned : false,
     kind,
+    ...(scratch ? { scratch: true } : {}),
     vendor: coerceVendorId(typeof v.vendor === "string" ? v.vendor : undefined),
+    // Raw launch command (`add --command` / `set-command`) — must survive
+    // the load coercion or the task falls back to its protocol's preset on
+    // every daemon restart, silently dropping the user's own command line.
+    ...(typeof v.command === "string" && v.command.trim().length > 0 ? { command: v.command } : {}),
     prStatus: coercePRStatus(v.prStatus),
     // Web-board ordering key — must survive the load coercion or every
     // daemon restart silently forgets the user's column order.

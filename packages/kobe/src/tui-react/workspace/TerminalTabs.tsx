@@ -37,7 +37,8 @@
 
 import type { TranscriptActivity } from "@/client/remote-orchestrator"
 import { availableEngineIds } from "@/engine/account-detect"
-import { interactiveEngineCommand, withClaudeSessionId } from "@/engine/interactive-command"
+import { engineLaunchArgv } from "@/engine/engine-presets"
+import { withClaudeSessionId } from "@/engine/interactive-command"
 import { resolveMainRepoRoot } from "@/state/repos"
 import { resolvePreferredVendor, setRepoLastActiveVendor } from "@/state/vendor-prefs"
 import type { VendorId } from "@/types/vendor"
@@ -56,6 +57,7 @@ import {
   closeTab,
   cycleTab,
   engineTabSpawnFor,
+  initialShellTabs,
   initialTabs,
   isTabSplit,
   recycleTabs,
@@ -99,6 +101,16 @@ export interface TerminalTabsProps {
   worktree: string
   repo?: string
   taskKind?: "main" | "task" | "dir"
+  /** Scratch temp shell task (issue #33): tab-1 spawns as a BARE SHELL
+   *  instead of an engine, and the last tab's shell exiting deletes the
+   *  task outright (zero-ceremony lifecycle) via `onScratchExit` instead
+   *  of recycling into a fresh engine tab. */
+  scratch?: boolean
+  /** The scratch task's last shell exited — the host deletes the task row. */
+  onScratchExit?: () => void
+  /** ctrl+e's trailing "scratch shell" choice — open a Scratch temp shell
+   *  task (issue #33; the entry point, chord rejected 2026-08-16). */
+  onOpenScratch?: () => void
   command: readonly string[]
   /** Task's current engine + effort — used to build a per-tab command when
    *  a tab pins its own vendor via `chooseEngine`. */
@@ -157,7 +169,7 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
   /** Pin a fresh engine-session id on the just-created active engine tab —
    *  the tmux `@kobe_session_id` stash. */
   const pinSession = (s: TabsState, vendor: VendorId | undefined): TabsState => {
-    const base = vendor ? interactiveEngineCommand(vendor, props.modelEffort) : props.command
+    const base = vendor ? engineLaunchArgv({ vendor, effort: props.modelEffort }) : props.command
     const { sessionId } = withClaudeSessionId(base, vendor ?? props.vendor)
     return setTabSessionId(s, s.activeId, sessionId)
   }
@@ -175,7 +187,10 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
     const saved = kv.get(persistKey, null) as TabsState | null
     const fromDisk = saved && Array.isArray(saved.tabs) ? rehydrateTabs(saved, [defaultShell()]) : null
     rehydratedRef.current = fromDisk !== null
-    const fresh = fromDisk ?? pinSession(initialTabs(), undefined)
+    // A scratch task's first tab is a BARE SHELL (issue #33) — the task IS
+    // the shell; an engine only appears if the user types one.
+    const fresh =
+      fromDisk ?? (props.scratch === true ? initialShellTabs(defaultShell()) : pinSession(initialTabs(), undefined))
     tabsByTask.set(props.taskId, fresh)
     return fresh
   }
@@ -212,7 +227,12 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
    *  first-spawn initial prompt, issue #17) is pure — `engineTabSpawnFor`;
    *  this closure only supplies the IO reads (registry liveness, props). */
   const engineTabSpawn = (tab: EngineTab): TabSpawn => {
-    const base = tab.vendor ? interactiveEngineCommand(tab.vendor, props.modelEffort) : props.command
+    // A tab's own pinned command/protocol wins; otherwise it inherits the
+    // task's already-resolved launch argv (props.command).
+    const base =
+      tab.engineCommand || tab.vendor
+        ? engineLaunchArgv({ command: tab.engineCommand, vendor: tab.vendor, effort: props.modelEffort })
+        : props.command
     const live = getDefaultPtyRegistry().has(tabPtyKeyFor(props.taskId, tab))
     return engineTabSpawnFor(stateRef.current, tab, base, {
       live,
@@ -239,8 +259,9 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
   const hydrating = useTabHydration(rehydratedRef.current, { stateRef, propsRef, update })
 
   // Parent handoffs — mount-once effects, extracted to use-tab-handoffs.ts
-  // (file-size cap split). The quick-fork initial prompt no longer needs a
-  // delivery effect: it rides the first spawn's argv (engineTabSpawn).
+  // (file-size cap split). The quick-fork initial prompt needs no delivery
+  // effect: it rides the first spawn (argv, or firstMessage paste for
+  // paste-delivery vendors — engineTabSpawn).
   const { sendToEngine } = useTabHandoffs({
     stateRef,
     propsRef,
@@ -321,6 +342,7 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
     resumeTriedRef,
     notifyCannotCloseLast: (tabId) =>
       notif.notify({ kind: "error", taskId: props.taskId, tabId, title: t("terminal.tab.cannotCloseLast") }),
+    onScratchExit: props.scratch === true ? props.onScratchExit : undefined,
   })
   // The pending-close listener is mount-only, so it reaches the CURRENT hook
   // through a ref rather than the one from its first render.
@@ -345,6 +367,7 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
     activeLeafSize,
     onChooseEngine: props.onChooseEngine,
     onQuickFork: props.onQuickFork,
+    onOpenScratch: props.onOpenScratch,
     notifyError: (title) => notif.notify({ kind: "error", taskId: props.taskId, tabId: active.id, title }),
   })
 
@@ -435,6 +458,8 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
           cwd={tabCwdFor(active, props.worktree)}
           command={spawn.command}
           initialInput={spawn.initialInput}
+          firstMessage={spawn.firstMessage}
+          engineBin={spawn.engineBin}
           onUserInput={active.kind === "engine" ? (data) => noteEngineInput(props.taskId, data) : undefined}
           splitTree={active.splitTree ?? null}
           onSplitChange={(next) => update(setTabSplit(state, active.id, next))}

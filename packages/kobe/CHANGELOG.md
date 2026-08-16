@@ -1,5 +1,143 @@
 # Changelog
 
+## 0.8.126
+
+### Patch Changes
+
+- df02a79: The plugin-migration warning now ends by pointing at the shortest path: the user reading it inside a session can simply ask their agent to run the cleanup.
+
+## 0.8.125
+
+### Patch Changes
+
+- c9685b8: Document the Claude Code plugin distribution path: install via `/plugin marketplace add Sma1lboy/rove` + `/plugin install rove@rove`, the settings-managed vs plugin handoff, and the `rove hook cleanup` migration step (QUICKSTART, CONFIGURATION, CLI).
+- 35a37b7: Claude Code plugin migration hard-gate: when the Rove plugin is enabled, the launch-time settings.json hook install skips Claude (the plugin's hooks.json carries those events — no double firing) and prints a prompt-only warning for leftover settings-managed hooks or a pre-plugin `~/.claude/skills/rove|kobe` directory. New user-invoked `rove hook cleanup` removes only Rove's own settings-managed hook entries; nothing is ever removed silently. Skill install/staleness nags step aside in plugin mode (the bundled skill versions with the plugin), and `rove skill status` says so. Codex and other engines are untouched.
+
+## 0.8.124
+
+### Patch Changes
+
+- 179aad3: Add the Claude Code plugin scaffold (`claude-plugin/` + root marketplace.json): hooks.json carrying the 12 Rove activity hooks via a bundled `bin/rove` wrapper resolved from `CLAUDE_PLUGIN_ROOT` (no PATH/alias dependency), the `rove` skill bundled under `skills/`, and an architecture test that pins hooks.json to the Claude hook adapter's event map so the two can't drift.
+
+## 0.8.123
+
+### Patch Changes
+
+- 1abe48c: Archiving the selected task no longer flashes the screen or resurrects its engine: selection now moves off an archived/deleting task in the same snapshot tick, so its terminal unmounts instead of answering the PTY sweep with a dead-on-attach respawn (issue #34).
+
+## 0.8.122
+
+### Patch Changes
+
+- 8b37c4c: Rove skill v27: document the cross-repo request flow — a project's main task is its standing inbox, and an agent that finds a defect in another product should file a report there (symptoms / root cause / why / non-prescriptive suggestions) instead of quietly working around it, addressing the engine tab explicitly with `--tab`. Raised by a field report: agents didn't know filing requests was possible, so every cross-product gap waited for a human who happened to know.
+- 80610e8: Rove skill v28: sharpen the cross-repo request protocol — send the report to the target project's main task, never `add` a task into someone else's repo. The reporter holds problem-side context only; the receiving main agent holds solution-side context and owns decomposing the report into tasks.
+
+## 0.8.121
+
+### Patch Changes
+
+- 7269ec7: Rove skill v26: document that managed worktrees are fresh checkouts — missing installs masquerade as test regressions, so agents must confirm the install step (`.rove/init.sh`, `rove repo set --init-script`, `rove repo show`) before reporting failures as real. Raised by a field report of three tasks misreading dependency-less failures as product bugs in one day.
+
+## 0.8.120
+
+### Patch Changes
+
+- bb85356: Scratch shell entry moves into the ctrl+e new-conversation dialog (owner keybinding verdict): the PROPOSED `ctrl+a t` chord is withdrawn, and a trailing "scratch shell" choice — after shell and plugin panes, with the default highlight and existing choice order untouched — opens a Scratch temp shell task instead.
+
+## 0.8.119
+
+### Patch Changes
+
+- 05d22d8: Sidebar IA convergence (issue #33 step 3): the Archived view leaves the sidebar entirely — no Active/Archived tabs, no `[`/`]` chord, archived rows simply don't render (they stay reachable via `rove api list` and the web board). The sidebar's only grouping dimensions are now ownership (projects) and intent (pinned/Scratch); lifecycle is inline badges. The active task keeps its pointer semantics (API default addressing + focus sync) with no dedicated screen area.
+
+## 0.8.118
+
+### Patch Changes
+
+- 96279b9: Scratch temp shell tasks (issue #33 step 2): a PROPOSED `ctrl+a t` opens a bare shell as a scratch directory task, shown in a new Scratch section at the very top of the sidebar. Zero-ceremony lifecycle — the shell exiting removes the row. A scratch row earns a home by being renamed, or automatically: when a coding harness is confirmed live in the shell and its cwd settles inside a git repo, the row migrates into that repo's project group (selection follows, no dialogs, no focus steal). Unfamiliar repos get a non-modal save-as-project hint.
+
+## 0.8.117
+
+### Patch Changes
+
+- cf5f671: Rove skill v25: composing `--command` now treats the model as a conscious either/or — omit any model flag by default (the user's engine default is fresher than the agent's training-data model list), pin one only when the user named it this turn, passing their string verbatim. Also repairs a truncated sentence in the parallel-round rules.
+
+## 0.8.116
+
+### Patch Changes
+
+- e413a37: Remove the sidebar ⚡ engine badge introduced with the live shell-tab identity: the row label already tracks the live OSC title, so the badge was a second parallel channel for the same information — and it lit redundantly on engine tabs running their own vendor. The data layer stays: `liveVendor` still feeds get-task/tab-snapshot from the live foreground walk, and a shell tab with a confirmed engine still renders through the same row path as an engine tab.
+
+## 0.8.115
+
+### Patch Changes
+
+- 975d35f: Shell tabs now carry a live engine identity (issue #33 step 1): the sidebar probes every hosted session's process tree — not just tabs mounted in this TUI — so a hand-typed `claude`/`codex` in any shell tab lights an engine badge on its row, and dims when the engine exits (debounced against mid-restart flicker). `rove api get-task`'s per-tab `liveVendor` now reflects a fresh foreground walk for live tabs instead of the last TUI-recorded value.
+
+## 0.8.114
+
+### Patch Changes
+
+- 42ecc09: Kimi sessions started from the TUI and the web dashboard now receive their first message (issue #25 follow-up).
+
+  `rove api send/add --prompt` already pasted kimi's first message post-spawn (kimi's positional argv slot is a subcommand, so an argv prompt exits the engine `Unknown command`), but the TUI's own spawn path still pinned argv — a quick-fork, issue-chat, or cross-engine-handoff prompt on a kimi tab still killed the session — and the web engine-spec path silently dropped a repo's init-prompt. The tab spawn now surfaces the message as `firstMessage` instead of appending it to the launch line, the hosted PTY bracketed-pastes it once the engine process is up (fresh spawns only — a reattach never redelivers), and the web PTY sidecar does the same for spec-carried messages.
+
+## 0.8.113
+
+### Patch Changes
+
+- 4de2d31: Verify session identity before recording a dispatcher (issue #24)
+
+  `$ROVE_TASK_ID`/`$ROVE_TAB_ID` are ordinary environment variables, so any
+  detached descendant of an engine tab — a Claude Code background process, for
+  instance — keeps exporting that tab's ids indefinitely. Every task such a
+  process created recorded a dispatcher pointing at a stranger's session, which
+  is where finished workers sent their reports.
+
+  `add`, `send`, and the new-task coda now cross-check the env against the pty
+  host before believing it: the named tab must be alive AND its shell must be an
+  ancestor of the calling process. Unverified means no dispatcher, no
+  `[KOBE PEER]` provenance, and no spawner address in the worker's own
+  instructions — with an `identityWarning` on the verb's JSON result so the
+  degrade is visible rather than silent.
+
+## 0.8.112
+
+### Patch Changes
+
+- 680dbb8: Record per-turn agent telemetry. Every completed engine turn now leaves an attributed record — task, tab, engine, model, start/end time, and token usage — read back with `rove api agent-turns` (filter by task or repo; the response carries a totals roll-up alongside the page).
+
+  The turn data is engine-owned: each adapter lifts it from its own transcript, so nothing outside the engine layer parses a vendor's files. Claude Code ships the first reader; other engines contribute nothing until theirs lands.
+
+## 0.8.111
+
+### Patch Changes
+
+- 998ca4e: `rove api` picks engines by COMMAND, not by a vendor enum.
+
+  `add` and `send --tab new` now take `--command` — an engine id from the new
+  `engine-list` verb, or a full command line Rove runs verbatim
+  (`--command "codex --search"`). The protocol Rove speaks to it (transcript
+  reader, workspace-trust pre-answer, first-message delivery) is derived from
+  the command's `argv[0]` rather than declared beside it, falling back to a
+  generic protocol that still launches and delivers. Nothing validates an
+  engine's flags: probe an unfamiliar CLI with `<cmd> --help` first.
+
+  - **`engine-list`** _(new, offline)_: every engine Rove can launch with the
+    RAW command it runs, its display name, and its resolved protocol. Copy an
+    entry into `--command` verbatim, or edit a flag first.
+  - **`fan-out` is removed** — parallel attempts live on `add --count N` (and
+    `--agents claude:2,codex:1`), same `groupId` / `#i/N` / partial-failure
+    contract as before.
+  - **`set-vendor` is removed**, replaced by **`set-command`**.
+  - Both removed verbs return `UNKNOWN_VERB` with the replacement in
+    `nextCommandArgs` — no silent aliases.
+  - Custom engines are now named PRESETS: Settings → Engines → + Add engine
+    also asks for the protocol (`engineProtocol.<id>`), so a wrapper around a
+    built-in keeps history, trust, and delivery instead of degrading to generic.
+
+  Bundled agent skill bumped to v24 for the new vocabulary.
+
 ## 0.8.110
 
 ### Patch Changes

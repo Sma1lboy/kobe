@@ -1,13 +1,11 @@
 # sidebar frame: view-tabs-archived
-# the Active/Archived row appears only once something is actually archived
+# archived tasks have no sidebar surface — no view tabs, no charlie row (issue #33)
 # 30x22
 # GENERATED — do not hand-edit. Regenerate: KOBE_UPDATE_GOLDEN=1 bun run test:render
 |                              |
 | ROVE                         |
 |                              |
 |  + New task               n  |
-|                              |
-|  Active   Archived           |
 |                              |
 | Kanban                       |
 | Routines                     |
@@ -18,6 +16,8 @@
 |   · review                   |
 |  feat/bravo                  |
 |   · tests                    |
+|                              |
+|                              |
 |                              |
 |                              |
 |                              |

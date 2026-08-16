@@ -3,6 +3,7 @@ import {
   engineProcessIn,
   foregroundEngine,
   foregroundEngineIn,
+  hasAncestor,
   parsePsSnapshot,
   vendorFromArgv,
 } from "../../src/engine/foreground.ts"
@@ -130,5 +131,33 @@ describe("foregroundEngine", () => {
         throw new Error("ps: command not found")
       }),
     ).toBeNull()
+  })
+})
+
+describe("hasAncestor (issue #24: env inherits, a pid chain doesn't)", () => {
+  // A tab shell (10) → engine (11) → its tool shell (12) → this CLI (13),
+  // plus a sibling (20) that detached out of the same shell days ago and
+  // reparented to init — it still carries the tab's exported env.
+  const rows = parsePsSnapshot(`
+10 1 /bin/zsh -il
+11 10 claude
+12 11 /bin/zsh -c kobe api add
+13 12 bun /kobe/api add
+20 1 claude --fork-session
+`)
+
+  it("is true for a real in-tab call at any depth, and for the shell itself", () => {
+    expect(hasAncestor(rows, 13, 10)).toBe(true)
+    expect(hasAncestor(rows, 11, 10)).toBe(true)
+    expect(hasAncestor(rows, 10, 10)).toBe(true)
+  })
+
+  it("is false for a detached process that merely inherited the env", () => {
+    expect(hasAncestor(rows, 20, 10)).toBe(false)
+  })
+
+  it("is false for an unknown pid, and terminates on a cyclic snapshot", () => {
+    expect(hasAncestor(rows, 999, 10)).toBe(false)
+    expect(hasAncestor(parsePsSnapshot("30 31 a\n31 30 b"), 30, 10)).toBe(false)
   })
 })

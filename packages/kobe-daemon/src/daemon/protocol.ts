@@ -148,6 +148,11 @@ export type DaemonRequestName =
   | "task.rename"
   | "task.setBranch"
   | "task.setVendor"
+  // Set a task's RAW engine launch command (the dispatch face's
+  // `set-command`). The caller resolves the command's protocol — engine
+  // presets live in kobe's state.json, which the daemon cannot read — and
+  // sends both, so the record stays self-consistent.
+  | "task.setCommand"
   | "task.delete"
   // Land a task's branch back into its base repo (merge/squash). The last step
   // of the worktree→engine→branch lifecycle that had no product path; refuses a
@@ -163,6 +168,8 @@ export type DaemonRequestName =
   | "task.ensureMain"
   // Open an existing directory as a standalone `kind:"dir"` task (`kobe .`).
   | "task.openDir"
+  // Scratch → project migration (issue #33): repoint + clear the flag.
+  | "task.adoptScratchRepo"
   | "project.forget"
   | "task.ensureWorktree"
   | "task.setActive"
@@ -216,6 +223,9 @@ export type DaemonRequestName =
   | "session.deliver"
   // Read one task's recent engine lifecycle events (the TUI event feed).
   | "task.recentEvents"
+  // Per-turn agent telemetry (issue #32): the durable turn store's read side.
+  // Written only by the hook-driven ingest on `turn-complete`.
+  | "agentTurn.list"
   // Production diagnostics (`kobe api inspect`): the activity registry's RAW
   // task/tab entries — probe vendor, armed watchdogs — beyond what the
   // engine-state wire payload carries. Read-only.
@@ -405,10 +415,14 @@ export interface SerializedTask {
   readonly branch: string
   readonly worktreePath: string
   readonly kind: "main" | "task" | "dir"
+  /** Scratch shell task (issue #33) — Scratch-section row, cleared on adopt/rename. */
+  readonly scratch?: boolean
   readonly status: DaemonTask["status"]
   readonly archived: boolean
   readonly pinned: boolean
   readonly vendor?: DaemonTask["vendor"]
+  /** Raw engine launch command as given to `add --command` / `set-command`. */
+  readonly command?: DaemonTask["command"]
   readonly prStatus?: DaemonTask["prStatus"]
   /** Web-board ordering key (sparse fractional; absent until first drop). */
   readonly position?: number
@@ -435,10 +449,12 @@ export function serializeTask(task: DaemonTask): SerializedTask {
     branch: task.branch,
     worktreePath: task.worktreePath,
     kind: task.kind ?? "task",
+    ...(task.scratch ? { scratch: true } : {}),
     status: task.status,
     archived: task.archived,
     pinned: task.pinned ?? false,
     vendor: task.vendor,
+    command: task.command,
     prStatus: task.prStatus,
     position: task.position,
     modelEffort: task.modelEffort,

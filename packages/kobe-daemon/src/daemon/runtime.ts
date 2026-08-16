@@ -1,5 +1,6 @@
 import type { DaemonRpcClient } from "../client/rpc.ts"
 import type {
+  AgentTurn,
   DaemonOrchestrator,
   DaemonTask,
   EngineActivityKind,
@@ -57,6 +58,13 @@ export interface DaemonRuntimeAdapter {
    * declares no vocabulary (or the title is empty) — never guessed.
    */
   titleTurnHint(vendor: VendorId, title: string): "working" | "rest" | null
+  /**
+   * Engine-owned per-turn telemetry (issue #32): completed turns read out of
+   * ONE session transcript by the vendor's own adapter. `[]` when the engine
+   * ships no turn reader or the file is unreadable — the daemon never parses
+   * a vendor transcript itself.
+   */
+  readEngineTurns(vendor: VendorId, transcriptPath: string): Promise<readonly AgentTurn[]>
   checkLatestVersion(): Promise<UpdateInfo | null>
   latestTranscriptMtime(vendor: VendorId, worktreePath: string): Promise<number>
   deriveTitleFromSession(worktreePath: string, vendor: VendorId): Promise<string>
@@ -68,7 +76,7 @@ export interface DaemonRuntimeAdapter {
   availableEngineIds(): Promise<readonly VendorId[]>
   engineDisplayName(vendor: VendorId): string
   kobeApiInvocation(): string
-  engineSpec(link: DaemonRpcClient, taskId: string): Promise<{ cwd: string; command: string[] }>
+  engineSpec(link: DaemonRpcClient, taskId: string): Promise<{ cwd: string; command: string[]; firstMessage?: string }>
   terminalSpec(link: DaemonRpcClient, taskId: string): Promise<{ cwd: string; command: string[] }>
   ensureTaskSession(link: DaemonRpcClient, taskId: string): Promise<{ session: string; worktreePath: string }>
   /**
@@ -103,7 +111,13 @@ export interface DaemonRuntimeAdapter {
    * spawns). Returns false when no alive engine session exists.
    */
   deliverPromptToLiveEngine(
-    task: { readonly id: string; readonly vendor?: VendorId; readonly worktreePath: string },
+    task: {
+      readonly id: string
+      readonly vendor?: VendorId
+      /** Raw launch command pinned on the task; wins over `vendor` when set. */
+      readonly command?: string
+      readonly worktreePath: string
+    },
     prompt: string,
   ): Promise<boolean>
   settingsSnapshot(): Response

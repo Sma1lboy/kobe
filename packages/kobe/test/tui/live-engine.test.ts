@@ -41,7 +41,11 @@ describe("createLiveEngines", () => {
 
   it("releases the identity when the engine exits back to the prompt", async () => {
     let tree = TREE
-    const store = createLiveEngines({ entries: () => [["a", pty(100)]], snapshot: async () => tree })
+    const store = createLiveEngines({
+      entries: () => [["a", pty(100)]],
+      snapshot: async () => tree,
+      releaseAfterMisses: 1,
+    })
     await store.probe()
     expect(store.get("a")).toBe("claude")
 
@@ -51,6 +55,53 @@ describe("createLiveEngines", () => {
     await store.probe()
     expect(store.get("a")).toBeNull()
     expect(notified).toBe(1)
+    store.dispose()
+  })
+
+  it("debounces the OFF edge: one engine-free walk holds, consecutive misses release", async () => {
+    let tree = TREE
+    const store = createLiveEngines({
+      entries: () => [["a", pty(100)]],
+      snapshot: async () => tree,
+      releaseAfterMisses: 2,
+    })
+    await store.probe()
+    expect(store.get("a")).toBe("claude")
+
+    // A single engine-free walk (engine mid-restart) must not strobe the badge.
+    tree = IDLE
+    await store.probe()
+    expect(store.get("a")).toBe("claude")
+
+    // The engine came back — the miss counter resets.
+    tree = TREE
+    await store.probe()
+    expect(store.get("a")).toBe("claude")
+    tree = IDLE
+    await store.probe()
+    expect(store.get("a")).toBe("claude")
+
+    // Second consecutive miss: the exit is real.
+    await store.probe()
+    expect(store.get("a")).toBeNull()
+    store.dispose()
+  })
+
+  it("probes aux (host-inventory) pids the local registry doesn't know", async () => {
+    const store = createLiveEngines({
+      entries: () => [],
+      snapshot: async () => TREE,
+      releaseAfterMisses: 1,
+    })
+    store.setAuxPids(new Map([["t1::tab-2", 100]]))
+    await store.probe()
+    expect(store.get("t1::tab-2")).toBe("claude")
+    expect(store.resolve("t1::tab-2")).toBe("claude")
+
+    // Aux key gone (session died / inventory refreshed) → identity released.
+    store.setAuxPids(new Map())
+    await store.probe()
+    expect(store.resolve("t1::tab-2")).toBeUndefined()
     store.dispose()
   })
 
@@ -77,7 +128,7 @@ describe("createLiveEngines", () => {
       ["b", pty(200)],
       ["c", pty(null)], // attached but unspawned — nothing to walk
     ]
-    const store = createLiveEngines({ entries: () => live, snapshot: async () => tree })
+    const store = createLiveEngines({ entries: () => live, snapshot: async () => tree, releaseAfterMisses: 1 })
     await store.probe()
     expect(store.resolve("a")).toBe("claude") // engine live
     expect(store.resolve("b")).toBeNull() // shell walked, confirmed engine-free

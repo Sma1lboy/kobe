@@ -72,6 +72,7 @@ import {
   worktreeChangesSignalOp,
 } from "./remote-orchestrator-reads.ts"
 import {
+  adoptScratchRepoOp,
   adoptWorktreeOp,
   automationRunsOp,
   createAutomationOp,
@@ -91,6 +92,7 @@ import {
   markAttentionReadOp,
   moveTaskOp,
   mutateIssueOp,
+  openDirectoryTaskOp,
   removeWorktreeOp,
   reportEngineInterruptOp,
   runAutomationNowOp,
@@ -98,6 +100,7 @@ import {
   setArchivedOp,
   setAutomationEnabledOp,
   setBranchOp,
+  setCommandOp,
   setPinnedOp,
   setStatusOp,
   setTitleOp,
@@ -389,11 +392,16 @@ export class RemoteOrchestrator {
 
   createTask = (input: Parameters<typeof createTaskOp>[1]): Promise<Task> => createTaskOp(this.client, input)
   ensureMainTask = (repo: string): Promise<Task> => ensureMainTaskOp(this.client, repo)
+  openDirectoryTask = (input: { dir: string; scratch?: boolean }): Promise<Task> =>
+    openDirectoryTaskOp(this.client, input)
+  adoptScratchRepo = (id: TaskId | string, repo: string): Promise<void> => adoptScratchRepoOp(this.client, id, repo)
   ensureWorktree = (id: TaskId | string): Promise<string> => ensureWorktreeOp(this.client, id)
   forgetProject = (repo: string): Promise<void> => forgetProjectOp(this.client, repo)
   setTitle = (id: TaskId | string, title: string): Promise<void> => setTitleOp(this.client, id, title)
   setBranch = (id: TaskId | string, branch: string): Promise<void> => setBranchOp(this.client, id, branch)
   setVendor = (id: TaskId | string, vendor: VendorId): Promise<void> => setVendorOp(this.client, id, vendor)
+  setCommand = (id: TaskId | string, command: string, vendor?: VendorId): Promise<void> =>
+    setCommandOp(this.client, id, command, vendor)
   setPinned = (id: TaskId | string, pinned?: boolean): Promise<void> => setPinnedOp(this.client, id, pinned)
   moveTask = (id: TaskId | string, delta: -1 | 1): Promise<void> => moveTaskOp(this.client, id, delta)
   setArchived = (id: TaskId | string, archived?: boolean): Promise<void> => setArchivedOp(this.client, id, archived)

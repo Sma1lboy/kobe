@@ -74,10 +74,15 @@ export interface DaemonTask {
   readonly branch: string
   readonly worktreePath: string
   readonly kind?: "main" | "task" | "dir"
+  /** Scratch shell task (issue #33): a dir task with no settled cwd, living
+   *  in the sidebar's Scratch section; cleared when named or adopted. */
+  readonly scratch?: boolean
   readonly status: TaskStatus
   readonly archived: boolean
   readonly pinned?: boolean
   readonly vendor?: VendorId
+  /** Raw engine launch command; `vendor` carries its resolved protocol. */
+  readonly command?: string
   readonly prStatus?: TaskPRStatus
   readonly position?: number
   readonly modelEffort?: string
@@ -122,18 +127,26 @@ export interface DaemonOrchestrator {
     branch?: string
     baseRef?: string
     vendor?: VendorId
+    /** Raw engine launch command; `vendor` carries its resolved protocol. */
+    command?: string
     modelEffort?: string
     groupId?: string
     dispatcher?: TaskDispatcher
   }): Promise<DaemonTask>
   ensureMainTask(repo: string): Promise<DaemonTask>
-  /** Open an existing directory as a standalone `kind:"dir"` task (`kobe .`). */
-  openDirectoryTask(input: { dir: string; vendor?: VendorId }): Promise<DaemonTask>
+  /** Open an existing directory as a standalone `kind:"dir"` task (`kobe .`).
+   *  `scratch` marks it a temp shell task for the sidebar's Scratch section. */
+  openDirectoryTask(input: { dir: string; vendor?: VendorId; scratch?: boolean }): Promise<DaemonTask>
+  /** Migrate a scratch task into `repo` (issue #33 adoption): repoint the
+   *  task at the repo root and clear the scratch flag. */
+  adoptScratchRepo(id: string, repo: string): Promise<void>
   ensureWorktree(id: string): Promise<string>
   forgetProject(repo: string): Promise<void>
   setTitle(id: string, title: string): Promise<void>
   setBranch(id: string, branch: string): Promise<void>
   setVendor(id: string, vendor: VendorId): Promise<void>
+  /** Pin a raw launch command (and its caller-resolved protocol) on a task. */
+  setCommand(id: string, command: string, vendor?: VendorId): Promise<void>
   setPinned(id: string, pinned?: boolean): Promise<void>
   moveTask(id: string, delta: -1 | 1): Promise<void>
   setArchived(id: string, archived?: boolean): Promise<void>
@@ -199,6 +212,41 @@ export interface EngineActivityDetail {
 }
 
 export type TaskActivityState = "idle" | "running" | "turn_complete" | "rate_limited" | "permission_needed" | "error"
+
+/**
+ * The ENGINE half of a turn record (issue #32) — what the vendor's adapter
+ * lifts from its own transcript. Mirrors `kobe/src/engine/agent-turn.ts`,
+ * which is the contract's source of truth; this is the daemon's structural
+ * copy (the daemon package never imports kobe sources).
+ */
+export interface AgentTurn {
+  /** The engine's own stable turn id — dedupe key within a task. */
+  readonly id: string
+  readonly sessionId: string
+  readonly model?: string
+  /** Epoch ms. */
+  readonly startedAt: number
+  readonly endedAt: number
+  readonly usage?: {
+    readonly input_tokens?: number
+    readonly output_tokens?: number
+    readonly cache_read_input_tokens?: number
+    readonly cache_creation_input_tokens?: number
+  }
+}
+
+/**
+ * One agent turn joined to Rove identity: the engine's turn plus the
+ * task/tab/vendor/repo the daemon knows and the engine doesn't.
+ */
+export interface AgentTurnRecord extends Omit<AgentTurn, "sessionId"> {
+  readonly taskId: string
+  readonly tabId?: string
+  readonly vendor?: VendorId
+  readonly sessionId?: string
+  /** Source repo of the task, so a digest can scope by project. */
+  readonly repo?: string
+}
 
 /** States represented by pending Inbox items until handled or the same
  * Terminal Tab starts another turn. */
