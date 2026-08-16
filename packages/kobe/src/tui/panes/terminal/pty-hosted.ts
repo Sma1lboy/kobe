@@ -27,6 +27,7 @@ import type { KobeDaemonClient } from "@sma1lboy/kobe-daemon/client"
 import { logClientError } from "@sma1lboy/kobe-daemon/client/client-log"
 import type { PtyOpenResult } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import { SerializeAddon } from "@xterm/addon-serialize"
+import { pastePromptWhenEngineUp } from "../../../engine/hosted-session.ts"
 import { getSharedPtyClient, routeAdd, routeCount, routeRemove } from "./pty-hosted-client"
 import type { ParkedScreen, PtyDetachOpts, TaskPtyOpts } from "./pty-types"
 import { XtermTaskPty } from "./pty-xterm-base"
@@ -145,7 +146,17 @@ export class HostedTaskPty extends XtermTaskPty {
       }
       // The typed engine line goes FIRST (it belongs to the spawn), then
       // any keystrokes the user queued while the socket opened.
-      if (opts.initialInput && HostedTaskPty.createdFresh(res)) this.sendInput(opts.initialInput)
+      const fresh = HostedTaskPty.createdFresh(res)
+      if (opts.initialInput && fresh) this.sendInput(opts.initialInput)
+      // Paste-delivery vendor (kimi — issue #25): the launch kept the first
+      // message OUT of its argv (the positional slot is a subcommand), so we
+      // owe the session a paste once its engine process is up. Only on a
+      // fresh spawn — a reattach already received (or never had) it.
+      if (opts.firstMessage && fresh) {
+        void pastePromptWhenEngineUp(client, this.taskId, opts.engineBin, opts.firstMessage).catch((err) =>
+          logClientError("pty-hosted", err),
+        )
+      }
       for (const data of this.pendingInput.splice(0)) this.sendInput(data)
       // An exit frame that raced the open response: ours only if the pid
       // matches this session's child — a mismatch is the previous

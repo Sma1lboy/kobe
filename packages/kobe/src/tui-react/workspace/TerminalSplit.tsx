@@ -97,6 +97,11 @@ export function TerminalSplit(props: {
   /** Typed into leaf-1's FRESH spawn — the shell-wrapped engine line
    *  (`TaskPtyOpts.initialInput`). Split-created shell leaves never get it. */
   initialInput?: string
+  /** Paste-delivery vendor's first message for leaf-1's fresh spawn
+   *  (`TaskPtyOpts.firstMessage`, issue #25). Split leaves never get it. */
+  firstMessage?: string
+  /** Engine binary name for the first-message engine-up probe. */
+  engineBin?: string
   /** The active tab's frozen split layout (null = unsplit). Owned by the
    *  parent, persisted to state.json; switching tabs swaps this prop. */
   splitTree: PersistedSplit | null
@@ -279,6 +284,8 @@ export function TerminalSplit(props: {
           taskId={splitLeafPtyKey(props.tabKey, leaf.id)}
           command={leaf.content ?? props.command}
           initialInput={leaf.content === null ? props.initialInput : undefined}
+          firstMessage={leaf.content === null ? props.firstMessage : undefined}
+          engineBin={leaf.content === null ? props.engineBin : undefined}
           onUserInput={leaf.content === null ? props.onUserInput : undefined}
           onExit={() => onLeafExit(leaf.id)}
           resetToken={leaf.id === "leaf-1" ? props.resetToken : undefined}
@@ -385,6 +392,8 @@ export function TerminalSplit(props: {
       taskId={props.tabKey}
       command={props.command}
       initialInput={props.initialInput}
+      firstMessage={props.firstMessage}
+      engineBin={props.engineBin}
       onUserInput={props.onUserInput}
       onExit={props.onExit}
       resetToken={props.resetToken}

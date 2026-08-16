@@ -34,6 +34,12 @@ export interface UseTerminalPtyOpts {
   /** Typed into a FRESH spawn (`TaskPtyOpts.initialInput`) — the shell-
    *  wrapped engine line. Read via a ref like `command`. */
   initialInput?: string
+  /** Paste-delivery vendor's first message (`TaskPtyOpts.firstMessage`) —
+   *  the hosted backend pastes it once the fresh-spawned engine is up.
+   *  Read via a ref like `command`. */
+  firstMessage?: string
+  /** Engine binary name for the first-message engine-up probe. */
+  engineBin?: string
   resetToken?: number
   /** `deadOnAttach`: the exit was discovered on reattach (engine died
    *  while the TUI was away), not observed live — see `TaskPtyLike`. */
@@ -71,6 +77,8 @@ export function useTerminalPty(opts: UseTerminalPtyOpts): UseTerminalPtyResult {
   // them (the Solid original's untracked reads inside `on(...)`).
   const commandRef = useLatest(opts.command)
   const initialInputRef = useLatest(opts.initialInput)
+  const firstMessageRef = useLatest(opts.firstMessage)
+  const engineBinRef = useLatest(opts.engineBin)
   const bodyGeometryRef = useLatest(opts.bodyGeometry)
   const registryRef = useLatest(opts.registry)
   const onExitRef = useLatest(opts.onExit)
@@ -102,6 +110,8 @@ export function useTerminalPty(opts: UseTerminalPtyOpts): UseTerminalPtyResult {
         ...geometry,
         command: commandRef.current,
         initialInput: initialInputRef.current,
+        firstMessage: firstMessageRef.current,
+        engineBin: engineBinRef.current,
       })
     } catch (err) {
       const message = errorMessage(err)
@@ -173,6 +183,8 @@ export function useTerminalPty(opts: UseTerminalPtyOpts): UseTerminalPtyResult {
           ...geometry,
           command: commandRef.current,
           initialInput: initialInputRef.current,
+          firstMessage: firstMessageRef.current,
+          engineBin: engineBinRef.current,
         }
         const fresh = expected
           ? registryRef.current.resetIfCurrent(nextTaskId, expected, nextCwd, opts)
