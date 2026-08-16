@@ -179,7 +179,7 @@ async function openPane(pluginId: string, entrypoint: string, taskFlag: string |
   if (!pane) throw new PluginCliError(`no pane \`${entrypoint}\` in \`${pluginId}\`; declare it under [[panes]]`)
 
   // Shared composition with the TUI's ctrl+e picker (plugins/pane-command.ts):
-  // one `sh -lc` script, env contract riding an `env` prefix, cwd = worktree.
+  // one login-shell `-ilc` script, env contract riding an `env` prefix, cwd = worktree.
   const argv = buildPaneArgv(loaded.entry.id, loaded.entry.root, pane, {
     socketPath: defaultDaemonSocketPath(),
     binPath: CLI_NAME,

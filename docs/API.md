@@ -281,7 +281,10 @@ to do) from `dispatch_failed` (needs a human).
 ## lifecycle
 
 - `archive --task-id ID [--archived=false]`: archive/unarchive.
-  Non-destructive: worktree, branch, and history stay.
+  Non-destructive: worktree, branch, and history stay. A manual "hide the
+  row" override — once work is merged, `delete` (branch survives) is the
+  normal cleanup path; see
+  [`design/task-lifecycle.md`](./design/task-lifecycle.md).
 - `pin --task-id ID [--pinned=false]`: pin/unpin a task to the top of the
   sidebar.
 - `land --task-id ID [--strategy merge|squash] [--delete-branch]
@@ -294,9 +297,10 @@ to do) from `dispatch_failed` (needs a human).
   forces: a dirty worktree, the base checkout, and the worktree the caller is
   running from are all refused, and the outcome lands in the result's
   `worktree` field (`{ removed, reason? }`) instead of failing the land.
-- `delete --task-id ID [--force]`: permanently remove a task **and its
-  worktree**. Destructive; prefer `archive`. Needs `--force` on a dirty
-  worktree.
+- `delete --task-id ID [--force] [--delete-branch]`: remove a task and its
+  worktree. **The git branch stays** unless `--delete-branch` is passed —
+  git is the durable record, the task row is not. Needs `--force` on a
+  dirty worktree; `--force` never implies `--delete-branch`.
 
 ## worktree
 

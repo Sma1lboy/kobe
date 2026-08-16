@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.8.110
+
+### Patch Changes
+
+- 93e6347: Fix shell env inconsistency (#26): `pane-open --command`, plugin panes, and the automation precheck now spawn through the same `resolveLoginShell()` + `-ilc` integration path engine tabs already use, instead of a bare `sh -lc` / non-interactive `-lc` that skips `.zshrc`/`.bashrc`. Panes and prechecks see the same PATH/exports as the engine they accompany.
+- a278546: Fix the `perf:golden` `park-heap-reclaim` probe's machine-load flake (bimodal 2% vs 52%). The sweep's quiet gate (`PARK_QUIET_MS`) refused to park the just-filled tabs, so nothing ever parked and the old %-of-total-heap formula was really measuring GC laziness — ambient, load-dependent. The probe now fast-forwards the sweep clock so parking actually happens, counts typed-array backing stores (`extraMemorySize`, where xterm cells live) in the heap reading, and reports a self-normalizing ratio — heap freed as a share of the growth the 10 tabs themselves caused — from the median of three settled GC samples.
+- 2f6d7d3: Fix a pty-host blip resurrecting an already-corrected idle tab as a phantom `running` dot. Once observation disproves a stale hook `running` (ESC interrupt, dead engine), the hook slot is now retired instead of left to win the next ungated arbitration — and its lapse watchdog no longer keeps re-arming that claim for the length of a host outage.
+
+## 0.8.109
+
+### Patch Changes
+
+- f1879cf: Keep the Kanban story drawer's engine labels inside their chip borders on terminals whose font descenders extend low in the cell.
+
+## 0.8.108
+
+### Patch Changes
+
+- 629b010: Remove the sidebar repo context filter (`ctrl+p`) shipped in #459: the chord shadowed in-terminal previous-history and the eventual session concept is a combination of repos, not a per-repo filter. Task-lifecycle changes from #459 (delete keeps the branch, archive→GC design) are untouched.
+
+## 0.8.107
+
+### Patch Changes
+
+- cc232fb: Task delete now keeps the git branch by default — git is the durable record; pass `--delete-branch` on `rove api delete` to drop it too (`--force` never implies it). The sidebar gains a repo context filter on `ctrl+p` (pure view-layer, nothing persisted), and `docs/design/task-lifecycle.md` records the archive→internal-GC direction for issue #29.
+
 ## 0.8.106
 
 ### Patch Changes

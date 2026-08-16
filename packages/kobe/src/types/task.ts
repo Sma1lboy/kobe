@@ -87,6 +87,9 @@ export type TaskDeletionPhase = "queued" | "running" | "error"
 export interface TaskDeletionState {
   readonly phase: TaskDeletionPhase
   readonly force: boolean
+  /** Opt-in: also delete the task's git branch. Default (absent/false) keeps
+   *  the branch — git history is the durable record, the task row is not. */
+  readonly deleteBranch?: boolean
   readonly requestedAt: string
   readonly error?: string
 }

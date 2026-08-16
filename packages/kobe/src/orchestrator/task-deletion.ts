@@ -4,6 +4,13 @@ import { CannotDeleteMainTaskError, DirtyWorktreeError, WorktreeRemoveFailedErro
 import type { TaskIndexStore } from "./index/store.ts"
 import type { GitWorktreeManager } from "./worktree/manager.ts"
 
+/** Caller options for a task deletion. `deleteBranch` is a separate opt-in,
+ *  never implied by `force`. */
+export interface TaskDeletionOpts {
+  readonly force?: boolean
+  readonly deleteBranch?: boolean
+}
+
 /**
  * Persistent task-deletion state machine. The daemon owns scheduling; this
  * collaborator owns safety checks and the atomic task-index transitions.
@@ -16,7 +23,7 @@ export class TaskDeletionCoordinator {
   ) {}
 
   /** Persist acceptance after the destructive dirty-worktree safety check. */
-  async prepare(id: TaskId | string, opts?: { readonly force?: boolean }): Promise<boolean> {
+  async prepare(id: TaskId | string, opts?: TaskDeletionOpts): Promise<boolean> {
     const task = this.store.get(id)
     if (!task) return false
     if (task.kind === "main") throw new CannotDeleteMainTaskError()
@@ -40,6 +47,10 @@ export class TaskDeletionCoordinator {
       deletion: {
         phase: "queued",
         force,
+        // Branch deletion is a separate opt-in, never implied by `force`:
+        // deleting a task drops the worktree + index entry; the branch is
+        // git's durable record and survives unless explicitly requested.
+        deleteBranch: opts?.deleteBranch === true,
         requestedAt: new Date().toISOString(),
       },
     })
@@ -67,7 +78,7 @@ export class TaskDeletionCoordinator {
       if (task.worktreePath && task.kind !== "dir") {
         await this.worktrees.remove(task.worktreePath, {
           force: task.deletion.force,
-          deleteBranch: true,
+          deleteBranch: task.deletion.deleteBranch === true,
         })
       }
     } catch (cause) {
@@ -86,7 +97,7 @@ export class TaskDeletionCoordinator {
   }
 
   /** Compatibility path for local callers that still require completion. */
-  async deleteNow(id: TaskId | string, opts?: { readonly force?: boolean }): Promise<void> {
+  async deleteNow(id: TaskId | string, opts?: TaskDeletionOpts): Promise<void> {
     if (!(await this.prepare(id, opts))) return
     if (!(await this.begin(id))) return
     await this.finish(id)

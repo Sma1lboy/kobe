@@ -1,12 +1,13 @@
 /**
  * Pane launch composition — shared by `kobe plugin pane open` (CLI) and the
- * TUI's ctrl+e picker, so both build the IDENTICAL argv: one `sh -lc` script
- * carrying the plugin env contract, with `$ROVE_PLUGIN_ROOT` (or its legacy
- * Kobe alias) expanded in the
+ * TUI's ctrl+e picker, so both build the IDENTICAL argv: one login-shell
+ * `-ilc` script carrying the plugin env contract, with `$ROVE_PLUGIN_ROOT`
+ * (or its legacy Kobe alias) expanded in the
  * manifest command. The pane's PTY runs in the task worktree; no tab/PTY
  * schema knows about plugins (docs/design/plugins.md §Panes).
  */
 
+import { resolveLoginShell } from "../daemon/platform-shell.js"
 import { buildPluginEnv } from "./env.ts"
 import { type PluginPane, currentPluginPlatform, readPluginManifest, supportsPlatform } from "./manifest.ts"
 import { loadPluginRegistry } from "./registry.ts"
@@ -25,12 +26,12 @@ export interface PaneLaunchOpts {
   readonly binPath: string
 }
 
-/** POSIX single-quote for embedding in an `sh -lc` script. */
+/** POSIX single-quote for embedding in a login-shell `-ilc` script. */
 export function shq(s: string): string {
   return `'${s.replace(/'/g, "'\\''")}'`
 }
 
-/** The `["sh", "-lc", …]` argv that runs one pane with the env contract. */
+/** The `[loginShell, "-ilc", …]` argv that runs one pane with the env contract. */
 export function buildPaneArgv(
   pluginId: string,
   pluginRoot: string,
@@ -51,7 +52,10 @@ export function buildPaneArgv(
   ][]
   const command = pane.command.map((a) => a.replace(/\$\{?(?:ROVE|KOBE)_PLUGIN_ROOT\}?/g, pluginRoot))
   const script = `exec env ${pairs.map(([k, v]) => shq(`${k}=${v}`)).join(" ")} ${command.map(shq).join(" ")}`
-  return ["sh", "-lc", script]
+  // Same integration path as the engine tab (session-launch.ts): the user's
+  // login shell with the interactive bit, so a plugin pane reads the same
+  // PATH/exports as the engine tab does (#26).
+  return [resolveLoginShell(), "-ilc", script]
 }
 
 /** Every pane of every ENABLED plugin that runs on this platform, launch-ready. */

@@ -1,3 +1,6 @@
+import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs"
+import { tmpdir } from "node:os"
+import { join } from "node:path"
 import { describe, expect, it } from "vitest"
 import {
   formatPrecheckSkip,
@@ -53,6 +56,19 @@ describe("runAutomationPrecheck", () => {
       CWD,
     )
     expect(result.exitCode).toBe(0)
+  })
+
+  it("spawns the shell with -ilc, the same interactive login form engine tabs use (#26)", async () => {
+    // A spy shell records the exact argv it was invoked with, so this pins the
+    // flag contract rather than just "a shell ran".
+    const dir = mkdtempSync(join(tmpdir(), "kobe-precheck-spy-"))
+    const spy = join(dir, "spy.sh")
+    const argsFile = join(dir, "args")
+    writeFileSync(spy, `#!/bin/sh\n: > "${argsFile}"\nfor a in "$@"; do echo "$a" >> "${argsFile}"; done\nexit 0\n`)
+    chmodSync(spy, 0o755)
+    const result = await runAutomationPrecheck({ command: "true", timeoutSeconds: 10 }, CWD, spy)
+    expect(result.exitCode).toBe(0)
+    expect(readFileSync(argsFile, "utf8")).toBe("-ilc\ntrue\n")
   })
 
   it("truncates runaway output instead of buffering it all", async () => {
