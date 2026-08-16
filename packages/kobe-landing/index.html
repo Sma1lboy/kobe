@@ -58,6 +58,7 @@ button{font-family:inherit;cursor:pointer}
 :focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:4px}
 .wrap{max-width:1160px;margin:0 auto;padding:0 clamp(20px,4vw,52px)}
 .acc{color:var(--accent);font-style:italic}
+.hero-term{white-space:nowrap}
 
 /* ============ NAV — glass pill, terminal grammar ============ */
 .navbar{position:fixed;top:16px;left:50%;transform:translateX(-50%);z-index:50;display:flex;align-items:center;gap:2px;padding:6px 8px;border-radius:999px;background:oklch(100% 0 0/.55);backdrop-filter:blur(16px) saturate(1.3);border:1px solid oklch(100% 0 0/.8);box-shadow:0 10px 36px oklch(40% 0.04 60/.16);font-family:var(--font-mono);font-size:12.5px;max-width:calc(100vw - 24px)}
@@ -199,7 +200,7 @@ h1{font-family:var(--font-display);font-optical-sizing:auto;font-size:clamp(44px
   <div class="hero-veil" aria-hidden="true"></div>
   <div class="hero-inner">
     <p class="hero-kicker rise" style="animation-delay:.08s" data-i18n-html="hero.kicker">prompt engineering → context engineering → <span class="acc">graph engineering</span></p>
-    <h1 class="rise" style="animation-delay:.2s" data-i18n-html="hero.title">The agent <span class="acc">multiplexer</span> in your shell.</h1>
+    <h1 class="rise" style="animation-delay:.2s" data-i18n-html="hero.title">The agent <span class="acc hero-term">multiplexer</span> in your shell.</h1>
     <p class="hero-sub rise" style="animation-delay:.34s" data-i18n="hero.sub">One agent is a conversation. Five at once are a graph: nodes are isolated attempts — git worktree + engine session + branch — edges are dependencies, and the gates are your judgment. Rove is the terminal-native runtime for that graph.</p>
     <div class="hero-row rise" style="animation-delay:.48s">
       <button id="copyBtn" class="copy-cmd">
