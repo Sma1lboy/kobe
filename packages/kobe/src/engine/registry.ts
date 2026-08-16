@@ -147,8 +147,7 @@ export interface EngineRegistryEntry {
   readonly terminalTitle?: {
     readonly ownsStatus: boolean
     readonly launchArgs?: readonly string[]
-    /** Recover a vendor session id when an unnamed session emits identity
-     *  instead of a display name. The adapter owns that wire format. */
+    /** Recover the vendor session id emitted as an unnamed session's title. */
     readonly sessionIdFromTitle?: (title: string) => string | null
     /**
      * Leading STATUS decoration the engine writes into its own OSC title,
