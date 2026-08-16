@@ -96,4 +96,34 @@ describe("HostedTaskPty first-message paste (issue #25)", () => {
     expect(mocks.paste).not.toHaveBeenCalled()
     pty.detach()
   })
+
+  it("queues keystrokes typed before the open lands and flushes them after", async () => {
+    openWith({ alive: true, created: true, replay: "", pid: 42, offset: 0 })
+    const pty = new HostedTaskPty({ taskId: "task-1::tab-1", cwd: "/repo/wt", command: ["kimi"], cols: 60, rows: 12 })
+    pty.write("typed-early")
+    await vi.waitFor(() =>
+      expect(mocks.request).toHaveBeenCalledWith("pty.write", { key: "task-1::tab-1", data: "typed-early" }),
+    )
+    pty.detach()
+  })
+
+  it("kill() ends the REMOTE child through the host", async () => {
+    openWith({ alive: true, created: true, replay: "", pid: 42, offset: 0 })
+    const pty = new HostedTaskPty({ taskId: "task-1::tab-1", cwd: "/repo/wt", command: ["kimi"], cols: 60, rows: 12 })
+    await vi.waitFor(() => expect(mocks.request).toHaveBeenCalledWith("pty.open", expect.anything()))
+    pty.kill()
+    expect(mocks.request).toHaveBeenCalledWith("pty.kill", { key: "task-1::tab-1" })
+    expect(pty.killed).toBe(true)
+  })
+
+  it("a pid-matching exit frame for OUR child marks the handle dead", async () => {
+    openWith({ alive: true, created: true, replay: "", pid: 42, offset: 0 })
+    const pty = new HostedTaskPty({ taskId: "task-1::tab-1", cwd: "/repo/wt", command: ["kimi"], cols: 60, rows: 12 })
+    // Wait for the open RESPONSE to land (sessionPid assigned), not just the call.
+    await vi.waitFor(() => expect(pty.shellPid).toBe(42))
+    pty.remoteExited(43) // a different incarnation's exit — ignored
+    expect(pty.killed).toBe(false)
+    pty.remoteExited(42)
+    expect(pty.killed).toBe(true)
+  })
 })
