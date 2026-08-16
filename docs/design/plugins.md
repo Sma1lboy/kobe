@@ -118,7 +118,7 @@ validates the manifest and previews commands but does not sandbox or review.
 
 Zero infrastructure: the canonical GitHub topic is **`rove-plugin`**. Search
 also unions the legacy **`kobe-plugin`** topic, so existing publishers stay listed.
-The landing page (`packages/kobe-landing/plugins.html`, kobe.sma1lboy.me)
+The landing page (`packages/kobe-landing/plugins.html`, rove.sma1lboy.me)
 queries GitHub's repo search client-side and lists tagged public repos;
 first-party examples live in [Sma1lboy/kobe-plugins](https://github.com/Sma1lboy/kobe-plugins) (topic-tagged, so the repo auto-lists) and also seed the list per-plugin. No
 submission, no review queue. If the unauthenticated search rate limit ever
