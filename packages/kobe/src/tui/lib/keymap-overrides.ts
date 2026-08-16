@@ -97,7 +97,6 @@ export const SLOT_CONTRACTS: Readonly<Record<string, SlotContract>> = {
   "files.nav": pairContract("down", "up"),
   "sidebar.search.nav": pairContract("down", "up"),
   "files.hierarchy": pairContract("collapse", "expand"),
-  "sidebar.view": pairContract("previous view", "next view"),
   "files.tab": pairContract("previous tab", "next tab"),
   // Not a pair: slot 0 = quit confirm, slot 1 = hard exit (native
   // workspace's second ctrl+q). The hard-exit chord is optional — a

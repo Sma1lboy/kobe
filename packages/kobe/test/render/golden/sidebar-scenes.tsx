@@ -221,7 +221,7 @@ export const SCENES: readonly Scene[] = [
   },
   {
     name: "view-tabs-archived",
-    about: "the Active/Archived row appears only once something is actually archived",
+    about: "archived tasks have no sidebar surface — no view tabs, no charlie row (issue #33)",
     setup: seedStandard,
     element: tree({ tasks: [ALPHA, BRAVO, task("charlie", { archived: true })] }),
   },

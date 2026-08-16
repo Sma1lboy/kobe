@@ -4,16 +4,6 @@
  */
 
 export const en = {
-  /** Task-list filter inside Workspace. "Active" rather than "Workspace":
-   *  the rail above already says Workspace, and repeating it reads as a
-   *  duplicate rather than as a filter over what the rail selected.
-   *  "Archived" not "Archives" (owner 2026-08-09): a noun next to an
-   *  adjective read as two DESTINATIONS to first-time users; the parallel
-   *  adjective pair reads as what it is — a filter over the task list. */
-  view: {
-    workspace: "Active",
-    archives: "Archived",
-  },
   /** Top-level navigation rail — one row per destination */
   nav: {
     workspace: "Workspace",
@@ -54,12 +44,8 @@ export const en = {
   empty: {
     noMatchSearch: "No matching tasks — esc to clear.",
     noActiveProject: "No active tasks for this project.",
-    noArchivedProject: "No archived tasks for this project.",
     noActive: "No active tasks — create one above.",
-    noArchived: "No archived tasks.",
   },
-  /** In-list hint shown at the bottom of the Archives view */
-  archiveHint: "a to unarchive",
   /** Row-view engine activity labels (shown in subtitle, override branch) */
   activity: {
     rateLimited: "rate limited",
@@ -120,10 +106,6 @@ export const en = {
 }
 
 export const zh: typeof en = {
-  view: {
-    workspace: "进行中",
-    archives: "归档",
-  },
   nav: {
     workspace: "工作区",
     kanban: "看板",
@@ -155,11 +137,8 @@ export const zh: typeof en = {
   empty: {
     noMatchSearch: "无匹配任务——按 esc 清除。",
     noActiveProject: "该项目暂无活跃任务。",
-    noArchivedProject: "该项目暂无归档任务。",
     noActive: "暂无活跃任务——在上方新建。",
-    noArchived: "暂无归档任务。",
   },
-  archiveHint: "a 取消归档",
   activity: {
     rateLimited: "请求受限",
     permissionNeeded: "等待授权",

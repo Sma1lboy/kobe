@@ -147,7 +147,7 @@ describe("applyKeymapOverrides", () => {
       { id: "app.quit", scope: "sidebar", keys: ["q", "ctrl+q"], hint: { keys: "q" } },
       { id: "chat.tab.new", scope: "workspace", keys: ["ctrl+t"] },
       { id: "sidebar.nav", scope: "sidebar", keys: ["j", "k", "down", "up"], hint: { keys: "j/k" } },
-      { id: "sidebar.view", scope: "sidebar", keys: ["[", "]"] },
+      { id: "files.tab", scope: "files", keys: ["[", "]"] },
       { id: "sidebar.goto", scope: "sidebar", keys: ["g", "shift+g"] }, // slot pair [top, bottom]
       { id: "fixed.example", scope: "workspace", keys: ["j", "k"] }, // fixed via injected map below
       { id: "chat.send", scope: "workspace", keys: [] }, // doc-only
@@ -218,7 +218,7 @@ describe("applyKeymapOverrides", () => {
 
   // ─── Slot contracts (direction-multiplexed ids) ──────────────────────
   // sidebar.nav / files.nav / sidebar.search.nav / files.hierarchy /
-  // sidebar.view / files.tab dispatch on the matched chord's SLOT
+  // files.tab dispatches on the matched chord's SLOT
   // (index in the keys array), layout = alternating pairs. Overrides
   // must keep the count even so the slot%2 direction mapping holds —
   // Directional slot groups must preserve their exact positional contract.
@@ -259,10 +259,10 @@ describe("applyKeymapOverrides", () => {
 
   test("slot ids: a single-chord override of a [prev, next] pair warns and keeps the default", () => {
     const keymap = makeKeymap()
-    const { applied, warnings } = applyKeymapOverrides(keymap, [{ id: "sidebar.view", keys: ["ctrl+v"] }])
+    const { applied, warnings } = applyKeymapOverrides(keymap, [{ id: "files.tab", keys: ["ctrl+v"] }])
     expect(applied).toEqual([])
-    expect(warnings.some((w) => w.includes("previous view, next view") && w.includes("keeping the default"))).toBe(true)
-    expect(keymap.find((b) => b.id === "sidebar.view")?.keys).toEqual(["[", "]"])
+    expect(warnings.some((w) => w.includes("previous tab, next tab") && w.includes("keeping the default"))).toBe(true)
+    expect(keymap.find((b) => b.id === "files.tab")?.keys).toEqual(["[", "]"])
   })
 
   test("slot ids: unbind ([]) is still allowed — no slots involved", () => {
