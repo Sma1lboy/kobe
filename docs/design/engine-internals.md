@@ -195,11 +195,15 @@ Claude and Codex own their OSC title while visible
 (`terminalTitle.ownsStatus`), so neutral tab chrome doesn't prefix a
 duplicate turn glyph. Codex additionally launches with
 `-c tui.terminal_title=["activity","thread-title"]` so tabs show its thread
-title instead of the repo name. Everywhere a live engine title is displayed
-(tab labels, split corner tags) it collapses to the launch binary
-(`✳ Claude Code` renders as `claude`), so all Rove surfaces speak one
-vocabulary for a process. Vendor identity comes from the process tree, never
-from matching the title string.
+title instead of the repo name. Before Codex has a readable thread title, that
+slot contains the session UUID: Rove retains it as history identity but names
+the tab from the first visible user prompt, ignoring image-attachment wrapper
+text. The lookup starts as soon as the UUID appears, is concurrency-bounded,
+and retries briefly while the first transcript record reaches disk. Everywhere
+a live engine title is displayed (tab labels, split corner tags) it collapses
+to the launch binary (`✳ Claude Code` renders as `claude`), so all Rove
+surfaces speak one vocabulary for a process. Vendor identity comes from the
+process tree, never from matching the title string.
 
 ## Transcript readers
 
