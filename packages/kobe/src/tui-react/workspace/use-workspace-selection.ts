@@ -59,7 +59,13 @@ export function useWorkspaceSelection(args: {
       bootFocusRef.current = true
       args.focusWorkspace()
     }
-    if (selectedId && tasks.some((task) => task.id === selectedId)) return
+    // An archived/deleting task is NOT a valid selection (issue #34): the
+    // snapshot still contains it, but its sidebar row is gone (#473) and the
+    // PTY sweep below kills its sessions — leaving selection on it kept its
+    // Terminal mounted, which answered the kill with a dead-on-attach RESUME:
+    // a fresh engine spawn (full center-pane repaint, the archive "flash")
+    // that resurrected the very session archiving is documented to stop.
+    if (selectedId && tasks.some((task) => task.id === selectedId && !task.archived && !task.deletion)) return
     // Fallback carries the persisted lastActive record too — a stale or
     // freshly-respawned daemon can replay a null focus while disk still
     // knows the real one (the "reopens on the oldest project" bug).
