@@ -284,7 +284,7 @@ describe("deleteTask — safety ladder", () => {
     await orch.deleteTask(t.id, { force: true })
 
     expect(fakeWorktrees.isDirty).not.toHaveBeenCalled()
-    expect(fakeWorktrees.remove).toHaveBeenCalledWith("/wt/dirty", { force: true, deleteBranch: true })
+    expect(fakeWorktrees.remove).toHaveBeenCalledWith("/wt/dirty", { force: true, deleteBranch: false })
     expect(orch.getTask(t.id)).toBeUndefined()
   })
 
@@ -294,7 +294,7 @@ describe("deleteTask — safety ladder", () => {
 
     await orch.deleteTask(t.id)
 
-    expect(fakeWorktrees.remove).toHaveBeenCalledWith("/wt/gone", { force: false, deleteBranch: true })
+    expect(fakeWorktrees.remove).toHaveBeenCalledWith("/wt/gone", { force: false, deleteBranch: false })
     expect(orch.getTask(t.id)).toBeUndefined()
   })
 

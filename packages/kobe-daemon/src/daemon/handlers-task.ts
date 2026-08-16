@@ -104,6 +104,7 @@ export const TASK_HANDLERS: readonly DaemonRequestHandler[] = [
       const taskId = requireString(payload, "taskId")
       const accepted = await ctx.orch.prepareTaskDeletion(taskId, {
         force: optionalBoolean(payload, "force"),
+        deleteBranch: optionalBoolean(payload, "deleteBranch"),
       })
       ctx.activity.clearTask(taskId)
       // A hard task delete is an explicit user deletion, so it is the one

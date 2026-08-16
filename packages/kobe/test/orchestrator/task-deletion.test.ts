@@ -49,8 +49,29 @@ describe("durable background task deletion", () => {
     expect(orch.getTask(task.id)?.deletion?.phase).toBe("running")
 
     await orch.finishTaskDeletion(task.id)
-    expect(worktrees.remove).toHaveBeenCalledWith("/wt/task", { force: false, deleteBranch: true })
+    // Design guarantee (issue #29): delete keeps the branch by default —
+    // git is the durable record, the task row is not.
+    expect(worktrees.remove).toHaveBeenCalledWith("/wt/task", { force: false, deleteBranch: false })
     expect(orch.getTask(task.id)).toBeUndefined()
+  })
+
+  it("deletes the branch only on explicit deleteBranch opt-in", async () => {
+    const task = await makeTask("/wt/opt-in")
+
+    await orch.prepareTaskDeletion(task.id, { deleteBranch: true })
+    await orch.beginTaskDeletion(task.id)
+    await orch.finishTaskDeletion(task.id)
+    expect(worktrees.remove).toHaveBeenCalledWith("/wt/opt-in", { force: false, deleteBranch: true })
+  })
+
+  it("force does not escalate into branch deletion", async () => {
+    const task = await makeTask("/wt/forced")
+    worktrees.isDirty.mockResolvedValue(true)
+
+    await orch.prepareTaskDeletion(task.id, { force: true })
+    await orch.beginTaskDeletion(task.id)
+    await orch.finishTaskDeletion(task.id)
+    expect(worktrees.remove).toHaveBeenCalledWith("/wt/forced", { force: true, deleteBranch: false })
   })
 
   it("keeps a visible error after cleanup failure and supports an explicit retry", async () => {
@@ -100,7 +121,7 @@ describe("durable background task deletion", () => {
     await expect(orch.prepareTaskDeletion(task.id)).resolves.toBe(true)
     await orch.beginTaskDeletion(task.id)
     await orch.finishTaskDeletion(task.id)
-    expect(worktrees.remove).toHaveBeenCalledWith("/wt/gone", { force: false, deleteBranch: true })
+    expect(worktrees.remove).toHaveBeenCalledWith("/wt/gone", { force: false, deleteBranch: false })
     expect(orch.getTask(task.id)).toBeUndefined()
   })
 

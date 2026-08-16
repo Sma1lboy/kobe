@@ -8,7 +8,7 @@
 
 import { MouseButton, TextAttributes } from "@opentui/core"
 import { legendCap } from "../../../tui/lib/help-groups"
-import type { SidebarView } from "../../../tui/panes/sidebar/groups"
+import { type SidebarView, repoBasename } from "../../../tui/panes/sidebar/groups"
 import { SIDEBAR_NAV_ITEMS, type SidebarNav } from "../../../tui/panes/sidebar/nav-core"
 import { VIEW_TABS, viewTabLabelKey } from "../../../tui/panes/sidebar/view-core"
 import { useTheme } from "../../context/theme"
@@ -248,6 +248,24 @@ export function SidebarViewTabs(props: { view: SidebarView; setView: (view: Side
           </box>
         )
       })}
+    </box>
+  )
+}
+
+/** Active repo context filter (ctrl+p) — names the scoped project so a
+ *  filtered list can't be mistaken for the whole workspace. Pure view state;
+ *  nothing persisted (issue #29). */
+export function SidebarProjectFilterChip(props: { repo: string }) {
+  const { theme } = useTheme()
+  const t = useT()
+  return (
+    <box flexDirection="row" gap={1} flexShrink={0} paddingBottom={1} paddingLeft={1} paddingRight={1}>
+      <text fg={theme.info} attributes={TextAttributes.BOLD} wrapMode="none" flexShrink={0}>
+        {t("tasks.projectFilterChip")}
+      </text>
+      <text fg={theme.text} wrapMode="none">
+        {repoBasename(props.repo)}
+      </text>
     </box>
   )
 }

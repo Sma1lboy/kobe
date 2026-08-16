@@ -10,6 +10,7 @@ import { describe, expect, it } from "vitest"
 import {
   BRANCH_LABEL_MAX,
   type SearchKeystroke,
+  cycleProjectFilterTarget,
   cycleViewTarget,
   projectScrollMaxHeightFor,
   searchQueryKeystroke,
@@ -20,6 +21,25 @@ import {
   truncateBranchLabel,
   truncateProjectFilterLabel,
 } from "../../src/tui/panes/sidebar/view-core"
+
+describe("cycleProjectFilterTarget", () => {
+  const keys = ["/repo/a", "/repo/b"]
+
+  it("cycles all → each project → all", () => {
+    expect(cycleProjectFilterTarget(keys, null)).toBe("/repo/a")
+    expect(cycleProjectFilterTarget(keys, "/repo/a")).toBe("/repo/b")
+    expect(cycleProjectFilterTarget(keys, "/repo/b")).toBeNull()
+  })
+
+  it("stays at null when there is nothing to scope", () => {
+    expect(cycleProjectFilterTarget([], null)).toBeNull()
+    expect(cycleProjectFilterTarget(["/repo/only"], null)).toBeNull()
+  })
+
+  it("a vanished current filter restarts from the first project", () => {
+    expect(cycleProjectFilterTarget(keys, "/repo/gone")).toBe("/repo/a")
+  })
+})
 
 describe("view tabs", () => {
   it("cycles with wrap-around in both directions", () => {

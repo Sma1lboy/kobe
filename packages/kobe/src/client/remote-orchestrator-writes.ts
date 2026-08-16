@@ -95,9 +95,9 @@ export async function setStatusOp(client: KobeDaemonClient, id: TaskId | string,
 export async function deleteTaskOp(
   client: KobeDaemonClient,
   id: TaskId | string,
-  opts?: { force?: boolean },
+  opts?: { force?: boolean; deleteBranch?: boolean },
 ): Promise<void> {
-  await client.request("task.delete", { taskId: String(id), force: opts?.force })
+  await client.request("task.delete", { taskId: String(id), force: opts?.force, deleteBranch: opts?.deleteBranch })
 }
 
 /** Explicitly delete one durable attention episode. */
