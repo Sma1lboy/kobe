@@ -125,6 +125,14 @@ replacement in `nextCommandArgs`.
   tasks touched in the window plus routine outcomes by status. Default
   window 7 days. Task outcomes are deliberately absent: completion travels
   to the spawning agent's engine tab (`send`), not into Rove state.
+- `agent-turns [--task-id ID] [--repo PATH] [--since-days N] [--limit N]`:
+  per-turn agent telemetry — one record per completed engine turn
+  (`taskId`/`tabId`/`vendor`/`model`/`sessionId`/`startedAt`/`endedAt`/
+  `usage`), newest first, plus a `totals` roll-up (token sums, summed
+  wall-clock, turn counts per model). Default window 7 days, 200 records.
+  Records are produced by each engine's own adapter from that vendor's
+  transcript and stored by the daemon on `turn-complete`; engines without a
+  turn reader contribute nothing. Read-only.
 - `pty-list` *(offline)*: hosted PTY sessions (key, alive, pid, command,
   live window title). Empty when no PTY host runs.
 - `read-output [--task-id ID] [--tab TAB] [--source auto|history|terminal]

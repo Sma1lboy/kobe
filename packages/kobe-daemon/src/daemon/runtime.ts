@@ -1,5 +1,6 @@
 import type { DaemonRpcClient } from "../client/rpc.ts"
 import type {
+  AgentTurn,
   DaemonOrchestrator,
   DaemonTask,
   EngineActivityKind,
@@ -57,6 +58,13 @@ export interface DaemonRuntimeAdapter {
    * declares no vocabulary (or the title is empty) — never guessed.
    */
   titleTurnHint(vendor: VendorId, title: string): "working" | "rest" | null
+  /**
+   * Engine-owned per-turn telemetry (issue #32): completed turns read out of
+   * ONE session transcript by the vendor's own adapter. `[]` when the engine
+   * ships no turn reader or the file is unreadable — the daemon never parses
+   * a vendor transcript itself.
+   */
+  readEngineTurns(vendor: VendorId, transcriptPath: string): Promise<readonly AgentTurn[]>
   checkLatestVersion(): Promise<UpdateInfo | null>
   latestTranscriptMtime(vendor: VendorId, worktreePath: string): Promise<number>
   deriveTitleFromSession(worktreePath: string, vendor: VendorId): Promise<string>
