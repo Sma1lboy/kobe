@@ -37,7 +37,6 @@ import {
   SidebarBrandHeader,
   SidebarCreateAction,
   SidebarNavRail,
-  SidebarProjectFilterChip,
   SidebarSearchInput,
   SidebarViewTabs,
   SidebarZenChip,
@@ -45,7 +44,6 @@ import {
 import { SidebarTreeBody } from "./tree-panel"
 import type { TreeRowShared } from "./tree-rows"
 import type { SidebarProps } from "./types"
-import { useProjectFilter } from "./use-project-filter"
 import { useTreeMenu } from "./use-tree-menu"
 import { useTreeSearch } from "./use-tree-search"
 import { useTreeState } from "./use-tree-state"
@@ -71,9 +69,7 @@ export function SidebarTree(props: SidebarTreeProps) {
   const focused = props.focused ?? true
   const dims = useTerminalDimensions()
   const [view, setView] = useState<SidebarView>("active")
-  // Repo context filter (issue #29) — see use-project-filter.ts.
-  const projectScope = useProjectFilter(useMemo(() => filterByView(props.tasks, view), [props.tasks, view]))
-  const viewTasks = projectScope.tasks
+  const viewTasks = useMemo(() => filterByView(props.tasks, view), [props.tasks, view])
 
   // Same rule as the flat sidebar: the Active/Archived row stays hidden until
   // something is actually archived, and stays visible while you are IN the
@@ -296,11 +292,6 @@ export function SidebarTree(props: SidebarTreeProps) {
         withCursorTask(props.onRenameRequest)
       },
       "sidebar.localMerge": () => withCursorTask(props.onLocalMergeRequest),
-      // Repo context filter — see use-project-filter.ts (issue #29).
-      "sidebar.projectFilter": () => {
-        if (moveMode) return
-        projectScope.cycle()
-      },
       "sidebar.pin": () => {
         if (moveMode) return
         withCursorTask(props.onPinRequest)
@@ -464,13 +455,11 @@ export function SidebarTree(props: SidebarTreeProps) {
       {/* Rail below the view tabs (owner 2026-08-02) — Kanban/Routines live
           within the workspace you're in, so they read as children of it. */}
       <SidebarNavRail nav={props.nav ?? "terminal"} setNav={(next) => props.onNavChange?.(next)} />
-      {projectScope.filter !== null ? <SidebarProjectFilterChip repo={projectScope.filter} /> : null}
       <SidebarTreeBody
         rows={tree.rows}
         flatIndexOf={flatIndexOf}
         view={view}
         searching={search.active && search.query.trim().length > 0}
-        projectFiltered={projectScope.filter !== null}
         shared={shared}
         onProjectContextMenu={menu.openForProject}
         movingProjectId={moveMode ? cursorProjectId : null}

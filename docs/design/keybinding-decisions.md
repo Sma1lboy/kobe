@@ -8,6 +8,18 @@ reasoning is recorded so the next agent has the context.
 The user-facing vocabulary lives in [`../KEYBINDINGS.md`](../KEYBINDINGS.md).
 `F1` renders the live keymap and is authoritative over both.
 
+## Repo context filter — removed, chord revoked
+
+**2026-08-16 — `ctrl+p` repo filter removed entirely (owner call, same
+turn as review).** PR #459 shipped a sidebar repo context filter on
+`ctrl+p` (cycle all → each project → all). The owner rejected both the
+chord (`ctrl+p` shadows readline/in-engine previous-history) and the
+feature itself: the eventual "session" concept is a **combination of
+repos**, not a single-repo filter, so a per-repo cycle is a shape that
+would have to be undone anyway. Removed rather than re-homed behind the
+prefix — YAGNI. If cross-repo grouping returns, it starts from the
+session-as-repo-set design, not from this filter.
+
 ## Open calls
 
 - **Inert table rows.** `sidebar.sort` (`t`), `sidebar.projectFilter`
