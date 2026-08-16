@@ -234,15 +234,13 @@ export function DevSettingsSection(
 }
 
 /**
- * Keybindings section — edits the command prefix and reports every other
- * override loaded from `~/.rove/settings/keybindings.yaml`, including load
- * warnings that otherwise only reach the pane's console log.
+ * Keybindings section — read-only view of the user keybinding overrides
+ * loaded at boot from `~/.rove/settings/keybindings.yaml`. Editing happens
+ * in the YAML file, not here; the section's job is to make the config
+ * discoverable, show which overrides actually landed, and surface every
+ * load warning that otherwise only reaches the pane's console log.
  */
-export function KeybindingsSettingsSection(
-  props: SectionCursorProps & {
-    editPrefixKey: () => void
-  },
-) {
+export function KeybindingsSettingsSection() {
   const { theme } = useTheme()
   const t = useT()
   // Re-read the cached report when the daemon's keybindings channel triggers
@@ -278,21 +276,6 @@ export function KeybindingsSettingsSection(
             timeout: prefix.timeoutMs,
           })}
         </text>
-        <Row
-          cursor={props.level === "body" && props.bodyRow === 0}
-          onMouseUp={() => {
-            props.setLevel("body")
-            props.setBodyRow(0)
-            props.editPrefixKey()
-          }}
-          fg={theme.accent}
-          bold={true}
-          idleBackground={theme.backgroundElement}
-        >
-          {t("settings.keybindings.prefixEdit", {
-            prefix: prefix.key ?? t("settings.keybindings.prefixDisabled"),
-          })}
-        </Row>
       </box>
       {!report.exists ? (
         <box flexDirection="column" gap={0}>

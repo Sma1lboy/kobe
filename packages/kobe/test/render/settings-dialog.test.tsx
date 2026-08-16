@@ -7,7 +7,7 @@
  */
 
 import { describe, expect, it } from "bun:test"
-import { mkdtempSync, readFileSync } from "node:fs"
+import { mkdtempSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
 import { SettingsDialog } from "../../src/tui-react/component/settings-dialog"
@@ -23,8 +23,7 @@ function Driver() {
 
 describe("SettingsDialog", () => {
   it("walks every section with the real j chord and renders each body", async () => {
-    const home = mkdtempSync(join(tmpdir(), "kobe-settings-"))
-    process.env.KOBE_HOME_DIR = home
+    process.env.KOBE_HOME_DIR = mkdtempSync(join(tmpdir(), "kobe-settings-"))
     const { frame, mockInput } = await renderComponent(<Driver />, {
       width: 110,
       height: 40,
@@ -50,24 +49,8 @@ describe("SettingsDialog", () => {
     expect(text).toContain("No plugins registered")
     text = await press("j") // → Keybindings
     expect(text).toContain("Command layer (ctrl+a)")
-    expect(text).toContain("Prefix key: ctrl+a")
     expect(text).toContain("5000ms second-stroke window")
     expect(text).not.toContain("Fixed (not rebindable)") // FIXED_BINDING_IDS is empty
-    await press("l")
-    act(() => mockInput.pressEnter())
-    await settle()
-    text = await frame()
-    expect(text).toContain("Command prefix")
-    act(() => {
-      for (let i = 0; i < "ctrl+a".length; i++) mockInput.pressBackspace()
-      mockInput.typeText("ctrl+b")
-    })
-    act(() => mockInput.pressEnter())
-    await settle()
-    text = await frame()
-    expect(text).toContain("Command layer (ctrl+b)")
-    expect(readFileSync(join(home, ".rove", "settings", "keybindings.yaml"), "utf8")).toContain("key: ctrl+b")
-    await press("h")
     text = await press("j") // → Feedback
     expect(text).toContain("GitHub Discussion")
     text = await press("j") // → Dev

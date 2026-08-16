@@ -254,9 +254,8 @@ left arrow to return to the section list, and `enter` to activate a row.
 - **Plugins** enables or disables registered plugins live and edits settings
   declared by their manifests. Install, update, link and remove plugins from
   the shell.
-- **Keybindings** changes the active prefix and shows loaded YAML overrides and
-  warnings. Use its Prefix key row for the first stroke; edit the displayed
-  YAML path for every other binding. Changes reload live.
+- **Keybindings** shows the active prefix, loaded YAML overrides and warnings.
+  Edit the displayed YAML path; changes reload live.
 - **Feedback** submits a GitHub Discussion through an authenticated `gh` CLI.
 - **Dev** contains reset, a backend-exit action and experimental switches. Reset
   clears UI and task-index state after confirmation, but leaves worktrees and

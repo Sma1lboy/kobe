@@ -193,10 +193,7 @@ same name. Writing one: [Themes](./themes.md).
 
 Full vocabulary: [Keybindings](./KEYBINDINGS.md). The configuration surface:
 
-- Change the first stroke from Settings → Keybindings → Prefix key. Rove
-  updates only `prefix.key` and preserves the rest of the YAML document.
-- Edit `~/.rove/settings/keybindings.yaml` by hand for direct bindings,
-  prefix second strokes, platform overlays, and plugin chords.
+- Edit `~/.rove/settings/keybindings.yaml` by hand. Rove never writes it.
 - Changes **reload live** — no restart. Problems show up as warnings in
   Settings → Keybindings.
 - A direct override replaces that binding's whole chord list; `null` or `[]`

@@ -185,10 +185,7 @@ them.
 
 ## Customizing
 
-Change the first stroke in **Settings → Keybindings → Prefix key**, or edit
-`~/.rove/settings/keybindings.yaml` for the full keymap. Changes reload live —
-no restart. Enter `disabled` in Settings (or use `null` in YAML) to turn the
-prefix layer off.
+Edit `~/.rove/settings/keybindings.yaml`. Changes reload live — no restart.
 
 ```yaml
 prefix:

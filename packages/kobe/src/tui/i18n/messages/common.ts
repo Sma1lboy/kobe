@@ -8,7 +8,6 @@ export const en = {
   /** Footer verb for a step that leads to another prompt. */
   next: "next",
   create: "create",
-  save: "save",
   confirm: "Confirm",
   /** Fallback shown when a pane's render tree throws, replacing the raw
    *  shell the process used to drop to. */
@@ -35,7 +34,6 @@ export const zh: typeof en = {
   cancel: "取消",
   next: "下一步",
   create: "创建",
-  save: "保存",
   confirm: "确认",
   paneCrash: {
     title: "此面板已崩溃",

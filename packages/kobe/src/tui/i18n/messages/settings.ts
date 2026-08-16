@@ -139,13 +139,6 @@ export const en = {
     /** One-paragraph grammar summary; {prefix} live first stroke, {timeout} live second-stroke window in ms */
     prefixHint:
       "Bare keys act in the focused pane; a small one-press set covers frequent Rove actions; {prefix} opens the command map ({timeout}ms second-stroke window — hold on and a guide appears). Prefix bindings keep their pane scope and modal rules.",
-    prefixEdit: "Prefix key: {prefix}  (enter to edit; type disabled to turn off)",
-    prefixDialogTitle: "Command prefix",
-    prefixDialogField: "key",
-    prefixDialogPlaceholder: "ctrl+b (or disabled)",
-    prefixInvalidTitle: "Invalid prefix key",
-    prefixInvalidBody: "{error} Keeping {current}.",
-    prefixSaveErrorTitle: "Couldn't save prefix key",
     /** Shown as the {prefix} value when the user disabled the prefix in YAML */
     prefixDisabled: "disabled",
     /** Trailing note listing non-rebindable ids; hidden when there are none */
@@ -323,13 +316,6 @@ export const zh: typeof en = {
     prefixTitle: "命令层（{prefix}）",
     prefixHint:
       "裸键作用于当前聚焦面板；少量单次快捷键覆盖高频 Rove 操作；{prefix} 打开命令层（第二击窗口 {timeout}ms — 稍等会出现命令指南）。Prefix 绑定保持原有的面板作用域和 modal 规则。",
-    prefixEdit: "前缀键：{prefix}  （enter 编辑；输入 disabled 可关闭）",
-    prefixDialogTitle: "命令前缀",
-    prefixDialogField: "按键",
-    prefixDialogPlaceholder: "ctrl+b（或 disabled）",
-    prefixInvalidTitle: "前缀键无效",
-    prefixInvalidBody: "{error} 保留当前设置 {current}。",
-    prefixSaveErrorTitle: "无法保存前缀键",
     prefixDisabled: "已禁用",
     fixed: "固定（不可重绑定）：{ids}。",
     example: "示例",
