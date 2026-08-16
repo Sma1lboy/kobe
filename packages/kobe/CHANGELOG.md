@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.109
+
+### Patch Changes
+
+- f1879cf: Keep the Kanban story drawer's engine labels inside their chip borders on terminals whose font descenders extend low in the cell.
+
 ## 0.8.108
 
 ### Patch Changes
