@@ -47,8 +47,6 @@ export const en = {
   },
   /** Inline chip while move/reorder mode is active */
   moveChip: " move",
-  /** Label of the repo context filter chip (ctrl+p) — followed by the repo name */
-  projectFilterChip: "filter:",
   /** Narrow mode's top-of-sidebar jump row back into the last-entered task */
   recentJump: "Recent: {title}",
   /** Empty-state messages */
@@ -148,7 +146,6 @@ export const zh: typeof en = {
     delete: "删除",
   },
   moveChip: " 移动",
-  projectFilterChip: "筛选:",
   recentJump: "最近:{title}",
   empty: {
     noMatchSearch: "无匹配任务——按 esc 清除。",

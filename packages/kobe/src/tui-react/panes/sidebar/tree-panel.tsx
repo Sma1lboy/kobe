@@ -32,8 +32,6 @@ export function SidebarTreeBody(props: {
   /** A query is open and non-empty — picks the "no matches" empty state over
    *  the view's own "nothing here yet". */
   readonly searching: boolean
-  /** A repo context filter is active — picks the project-scoped empty copy. */
-  readonly projectFiltered?: boolean
   readonly shared: TreeRowShared
   readonly onProjectContextMenu?: (projectId: string, x: number, y: number) => void
   /** Project being dragged in move mode — wears the move chip. */
@@ -103,13 +101,7 @@ export function SidebarTreeBody(props: {
         {props.rows.length === 0 ? (
           <box paddingTop={1} paddingLeft={1}>
             <text fg={theme.textMuted}>
-              {t(
-                sidebarEmptyStateKey({
-                  searching: props.searching,
-                  projectFilter: props.projectFiltered === true,
-                  view: props.view,
-                }),
-              )}
+              {t(sidebarEmptyStateKey({ searching: props.searching, projectFilter: false, view: props.view }))}
             </text>
           </box>
         ) : null}

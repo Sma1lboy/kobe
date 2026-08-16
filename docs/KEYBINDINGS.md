@@ -97,7 +97,6 @@ is active.
 | `[` / `]` | Switch Working / Archives | | `x` | Worktrees page |
 | `gg` / `shift+g` | Top / bottom | | `shift+p` | Pin / unpin managed Task |
 | `shift+m` | Enter project reorder mode | | `right` | Focus the current engine pane |
-| `ctrl+p` | Cycle repo context filter (all → each project → all) | | | |
 
 In reorder mode, `j`/`k` moves the highlighted project and `enter` or `esc`
 finishes. Project headings themselves aren't cursor rows; the move routes
