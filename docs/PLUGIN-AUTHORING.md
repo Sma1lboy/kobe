@@ -61,7 +61,7 @@ Package README has full examples: `packages/kobe-plugin-sdk/README.md`.
 
 Publish: push a public GitHub repo (one plugin per subdirectory is fine),
 add the topic **`rove-plugin`** → it appears in the marketplace
-([kobe.sma1lboy.me/plugins](https://kobe.sma1lboy.me/plugins) and
+([rove.sma1lboy.me/plugins](https://rove.sma1lboy.me/plugins) and
 `rove plugin search`) automatically. Users install with
 `rove plugin install owner/repo[/subdir]` and stay fresh with
 `rove plugin outdated` / `rove plugin update --all` (an update is a clean

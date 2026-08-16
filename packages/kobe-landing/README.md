@@ -1,6 +1,6 @@
 # @sma1lboy/kobe-landing
 
-Marketing landing page for **Rove** — served at **https://kobe.sma1lboy.me**.
+Marketing landing page for **Rove** — served at **https://rove.sma1lboy.me**.
 
 A single self-contained static `index.html` (no build step, no framework). The
 design started life as a Pretext `.dc.html` mockup; the dynamic bits (copy-to-clipboard
@@ -22,8 +22,10 @@ bun run deploy           # production (vercel deploy --prod)
 bun run deploy:preview   # preview URL
 ```
 
-The custom domain `kobe.sma1lboy.me` is a CNAME → `cname.vercel-dns.com`, managed in
-AWS Route 53 (hosted zone `sma1lboy.me`).
+The custom domain `rove.sma1lboy.me` is a CNAME → Vercel's DNS
+(`*.vercel-dns-016.com`), managed in Cloudflare (zone `sma1lboy.me`). The old
+`kobe.sma1lboy.me` domain is kept as a Vercel-level 301 redirect to
+`rove.sma1lboy.me`.
 
 ### Why `vercel.json` pins `ignoreCommand: "exit 1"`
 

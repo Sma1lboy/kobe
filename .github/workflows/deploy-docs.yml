@@ -1,7 +1,7 @@
 # Docs-site auto-deploy.
 #
 # Deploys the public docs site (`packages/kobe-docs`, Fumadocs/Next.js static
-# export at docs.kobe.sma1lboy.me) to Vercel production whenever the docs
+# export at docs.rove.sma1lboy.me) to Vercel production whenever the docs
 # content (`docs/**`, synced by scripts/sync-docs.mjs) or the site itself
 # changes on `main`. Replaces the old hand-run `bun run deploy` from a
 # laptop — same reasoning as deploy-landing.yml: CI has a clean network and
