@@ -241,6 +241,49 @@ A custom engine launches and runs like any other, but Rove deliberately
 doesn't guess at its internals: no history reader, no account detection, no
 activity hooks, no session resume. More in [Engines](./ENGINES.md).
 
+## Claude Code plugin
+
+Rove integrates with Claude Code through global activity hooks (so the
+sidebar can show working / done / needs-input for every session) and the
+companion agent skill. There are two ways to get both, and you should run
+exactly one:
+
+- **Default (no action needed)**: every Rove launch idempotently writes its
+  hooks into `~/.claude/settings.json`, and `rove skill install` places the
+  skill. This is what most existing installs use.
+- **The Claude Code plugin** — one install carries hooks and skill together,
+  with no PATH or settings.json involvement:
+
+  ```text
+  /plugin marketplace add Sma1lboy/rove
+  /plugin install rove@rove
+  ```
+
+  The plugin's hook commands call a bundled wrapper by absolute path, so they
+  work even when `rove` isn't on the shell's PATH. The bundled skill versions
+  with the plugin (`/plugin update` refreshes both), so Rove's skill staleness
+  prompts step aside while the plugin is enabled.
+
+Once Rove sees the plugin enabled, it stops writing the Claude hooks into
+`settings.json` on launch. If you were running Rove **before** installing the
+plugin, the old settings-managed hooks are still there and every event would
+fire twice — Rove warns about this at startup and the fix is one command:
+
+```bash
+rove hook cleanup
+```
+
+That removes only Rove's own entries from `~/.claude/settings.json`; your
+other hooks are untouched. If you also have a pre-plugin skill copy under
+`~/.claude/skills/rove` (or `…/kobe`), delete that directory — the plugin's
+bundled copy replaces it. Rove never edits or removes either one silently.
+
+Uninstalling or disabling the plugin reverses the handoff: the next Rove
+launch reinstalls the settings-managed hooks automatically.
+
+Only Claude Code is affected. Codex (and other engines') hook integration is
+engine-owned and unchanged by the plugin.
+
 ## Per-repo init
 
 A repo can ship two files in its own `.rove/` directory:

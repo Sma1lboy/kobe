@@ -295,6 +295,10 @@ Not in `--help`, listed so they aren't a mystery if you see them:
   survive TUI exits and daemon restarts. Spawned automatically.
 - **`rove hook <verb>`** — fired by an engine's own hooks to report activity.
   It always exits 0 and never starts the daemon, so it can't fail your engine.
+  One verb is user-facing: **`rove hook cleanup`** removes Rove's
+  settings-managed hooks from `~/.claude/settings.json` after the Claude Code
+  plugin takes over — see
+  [Configuration → Claude Code plugin](CONFIGURATION.md#claude-code-plugin).
 
 ## Exit codes
 

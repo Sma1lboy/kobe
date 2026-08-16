@@ -95,6 +95,19 @@ Install the companion skill so your coding agent can run this loop itself:
 rove skill install
 ```
 
+**Claude Code users have a one-stop alternative**: the Rove plugin carries the
+skill AND the activity hooks in one install, with no PATH or settings.json
+setup:
+
+```text
+/plugin marketplace add Sma1lboy/rove
+/plugin install rove@rove
+```
+
+If you were already running Rove before installing the plugin, run
+`rove hook cleanup` once afterwards — details in
+[Configuration → Claude Code plugin](CONFIGURATION.md#claude-code-plugin).
+
 ## If something's wrong
 
 ```bash
