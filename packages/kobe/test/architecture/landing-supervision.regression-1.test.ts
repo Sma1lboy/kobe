@@ -21,6 +21,7 @@ describe("landing supervision workflow", () => {
     expect(source).toContain("--command")
     expect(source).toContain("--count 3")
     expect(source).toContain("rove api send --prompt")
+    expect(source).toContain(".stage>*{min-width:0}")
     expect(source).not.toContain("rove api fan-out")
     expect(source).not.toContain("--vendor")
     expect(source).not.toContain("rove api report")

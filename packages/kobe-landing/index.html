@@ -121,6 +121,7 @@ h1{font-family:var(--font-display);font-optical-sizing:auto;font-size:clamp(44px
 /* ============ STAGES ============ */
 .stages{padding:clamp(84px,10vw,120px) 0 20px}
 .stage{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:clamp(28px,4.5vw,64px);align-items:center;padding:clamp(38px,5vw,58px) 0}
+.stage>*{min-width:0}
 .stage+.stage{position:relative}
 .stage+.stage::before{content:"";position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--line-2) 22%,var(--line-2) 78%,transparent)}
 .stage+.stage::after{content:"";position:absolute;top:0;left:50%;width:7px;height:7px;transform:translate(-50%,-50%) rotate(45deg);background:var(--paper);border:1px solid var(--accent-line)}
