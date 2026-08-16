@@ -1,6 +1,7 @@
 import type { DaemonRpcClient } from "@sma1lboy/kobe-daemon/client/rpc"
 import { resolveLoginShell } from "@sma1lboy/kobe-daemon/daemon/platform-shell"
 import type { SerializedTask } from "@sma1lboy/kobe-daemon/daemon/protocol"
+import { engineLaunchArgv } from "../engine/engine-presets.ts"
 import {
   deliverToHostedKey,
   ensureHostedEngine,
@@ -12,7 +13,6 @@ import {
   openHostedSessionHost,
   pastePromptWhenEngineUp,
 } from "../engine/hosted-session.ts"
-import { interactiveEngineCommand } from "../engine/interactive-command.ts"
 import { buildEngineSessionLaunch } from "../engine/session-launch.ts"
 import { trustEngineWorktree } from "../engine/trust-worktree.ts"
 import { TaskDeletingError } from "../orchestrator/errors.ts"
@@ -44,7 +44,7 @@ export async function ensureTaskSessionAdapter(link: DaemonRpcClient, taskId: st
     // message rode outside the argv. Best-effort paste — the engine IS up,
     // so a missed paste leaves an idle prompt, not a failed session.
     if (launch.firstMessage) {
-      const engineBin = interactiveEngineCommand(task.vendor, task.modelEffort)[0]
+      const engineBin = engineLaunchArgv({ command: task.command, vendor: task.vendor, effort: task.modelEffort })[0]
       await pastePromptWhenEngineUp(host.rpc, launch.key, engineBin, launch.firstMessage).catch(() => false)
     }
   } finally {
@@ -81,7 +81,7 @@ export async function startTaskSessionWithPromptAdapter(
     // argv; deliver it once the engine process is up. A paste that never
     // lands means the prompt was not delivered — report false.
     if (launch.firstMessage) {
-      const engineBin = interactiveEngineCommand(task.vendor, task.modelEffort)[0]
+      const engineBin = engineLaunchArgv({ command: task.command, vendor: task.vendor, effort: task.modelEffort })[0]
       return await pastePromptWhenEngineUp(host.rpc, launch.key, engineBin, launch.firstMessage)
     }
     return true
@@ -97,7 +97,7 @@ function taskEngineLaunch(task: SerializedTask, worktreePath: string, promptInte
     task: { id: task.id, kind: task.kind, vendor: task.vendor, repo: task.repo },
     worktreePath,
     shell: resolveLoginShell({ fallback: "/bin/zsh" }),
-    argv: interactiveEngineCommand(task.vendor, task.modelEffort),
+    argv: engineLaunchArgv({ command: task.command, vendor: task.vendor, effort: task.modelEffort }),
     promptIntent,
   })
 }
@@ -120,14 +120,14 @@ export async function terminalSpecAdapter(link: DaemonRpcClient, taskId: string)
  * "no alive engine" returns false and the schedule is dropped instead.
  */
 export async function deliverPromptToLiveEngineAdapter(
-  task: { readonly id: string; readonly vendor?: VendorId; readonly worktreePath: string },
+  task: { readonly id: string; readonly vendor?: VendorId; readonly command?: string; readonly worktreePath: string },
   prompt: string,
 ): Promise<boolean> {
   const host = await openHostedSessionHost()
   if (!host) return false
   try {
     const sessions = await listHostedSessions(host.rpc)
-    const engineBin = interactiveEngineCommand(task.vendor)[0]
+    const engineBin = engineLaunchArgv({ command: task.command, vendor: task.vendor })[0]
     const key = findHostedEngineKey(sessions, task.id, engineBin)
     if (!key) return false
     const delivered = await deliverToHostedKey(host.rpc, key, prompt)

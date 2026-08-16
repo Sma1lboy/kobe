@@ -35,7 +35,7 @@
  */
 
 import type { PtyPeekResult, SerializedTask } from "@sma1lboy/kobe-daemon/daemon/protocol"
-import { interactiveEngineCommand } from "../../engine/interactive-command.ts"
+import { engineLaunchArgv } from "../../engine/engine-presets.ts"
 import { type EngineHistoryReader, engineEntry, supportsStructuredHistory } from "../../engine/registry.ts"
 import type { Message } from "../../types/engine.ts"
 import type { VendorId } from "../../types/vendor.ts"
@@ -313,7 +313,7 @@ async function peekTaskTerminal(
     if (tab) {
       key = `${taskId}::${tab}`
     } else {
-      const engineBin = vendor ? interactiveEngineCommand(vendor)[0] : undefined
+      const engineBin = vendor ? engineLaunchArgv({ vendor })[0] : undefined
       const sessions = await listSessions(host.rpc)
       key = findEngineKey(sessions, taskId, engineBin) ?? sessions.find((s) => s.key === `${taskId}::tab-1`)?.key
     }

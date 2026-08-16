@@ -12,11 +12,11 @@ import { getCustomEngineIds } from "../../state/repos.ts"
 import { ALL_VENDORS, type VendorId } from "../../types/vendor.ts"
 import { ApiError, type FlagSpec, type Flags, type ParsedArgs, type VerbSpec, helpStep } from "./types.ts"
 
-/** Safety cap on a single fan-out so a typo can't spawn a runaway fleet. */
+/** Safety cap on a single `add --count` round so a typo can't spawn a runaway fleet. */
 export const FANOUT_CAP = 10
 
-/** Both fan-out plan parsers are only reachable from `fan-out`, so their errors point at its help. */
-const FANOUT_STEP = helpStep("fan-out")
+/** Both parallel-plan parsers are only reachable from `add`, so their errors point at its help. */
+const FANOUT_STEP = helpStep("add")
 
 /** Reusable flag fragments shared across the verb tables (`verbs.ts`, `verbs-issues.ts`). */
 export const F = {
@@ -40,6 +40,21 @@ export const F = {
     values: ALL_VENDORS,
     placeholder: "V",
     description: "Engine vendor for the task.",
+  }),
+  /**
+   * The dispatch face's single engine flag: a RAW launch command. Either a
+   * registered engine id (`engine-list`, whose `engineCommand.<id>` override
+   * applies) or a full command line kobe runs verbatim. The protocol kobe
+   * speaks is derived from it, so there is nothing else to declare — and no
+   * validation layer: an unfamiliar engine's flags are the caller's job to
+   * probe (`<cmd> --help`) before dispatching.
+   */
+  command: (): FlagSpec => ({
+    name: "command",
+    type: "string",
+    placeholder: "CMD",
+    description:
+      "Engine launch command, verbatim — an engine id from `engine-list` (e.g. claude) or a full command line (e.g. 'codex --search'). Unvalidated: probe an unfamiliar engine's flags with `<cmd> --help` first. Omitted = the repo's default engine.",
   }),
   title: (): FlagSpec => ({ name: "title", type: "string", placeholder: "T", description: "Human task title." }),
   prompt: (required: boolean, desc: string): FlagSpec => ({
@@ -244,8 +259,14 @@ export class VerbArgs {
 }
 
 /**
- * Parse a fan-out spec like `claude:2,codex:1` into a flat list with one
- * vendor entry per task to spawn (`[claude, claude, codex]`).
+ * Parse a multi-engine spec like `claude:2,codex:1` into a flat list with
+ * one PRESET ID per task to spawn (`[claude, claude, codex]`).
+ *
+ * Preset ids, not raw commands: an id is a slug, so it survives the
+ * `,`/`:` separators a full command line would collide with. Registered
+ * custom presets count — a named preset IS an engine here, the same way it
+ * is everywhere else. Mixing raw command lines in one call is not
+ * expressible; issue N `add --command …` calls instead.
  */
 export function parseAgentsSpec(spec: string): VendorId[] {
   const out: VendorId[] = []
@@ -253,11 +274,11 @@ export function parseAgentsSpec(spec: string): VendorId[] {
     const trimmed = part.trim()
     if (!trimmed) continue
     const colon = trimmed.indexOf(":")
-    if (colon === -1) throw new ApiError(`--agents entry "${trimmed}" must be vendor:count`, "BAD_FLAG", FANOUT_STEP)
+    if (colon === -1) throw new ApiError(`--agents entry "${trimmed}" must be engine:count`, "BAD_FLAG", FANOUT_STEP)
     const vendor = trimmed.slice(0, colon)
-    if (!ALL_VENDORS.includes(vendor as VendorId)) {
+    if (!ALL_VENDORS.includes(vendor as VendorId) && !getCustomEngineIds().includes(vendor)) {
       throw new ApiError(
-        `--agents vendor "${vendor}" must be one of ${ALL_VENDORS.join(", ")}`,
+        `--agents engine "${vendor}" must be a built-in (${ALL_VENDORS.join(", ")}) or a registered engine id — see \`engine-list\``,
         "BAD_FLAG",
         FANOUT_STEP,
       )
@@ -284,8 +305,8 @@ export function parseAgentsSpec(spec: string): VendorId[] {
 }
 
 /**
- * Build the fan-out plan for the `--count` form (`--count N`, all one vendor):
- * N copies of `vendor`. Rejects against the fanout cap BEFORE allocating —
+ * Build the parallel plan for the `--count` form (`--count N`, all one
+ * engine): N copies of `vendor`. Rejects against the cap BEFORE allocating —
  * symmetric to {@link parseAgentsSpec}, so `--count 1000000000` fails fast
  * instead of materializing a billion-element array (OOM) only to be caught by
  * the post-build `plan.length > FANOUT_CAP` check.
@@ -293,7 +314,7 @@ export function parseAgentsSpec(spec: string): VendorId[] {
 export function buildCountPlan(count: number, vendor: VendorId): VendorId[] {
   if (count > FANOUT_CAP) {
     throw new ApiError(
-      `fan-out of ${count} exceeds the cap of ${FANOUT_CAP} — spawn in batches`,
+      `--count ${count} exceeds the parallel cap of ${FANOUT_CAP} — spawn in batches`,
       "BAD_FLAG",
       FANOUT_STEP,
     )

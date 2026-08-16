@@ -156,7 +156,7 @@ describe("runApiSubcommand", () => {
       if (name === "task.create") throw new Error("create exploded")
       return { tasks: [] }
     })
-    await expect(runApiSubcommand(["fan-out", "--repo", "/repo/x", "--prompt", "go", "--count", "2"])).rejects.toThrow(
+    await expect(runApiSubcommand(["add", "--repo", "/repo/x", "--prompt", "go", "--count", "2"])).rejects.toThrow(
       "exit(3)",
     )
     expect(stderrSpy).not.toHaveBeenCalled()

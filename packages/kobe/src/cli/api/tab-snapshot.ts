@@ -246,7 +246,7 @@ export function markCliTabSession(taskId: string, tabId: string, sessionId: stri
  * state.json is unwritable, so the id is returned regardless and the
  * snapshot write failure only costs sidebar visibility.
  */
-export function mintCliTab(taskId: string, vendor?: VendorId): string {
+export function mintCliTab(taskId: string, vendor?: VendorId, command?: string): string {
   let tabId = "tab-1"
   try {
     const key = terminalTabsKey(taskId)
@@ -257,10 +257,21 @@ export function mintCliTab(taskId: string, vendor?: VendorId): string {
     patchStateFile({
       [key]: {
         ...state,
-        // `vendor` present = this tab is PINNED to an engine other than the
-        // task's default (`send --vendor`), the same field the TUI's ctrl+e
-        // pick writes. Absent, the tab follows the task like every other.
-        tabs: [...state.tabs, { kind: "engine", id: tabId, title: null, ordinal, ...(vendor ? { vendor } : {}) }],
+        // `command`/`vendor` present = this tab is PINNED to an engine other
+        // than the task's default (`send --tab new --command …`); `vendor` is
+        // the same field the TUI's ctrl+e pick writes. Absent, the tab
+        // follows the task like every other.
+        tabs: [
+          ...state.tabs,
+          {
+            kind: "engine",
+            id: tabId,
+            title: null,
+            ordinal,
+            ...(vendor ? { vendor } : {}),
+            ...(command ? { engineCommand: command } : {}),
+          },
+        ],
         activeId: tabId,
         nextOrdinal: ordinal + 1,
       },

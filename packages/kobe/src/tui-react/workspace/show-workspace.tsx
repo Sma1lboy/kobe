@@ -8,7 +8,7 @@
 
 import type { ReactNode } from "react"
 import type { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
-import { interactiveEngineCommand } from "../../engine/interactive-command.ts"
+import { engineLaunchArgv } from "../../engine/engine-presets.ts"
 import { DEFAULT_TASK_VENDOR, type Task } from "../../types/task.ts"
 import type { QuickTaskResult } from "../component/quick-task-composer"
 import { useTheme } from "../context/theme"
@@ -58,7 +58,11 @@ export function ShowWorkspace(props: {
       worktree={path}
       repo={props.task?.repo}
       taskKind={props.task?.kind}
-      command={interactiveEngineCommand(props.task?.vendor, props.task?.modelEffort)}
+      command={engineLaunchArgv({
+        command: props.task?.command,
+        vendor: props.task?.vendor,
+        effort: props.task?.modelEffort,
+      })}
       vendor={props.task?.vendor ?? DEFAULT_TASK_VENDOR}
       modelEffort={props.task?.modelEffort}
       onChooseEngine={

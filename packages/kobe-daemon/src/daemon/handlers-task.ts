@@ -49,6 +49,7 @@ export const TASK_HANDLERS: readonly DaemonRequestHandler[] = [
         branch: optionalString(payload, "branch"),
         baseRef: optionalString(payload, "baseRef"),
         vendor: optionalVendor(payload, "vendor"),
+        command: optionalString(payload, "command"),
         modelEffort: optionalString(payload, "effort"),
         groupId: optionalString(payload, "groupId"),
         dispatcher,
@@ -94,6 +95,19 @@ export const TASK_HANDLERS: readonly DaemonRequestHandler[] = [
       const vendor = optionalVendor(payload, "vendor")
       if (!vendor) throw new Error("task.setVendor: vendor is required")
       await ctx.orch.setVendor(taskId, vendor)
+      return {}
+    },
+  },
+  {
+    name: "task.setCommand",
+    web: true,
+    async handle(payload, ctx) {
+      const taskId = requireString(payload, "taskId")
+      // The PROTOCOL rides along rather than being derived here: engine
+      // presets live in kobe's state.json (`customEngineIds` /
+      // `engineProtocol.<id>`), which this process deliberately cannot read.
+      // Absent = the caller had no verdict; the task keeps its current one.
+      await ctx.orch.setCommand(taskId, requireString(payload, "command"), optionalVendor(payload, "vendor"))
       return {}
     },
   },

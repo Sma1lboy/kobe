@@ -37,7 +37,8 @@
 
 import type { TranscriptActivity } from "@/client/remote-orchestrator"
 import { availableEngineIds } from "@/engine/account-detect"
-import { interactiveEngineCommand, withClaudeSessionId } from "@/engine/interactive-command"
+import { engineLaunchArgv } from "@/engine/engine-presets"
+import { withClaudeSessionId } from "@/engine/interactive-command"
 import { resolveMainRepoRoot } from "@/state/repos"
 import { resolvePreferredVendor, setRepoLastActiveVendor } from "@/state/vendor-prefs"
 import type { VendorId } from "@/types/vendor"
@@ -157,7 +158,7 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
   /** Pin a fresh engine-session id on the just-created active engine tab —
    *  the tmux `@kobe_session_id` stash. */
   const pinSession = (s: TabsState, vendor: VendorId | undefined): TabsState => {
-    const base = vendor ? interactiveEngineCommand(vendor, props.modelEffort) : props.command
+    const base = vendor ? engineLaunchArgv({ vendor, effort: props.modelEffort }) : props.command
     const { sessionId } = withClaudeSessionId(base, vendor ?? props.vendor)
     return setTabSessionId(s, s.activeId, sessionId)
   }
@@ -212,7 +213,12 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
    *  first-spawn initial prompt, issue #17) is pure — `engineTabSpawnFor`;
    *  this closure only supplies the IO reads (registry liveness, props). */
   const engineTabSpawn = (tab: EngineTab): TabSpawn => {
-    const base = tab.vendor ? interactiveEngineCommand(tab.vendor, props.modelEffort) : props.command
+    // A tab's own pinned command/protocol wins; otherwise it inherits the
+    // task's already-resolved launch argv (props.command).
+    const base =
+      tab.engineCommand || tab.vendor
+        ? engineLaunchArgv({ command: tab.engineCommand, vendor: tab.vendor, effort: props.modelEffort })
+        : props.command
     const live = getDefaultPtyRegistry().has(tabPtyKeyFor(props.taskId, tab))
     return engineTabSpawnFor(stateRef.current, tab, base, {
       live,

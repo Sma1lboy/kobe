@@ -1,7 +1,7 @@
 /**
  * `kobe api` verb handlers not covered by api-handlers.test.ts: the leveled
  * schema drill-ins (--verb / --group), the simple-RPC edit verbs (rename /
- * set-branch / set-vendor / set-status / pin), the issue verbs, and the
+ * set-branch / set-command / set-status / pin), the issue verbs, and the
  * dispatch / note delivery verbs — plus the VerbArgs coercion errors that
  * only a handler (not spec validation) can raise. Same technique as the
  * sibling file: `invokeVerb` against a fake daemon client that records
@@ -140,10 +140,15 @@ describe("edit verbs — RPC name + payload", () => {
     expect(client.requests).toEqual([{ name: "task.setBranch", payload: { taskId: "t1", branch: "feat/x" } }])
   })
 
-  it("set-vendor → task.setVendor with a validated vendor", async () => {
-    const client = new FakeClient({ "task.setVendor": () => ({}) })
-    await invokeVerb("set-vendor", ["--task-id", "t1", "--vendor", "codex"], { client, runtime: stubRuntime() })
-    expect(client.requests).toEqual([{ name: "task.setVendor", payload: { taskId: "t1", vendor: "codex" } }])
+  it("set-command → task.setCommand with the command's resolved protocol", async () => {
+    const client = new FakeClient({ "task.setCommand": () => ({}) })
+    await invokeVerb("set-command", ["--task-id", "t1", "--command", "codex --search"], {
+      client,
+      runtime: stubRuntime(),
+    })
+    expect(client.requests).toEqual([
+      { name: "task.setCommand", payload: { taskId: "t1", command: "codex --search", vendor: "codex" } },
+    ])
   })
 
   it("set-status → task.status with a validated status", async () => {

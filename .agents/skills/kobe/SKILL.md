@@ -3,15 +3,14 @@ name: rove
 description: Use when controlling Rove tasks, parallel coding attempts, hosted agent sessions, task lifecycle, or the daemon-owned issue tracker from a shell. Also the ONLY channel for messaging another agent session on this machine — `rove api send`, never a peer/MCP side channel.
 ---
 
-<!-- rove-skill-version: 23 — bump in lockstep with KOBE_SKILL_VERSION (src/lib/skill-install.ts). -->
+<!-- rove-skill-version: 24 — bump in lockstep with KOBE_SKILL_VERSION (src/lib/skill-install.ts). -->
 
 # Rove shell control
 
 Use `rove api` to manage local coding tasks. Managed Tasks created by API
 automation own a git Worktree and branch plus Hosted PTY engine tabs; project
 main and directory Tasks reuse existing directories. API automation works
-without an open TUI; prompted `send`, `add`, and `fan-out` ensure a target
-engine tab.
+without an open TUI; prompted `send` and `add` ensure a target engine tab.
 
 ## Inside a Rove session, Rove verbs come first
 
@@ -28,7 +27,7 @@ ad-hoc subprocesses never do: its own Worktree and branch (no file
 collisions with you), a sidebar row with live state the user can watch,
 lifecycle tracking, and an explicit outcome contract.
 
-- Parallel attempts of one prompt → `fan-out`, not N hand-rolled subagents.
+- Parallel attempts of one prompt → `add --count N`, not N hand-rolled subagents.
 - Delegating a scoped piece of work → `add --prompt`, not a raw `claude -p`
   child the user cannot see or manage.
 - Following up on a task you started → `send`; comparing → `collect`;
@@ -108,11 +107,11 @@ the first row that fits:
 | The user says | Lands in | Command |
 |---|---|---|
 | "you do it", "just fix it", "change X to Y" | you, right here | no Rove verb — edit the files yourself |
-| "try it N ways", "compare approaches" | N new tasks | `rove api fan-out --repo "$PWD" --count N --prompt "…"` |
+| "try it N ways", "compare approaches" | N new tasks | `rove api add --repo "$PWD" --count N --prompt "…"` |
 | "split", "side by side", "keep an eye on X while…" | a new region in the CURRENT tab | `rove api pane-open --command "…"` |
 | names a tab: "tell the agent in tab 3" | that exact tab | `rove api send --task-id <id> --tab tab-3 --prompt "…"` |
 | a LOCATION word: "in this workspace/worktree/checkout", "on this branch", "here", "same task" | THIS task, a NEW Terminal Tab | `rove api send --task-id "$ROVE_TASK_ID" --tab new --prompt "…"` |
-| names an ENGINE for the same files: "let codex take over here", "try this one with claude instead" | THIS task, a new tab pinned to that engine | `rove api send --task-id "$ROVE_TASK_ID" --tab new --vendor codex --prompt "…"` |
+| names an ENGINE for the same files: "let codex take over here", "try this one with claude instead" | THIS task, a new tab pinned to that engine | `rove api send --task-id "$ROVE_TASK_ID" --tab new --command codex --prompt "…"` |
 | **anything else — no row above matched** | a NEW task — new worktree + branch | `rove api add --repo "$PWD" --prompt "…"` |
 
 Order is the tiebreak: a count ("3 ways in this workspace") beats a location
@@ -125,7 +124,7 @@ not asking for a fleet. Two more rules the table can't show:
   not the checkout. Only worktree-scoped words route to a tab.
 
 Outside a Rove session none of this applies: there is no "this task" to add
-a tab to, so `add` / `fan-out` are the only routings available.
+a tab to, so `add` (single or `--count`) is the only routing available.
 
 ### Know where you are before you route
 
@@ -147,6 +146,7 @@ rove api schema
 rove api schema --verb add
 rove api schema --group create
 rove api <verb> --help
+rove api engine-list          # what you can launch, and with what command
 ```
 
 Do not guess flags. Commands emit one JSON object; errors use
@@ -159,12 +159,12 @@ after `TASK_NOT_FOUND`). Add `--pretty` for readable output.
 
 ```bash
 # Create one task and start its first engine turn.
-rove api add --repo "$PWD" --title "focused title" --vendor claude \
+rove api add --repo "$PWD" --title "focused title" --command claude \
   --prompt "<complete scoped instruction>"
 
 # Parallel attempts of the same prompt (hard cap 10; prefer 3-4).
-rove api fan-out --repo "$PWD" --count 3 --prompt "<prompt>"
-rove api fan-out --repo "$PWD" --agents claude:2,codex:1 --prompt "<prompt>"
+rove api add --repo "$PWD" --count 3 --prompt "<prompt>"
+rove api add --repo "$PWD" --agents claude:2,codex:1 --prompt "<prompt>"
 
 # Follow up. Use an explicit id for unattended work; the active task can drift.
 # From inside a Rove task this auto-prefixes [KOBE PEER] provenance
@@ -182,8 +182,8 @@ rove api send --task-id <id> --tab tab-3 --prompt "<turn>"  # exact alive tab
 rove api send --task-id <id> --tab new --prompt "<turn>"    # fresh engine tab
 # Same worktree, DIFFERENT agent — the API twin of the TUI's ctrl+e pick. The
 # engine is pinned to that tab (survives restarts, unaffected by a later
-# set-vendor) and the task's own vendor is left alone. --tab new only.
-rove api send --task-id <id> --tab new --vendor codex --prompt "<turn>"
+# set-command) and the task's own engine is left alone. --tab new only.
+rove api send --task-id <id> --tab new --command codex --prompt "<turn>"
 
 rove api get-task --task-id <id>
 rove api collect --task-ids <id1>,<id2>,<id3> --pretty
@@ -228,7 +228,7 @@ Defaults: the caller's own task (`$ROVE_TASK_ID`, then the active task),
 grid; screen size bounds splitting — a split that would shrink any pane
 below the minimum usable size (20×6 cells) falls back to a tab.
 Panes land in the USER'S live workspace — open them when asked (monitors,
-logs, dashboards), don't scatter panes for work `add`/`fan-out` should own.
+logs, dashboards), don't scatter panes for work `add` should own.
 
 ## Lifecycle
 
@@ -236,7 +236,7 @@ logs, dashboards), don't scatter panes for work `add`/`fan-out` should own.
 |---|---|
 | `rename --task-id ID --title T` | Rename a task |
 | `set-branch --task-id ID --branch B` | Rename its branch |
-| `set-vendor --task-id ID --vendor V` | Change engine for the next launch |
+| `set-command --task-id ID --command CMD` | Change the engine launch command for the next launch |
 | `set-status --task-id ID --status S` | Set lifecycle status |
 | `archive --task-id ID [--archived=false]` | Archive/unarchive; stops live sessions |
 | `pin --task-id ID [--pinned=false]` | Pin/unpin |
@@ -276,10 +276,31 @@ columns derive from the issue's own lifecycle — do NOT move cards with
   linked task finishes.
 - **Backlog** = everything else (`open`/`doing`/`hold`, unlinked).
 
-## Fan-out rules
+## Choosing the engine (`--command`)
 
-Fan out only when the user requests parallel approaches, comparison, or an
-explicit count. Give each task a scoped prompt, report returned IDs, then use
+Rove picks an engine by COMMAND, not by a vendor name. `--command` on `add`
+and `send --tab new` takes either an engine id from `rove api engine-list`
+(`claude`, `codex`, …, plus any preset the user registered) or a full command
+line Rove runs verbatim:
+
+```bash
+rove api engine-list --pretty                      # ids + the RAW command each runs
+rove api add --repo "$PWD" --command "codex --search" --prompt "…"
+```
+
+**Nothing validates an engine's flags — that is your job.** Before dispatching
+an unfamiliar engine or an unfamiliar flag, probe it yourself (`<cmd> --help`,
+`<cmd> --version`) and only then compose the command. A bad command line
+starts a session that dies or ignores you; Rove will not catch it for you.
+
+Omit `--command` to use the repo's default engine. `engine-list`'s `protocol`
+field says how much Rove understands about an entry — `generic` means it
+launches fine but Rove reads no history and pre-answers no trust dialog.
+
+## Parallel-round rules
+
+Spawn a parallel round (`add --count N` / `--agents`) only when the user
+requests parallel approaches, comparison, or an Give each round a scoped prompt, report returned IDs, then use
 `collect` to compare. Do not recursively fan out from spawned tasks. Do not
 poll `send` in a tight loop or use it as casual chat; every call is a full
 engine turn.

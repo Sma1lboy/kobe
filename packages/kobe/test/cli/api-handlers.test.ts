@@ -1,4 +1,4 @@
-/** Request-traffic tests for API creation, send, and fan-out handlers. */
+/** Request-traffic tests for API creation (single + parallel) and send handlers. */
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { ApiError, type ApiRuntime, invokeVerb } from "../../src/cli/api-cmd.ts"
@@ -45,13 +45,15 @@ describe("add handler", () => {
     expect(client.requests[1].payload).toEqual({ taskId: "t1" })
   })
 
-  it("canonicalizes repo and uses the configured default vendor", async () => {
+  it("canonicalizes repo and uses the configured default engine", async () => {
     const client = new FakeClient({ "task.create": () => ({ taskId: "t1", task: taskFixture() }) })
     await invokeVerb("add", ["--repo", "/repo/x/worktree"], {
       client,
       runtime: stubRuntime({ resolveRepoRoot: async () => "/repo/x", defaultVendor: async () => "codex" }),
     })
-    expect(client.requests[0].payload).toEqual({ repo: "/repo/x", vendor: "codex" })
+    // The default engine is a preset id, so it lands in BOTH fields: the raw
+    // command to launch and the protocol it speaks.
+    expect(client.requests[0].payload).toEqual({ repo: "/repo/x", command: "codex", vendor: "codex" })
   })
 
   it("applies status and pin then returns the refreshed task", async () => {
@@ -71,13 +73,65 @@ describe("add handler", () => {
     expect(result.task).toEqual(fresh)
   })
 
-  it("passes branch, base branch, and vendor to creation", async () => {
+  it("passes branch, base branch, and command to creation", async () => {
     const client = new FakeClient({ "task.create": () => ({ taskId: "t1", task: taskFixture() }) })
-    await invokeVerb("add", ["--repo", "/repo/x", "--branch", "feat/x", "--base-branch", "main", "--vendor", "codex"], {
+    await invokeVerb(
+      "add",
+      ["--repo", "/repo/x", "--branch", "feat/x", "--base-branch", "main", "--command", "codex"],
+      {
+        client,
+        runtime: stubRuntime(),
+      },
+    )
+    expect(client.requests[0].payload).toEqual({
+      repo: "/repo/x",
+      branch: "feat/x",
+      baseRef: "main",
+      command: "codex",
+      vendor: "codex",
+    })
+  })
+
+  it("records a RAW command line verbatim with its resolved protocol", async () => {
+    const client = new FakeClient({ "task.create": () => ({ taskId: "t1", task: taskFixture() }) })
+    await invokeVerb("add", ["--repo", "/repo/x", "--command", "codex --search"], {
       client,
       runtime: stubRuntime(),
     })
-    expect(client.requests[0].payload).toEqual({ repo: "/repo/x", branch: "feat/x", baseRef: "main", vendor: "codex" })
+    // The command is whatever the caller typed; the protocol is derived from
+    // its argv[0], never declared alongside it.
+    expect(client.requests[0].payload).toEqual({ repo: "/repo/x", command: "codex --search", vendor: "codex" })
+  })
+
+  it("records the generic protocol for a command naming no known engine", async () => {
+    const client = new FakeClient({ "task.create": () => ({ taskId: "t1", task: taskFixture() }) })
+    await invokeVerb("add", ["--repo", "/repo/x", "--command", "my-wrapper --go"], {
+      client,
+      runtime: stubRuntime(),
+    })
+    expect(client.requests[0].payload).toEqual({ repo: "/repo/x", command: "my-wrapper --go", vendor: "generic" })
+  })
+
+  it("refuses --count without a prompt (a parallel round IS its prompt)", async () => {
+    const client = new FakeClient({ "task.create": () => ({ taskId: "t1", task: taskFixture() }) })
+    await expectApiError(
+      () => invokeVerb("add", ["--repo", "/repo/x", "--count", "3"], { client, runtime: stubRuntime() }),
+      "MISSING_FLAG",
+    )
+    expect(client.requests).toEqual([])
+  })
+
+  it("refuses --branch on a parallel round (siblings cannot share one branch)", async () => {
+    const client = new FakeClient({ "task.create": () => ({ taskId: "t1", task: taskFixture() }) })
+    await expectApiError(
+      () =>
+        invokeVerb("add", ["--repo", "/repo/x", "--prompt", "go", "--count", "2", "--branch", "feat/x"], {
+          client,
+          runtime: stubRuntime(),
+        }),
+      "BAD_FLAG",
+    )
+    expect(client.requests).toEqual([])
   })
 
   it("delivers an explicit prompt to the created task", async () => {
@@ -172,21 +226,22 @@ describe("send handler", () => {
   it("a new tab can run a DIFFERENT engine than the task (two agents, one worktree)", async () => {
     const client = new FakeClient({ "task.get": () => ({ task: taskFixture({ id: "abc", vendor: "claude" }) }) })
     const { calls, deliver } = recordingDelivery()
-    await invokeVerb("send", ["--task-id", "abc", "--prompt", "hi", "--tab", "new", "--vendor", "codex"], {
+    await invokeVerb("send", ["--task-id", "abc", "--prompt", "hi", "--tab", "new", "--command", "codex"], {
       client,
       runtime: stubRuntime({ deliverPrompt: deliver }),
     })
-    // The delivery runs codex and the tab records it, while the TASK's own
-    // vendor is untouched — a second agent in the worktree is not a switch.
-    expect(calls[0].target).toMatchObject({ vendor: "codex", tabVendor: "codex" })
-    expect(client.requests.some((r) => r.name === "task.setVendor")).toBe(false)
+    // The delivery runs codex and the tab records it (command + its resolved
+    // protocol), while the TASK's own engine is untouched — a second agent in
+    // the worktree is not a switch.
+    expect(calls[0].target).toMatchObject({ tabCommand: "codex", tabVendor: "codex" })
+    expect(client.requests.some((r) => r.name === "task.setCommand")).toBe(false)
   })
 
-  it("refuses --vendor without --tab new instead of silently running the task's engine", async () => {
+  it("refuses --command without --tab new instead of silently running the task's engine", async () => {
     const client = new FakeClient({ "task.get": () => ({ task: taskFixture({ id: "abc" }) }) })
     await expectApiError(
       () =>
-        invokeVerb("send", ["--task-id", "abc", "--prompt", "hi", "--tab", "tab-3", "--vendor", "codex"], {
+        invokeVerb("send", ["--task-id", "abc", "--prompt", "hi", "--tab", "tab-3", "--command", "codex"], {
           client,
           runtime: stubRuntime(),
         }),
@@ -288,7 +343,7 @@ describe("send handler", () => {
   })
 })
 
-describe("fan-out handler", () => {
+describe("add --count (parallel round)", () => {
   const fanClient = () =>
     new FakeClient({
       "task.create": (_payload, index) => ({ taskId: `t${index + 1}`, task: taskFixture({ id: `t${index + 1}` }) }),
@@ -297,7 +352,7 @@ describe("fan-out handler", () => {
   it("creates and delivers the requested count", async () => {
     const client = fanClient()
     const { calls, deliver } = recordingDelivery()
-    const result = (await invokeVerb("fan-out", ["--repo", "/repo/x", "--prompt", "go", "--count", "3"], {
+    const result = (await invokeVerb("add", ["--repo", "/repo/x", "--prompt", "go", "--count", "3"], {
       client,
       runtime: stubRuntime({ deliverPrompt: deliver }),
     })) as { count: number; tasks: Array<{ taskId: string }> }
@@ -310,7 +365,7 @@ describe("fan-out handler", () => {
 
   it("expands per-vendor agent counts in order", async () => {
     const { calls, deliver } = recordingDelivery()
-    await invokeVerb("fan-out", ["--repo", "/repo/x", "--prompt", "go", "--agents", "claude:2,codex:1"], {
+    await invokeVerb("add", ["--repo", "/repo/x", "--prompt", "go", "--agents", "claude:2,codex:1"], {
       client: fanClient(),
       runtime: stubRuntime({ deliverPrompt: deliver }),
     })
@@ -321,7 +376,7 @@ describe("fan-out handler", () => {
     const client = fanClient()
     await expectApiError(
       () =>
-        invokeVerb("fan-out", ["--repo", "/repo/x", "--prompt", "go", "--count", "11"], {
+        invokeVerb("add", ["--repo", "/repo/x", "--prompt", "go", "--count", "11"], {
           client,
           runtime: stubRuntime(),
         }),
@@ -334,7 +389,7 @@ describe("fan-out handler", () => {
     const client = fanClient()
     const { deliver } = recordingDelivery()
     const result = (await invokeVerb(
-      "fan-out",
+      "add",
       ["--repo", "/repo/x", "--prompt", "go", "--count", "2", "--title", "auth attempt"],
       { client, runtime: stubRuntime({ deliverPrompt: deliver }) },
     )) as { groupId: string }
@@ -350,11 +405,11 @@ describe("fan-out handler", () => {
   it("leaves a single-task title un-suffixed and titleless siblings placeholder", async () => {
     const client = fanClient()
     const { deliver } = recordingDelivery()
-    await invokeVerb("fan-out", ["--repo", "/repo/x", "--prompt", "go", "--count", "1", "--title", "solo"], {
+    await invokeVerb("add", ["--repo", "/repo/x", "--prompt", "go", "--count", "1", "--title", "solo"], {
       client,
       runtime: stubRuntime({ deliverPrompt: deliver }),
     })
-    await invokeVerb("fan-out", ["--repo", "/repo/x", "--prompt", "go", "--count", "2"], {
+    await invokeVerb("add", ["--repo", "/repo/x", "--prompt", "go", "--count", "2"], {
       client,
       runtime: stubRuntime({ deliverPrompt: deliver }),
     })
@@ -377,7 +432,7 @@ describe("fan-out handler", () => {
     })
     const { calls, deliver } = recordingDelivery()
     try {
-      await invokeVerb("fan-out", ["--repo", "/repo/x", "--prompt", "go", "--count", "3"], {
+      await invokeVerb("add", ["--repo", "/repo/x", "--prompt", "go", "--count", "3"], {
         client,
         runtime: stubRuntime({ deliverPrompt: deliver }),
       })
@@ -415,7 +470,7 @@ describe("fan-out handler", () => {
       }
     }
     try {
-      await invokeVerb("fan-out", ["--repo", "/repo/x", "--prompt", "go", "--count", "3"], {
+      await invokeVerb("add", ["--repo", "/repo/x", "--prompt", "go", "--count", "3"], {
         client: fanClient(),
         runtime: stubRuntime({ deliverPrompt: deliver }),
       })

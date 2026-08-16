@@ -109,7 +109,7 @@ quoting, repository init scripts, engine argv/protocol, resume context, and
 first-prompt priority. Both the Workspace Host and headless API automation call
 it.
 
-`rove api send`, prompted `add`, and `fan-out`:
+`rove api send` and prompted `add` (single or `--count` parallel):
 
 1. ensure the Worktree;
 2. ensure the PTY Host;

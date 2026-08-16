@@ -9,6 +9,7 @@
  */
 
 import { useState } from "react"
+import { ENGINE_PROTOCOLS, engineProtocolKey } from "../../../engine/engine-presets"
 import {
   VENDOR_LABEL,
   defaultEngineCommand,
@@ -93,6 +94,9 @@ export function useEngineSettings(
     kv.set(engineCommandKey(vendor), "")
     kv.set(engineNameKey(vendor), "")
     if (!isBuiltinVendor(vendor)) {
+      // A removed preset must not leave its protocol behind: re-adding the
+      // same id later would silently inherit the old declaration.
+      kv.set(engineProtocolKey(vendor), "")
       kv.set(
         "customEngineIds",
         customEngines().filter((id) => id !== vendor),
@@ -101,8 +105,8 @@ export function useEngineSettings(
       onEngineListShrunk(engineList().length)
     }
   }
-  // The "+ Add engine" row: collect id + launch command + display name and
-  // register a new custom engine. Reuses RenameTaskDialog for each field.
+  // The "+ Add engine" row: collect id + launch command + protocol + display
+  // name and register a new custom engine. Reuses RenameTaskDialog per field.
   async function addEngineFlow(): Promise<void> {
     const idRaw = await RenameTaskDialog.show(dialog, "", {
       dialogTitle: "Add engine",
@@ -120,6 +124,18 @@ export function useEngineSettings(
       placeholder: "e.g. aider --model sonnet",
     })
     if (command === undefined) return
+    // Declared ONCE, here: a custom engine is a named PRESET, and its
+    // protocol is what makes every later `--command <id>` dispatch
+    // deterministic instead of sniffed (issue #30). Blank = the generic
+    // protocol — the engine still launches, it just gets no transcript
+    // reader, trust pre-answer, or engine-specific delivery.
+    const protocol = await RenameTaskDialog.show(dialog, "", {
+      dialogTitle: `Add engine · ${id} — protocol (blank = none)`,
+      fieldLabel: "protocol",
+      submitLabel: "next",
+      allowEmpty: true,
+      placeholder: ENGINE_PROTOCOLS.join(" / "),
+    })
     const name = await RenameTaskDialog.show(dialog, id, {
       dialogTitle: `Add engine · ${id}`,
       fieldLabel: "name",
@@ -128,6 +144,8 @@ export function useEngineSettings(
     })
     kv.set("customEngineIds", [...customEngines(), id])
     if (command.trim()) kv.set(engineCommandKey(id), command.trim())
+    const declared = protocol?.trim().toLowerCase() ?? ""
+    if (declared && ENGINE_PROTOCOLS.includes(declared)) kv.set(engineProtocolKey(id), declared)
     // A typed name wins; otherwise seed a humanized form so the chip reads
     // "My Local Agent", not "my-local-agent".
     const typedName = name?.trim() ?? ""
