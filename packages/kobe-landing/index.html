@@ -240,12 +240,12 @@ h1{font-family:var(--font-display);font-optical-sizing:auto;font-size:clamp(44px
       <span class="stage-no" data-i18n="s1.no">1.0 · FAN OUT</span>
       <h2 data-i18n="s1.title">One prompt becomes N isolated attempts.</h2>
       <p data-i18n="s1.body">Fan-out is the first primitive, and isolation is the point. Rove spawns every attempt in its own git worktree on its own branch, running whichever engine you point it at — claude, codex, copilot, kimi, or your own command. Independent nodes, no shared state, no agents stepping on each other's files.</p>
-      <div class="engine-pills" id="enginePills">
-        <button class="engine-pill" data-engine="claude" data-active="true">claude</button>
-        <button class="engine-pill" data-engine="codex" data-active="false">codex</button>
-        <button class="engine-pill" data-engine="copilot" data-active="false">copilot</button>
-        <button class="engine-pill" data-engine="kimi" data-active="false">kimi</button>
-        <button class="engine-pill" data-engine="your own command" data-active="false" data-i18n="s1.ownCmd">your own command</button>
+      <div class="engine-pills" id="enginePills" role="group" aria-label="Engine used by the fan-out example">
+        <button type="button" class="engine-pill" data-engine="claude" data-active="true" aria-pressed="true">claude</button>
+        <button type="button" class="engine-pill" data-engine="codex" data-active="false" aria-pressed="false">codex</button>
+        <button type="button" class="engine-pill" data-engine="copilot" data-active="false" aria-pressed="false">copilot</button>
+        <button type="button" class="engine-pill" data-engine="kimi" data-active="false" aria-pressed="false">kimi</button>
+        <button type="button" class="engine-pill" data-engine="your own command" data-active="false" aria-pressed="false" data-i18n="s1.ownCmd">your own command</button>
       </div>
     </div>
     <div class="stage-vis">

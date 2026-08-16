@@ -161,8 +161,12 @@ var KOBE_I18N = (function () {
 
   pills.forEach(function (pill) {
     pill.addEventListener('click', function () {
-      pills.forEach(function (p) { p.setAttribute('data-active', 'false'); });
+      pills.forEach(function (p) {
+        p.setAttribute('data-active', 'false');
+        p.setAttribute('aria-pressed', 'false');
+      });
       pill.setAttribute('data-active', 'true');
+      pill.setAttribute('aria-pressed', 'true');
       render(pill.getAttribute('data-engine'));
     });
   });
