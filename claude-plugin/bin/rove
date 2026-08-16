@@ -1,0 +1,48 @@
+#!/usr/bin/env bash
+# Rove CLI wrapper, shipped inside the Claude Code plugin.
+#
+# hooks.json invokes this by absolute path ("${CLAUDE_PLUGIN_ROOT}/bin/rove"),
+# so hook commands never depend on the user's PATH or shell aliases. The
+# wrapper's only job is to find a real Rove install and exec it.
+#
+# Hook contract (see packages/kobe/src/cli/hook-cmd.ts): a hook invocation must
+# never fail the engine's action. If no Rove install is found, `hook` verbs
+# exit 0 silently — the activity event is simply dropped, same as when the
+# daemon isn't running. Any other verb reports the missing install loudly.
+set -u
+
+resolve_rove() {
+  # An interactive shell's PATH usually has it; hooks often run with a
+  # minimal PATH, so also probe the standard install locations.
+  local candidates=(rove kobe)
+  local dirs=("$HOME/.bun/bin" "$HOME/.npm-global/bin" /opt/homebrew/bin /usr/local/bin)
+  local name
+  for name in "${candidates[@]}"; do
+    if command -v "$name" >/dev/null 2>&1; then
+      command -v "$name"
+      return 0
+    fi
+  done
+  local dir
+  for dir in "${dirs[@]}"; do
+    for name in "${candidates[@]}"; do
+      if [ -x "$dir/$name" ]; then
+        printf '%s\n' "$dir/$name"
+        return 0
+      fi
+    done
+  done
+  return 1
+}
+
+if bin="$(resolve_rove)"; then
+  # The install is often a `#!/usr/bin/env bun` shim; make sure its runtime
+  # is reachable even under a hook's minimal PATH.
+  PATH="$HOME/.bun/bin:/opt/homebrew/bin:/usr/local/bin:$PATH" exec "$bin" "$@"
+fi
+
+if [ "${1:-}" = "hook" ]; then
+  exit 0
+fi
+echo "rove is not installed — install it first: npm install -g @sma1lboy/rove" >&2
+exit 127
