@@ -46,6 +46,10 @@ function scriptDialog(answers: readonly (string | undefined)[]) {
   const original = RenameTaskDialog.show
   RenameTaskDialog.show = (async (_dialog: unknown, _current: string, opts?: { fieldLabel?: string }) => {
     asked.push(opts?.fieldLabel ?? "?")
+    // A prompt past the end of the script means the flow grew a field this
+    // suite doesn't answer. Throw rather than return undefined-as-cancel, so
+    // it surfaces as a failure here instead of a silently shortened flow.
+    if (i >= answers.length) throw new Error(`unscripted prompt for "${opts?.fieldLabel ?? "?"}"`)
     return answers[i++]
   }) as typeof RenameTaskDialog.show
   const restore = (): void => {
@@ -55,10 +59,7 @@ function scriptDialog(answers: readonly (string | undefined)[]) {
 }
 
 /** Mount the hook and run one action against it, once, on mount. */
-function Driver(props: {
-  run: (api: ReturnType<typeof useEngineSettings>) => void | Promise<void>
-  onKv: (kv: KVContext) => void
-}) {
+function Driver(props: { onReady: (api: ReturnType<typeof useEngineSettings>, kv: KVContext) => void }) {
   const kv = useKV()
   const dialog = useDialog()
   const api = useEngineSettings(kv, dialog, NOOP)
@@ -66,37 +67,40 @@ function Driver(props: {
   useEffect(() => {
     if (fired.current) return
     fired.current = true
-    props.onKv(kv)
-    void props.run(api)
+    props.onReady(api, kv)
   })
   return <text>engines</text>
 }
 
-/** Fresh $KOBE_HOME_DIR + a mounted hook; `run` fires once on mount. */
+/**
+ * Fresh $KOBE_HOME_DIR + a mounted hook, with `run` driven from OUTSIDE the
+ * component and fully awaited before this resolves.
+ *
+ * Deliberately not "fire it inside the mount effect and hope": that made the
+ * flow depend on effect timing, and a `run` that started after the caller's
+ * `script.restore()` would reach the REAL `RenameTaskDialog.show`, which
+ * awaits a dialog nobody can answer — a hang that reproduces only on a slow
+ * runner. Awaiting a ready-promise makes the order deterministic.
+ */
 async function withEngineSettings(
   run: (api: ReturnType<typeof useEngineSettings>) => void | Promise<void>,
 ): Promise<(key: string) => unknown> {
   process.env.KOBE_HOME_DIR = mkdtempSync(join(tmpdir(), "kobe-engine-settings-"))
-  let ran: void | Promise<void> = undefined
-  let kv: KVContext | null = null
-  const handle = await renderComponent(
-    <Driver
-      onKv={(k) => {
-        kv = k
-      }}
-      run={(api) => {
-        ran = run(api)
-        return ran
-      }}
-    />,
-    { width: 60, height: 10, providers: { kv: true, dialog: true } },
-  )
+  let resolveReady: (pair: readonly [ReturnType<typeof useEngineSettings>, KVContext]) => void = () => {}
+  const ready = new Promise<readonly [ReturnType<typeof useEngineSettings>, KVContext]>((resolve) => {
+    resolveReady = resolve
+  })
+  const handle = await renderComponent(<Driver onReady={(api, kv) => resolveReady([api, kv])} />, {
+    width: 60,
+    height: 10,
+    providers: { kv: true, dialog: true },
+  })
   await handle.rerender()
-  await ran
+  const [api, kv] = await ready
+  await run(api)
   await settle()
-  const read = (key: string): unknown => (kv as KVContext | null)?.get(key, undefined)
   handle.destroy()
-  return read
+  return (key: string) => kv.get(key, undefined)
 }
 
 describe("Settings → Engines protocol declaration", () => {
