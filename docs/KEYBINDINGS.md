@@ -38,7 +38,6 @@ the actions that can actually run right now.
 | `ctrl+a` `h` / `l` | Move focus left / right across panes |
 | `ctrl+a` `o` | Open the Task directory in your editor |
 | `ctrl+a` `m` | Reorder projects in the sidebar |
-| `ctrl+a` `t` | Open a Scratch shell (PROPOSED — pending owner sign-off) |
 | `ctrl+a` `w` | Close the active split |
 | `ctrl+a` `1` / `2` / `3` | Kanban / Automations / GitHub Issues |
 | `ctrl+a` `z` | Toggle zen mode |
@@ -61,7 +60,7 @@ focus or dialog.
 | `F1` | The live keymap — works everywhere, including inside the terminal |
 | `ctrl+q` | Focus the sidebar; from the sidebar, quit |
 | `ctrl+t` | New engine tab |
-| `ctrl+e` | New-conversation dialog — engine/shell picker; inside it, `tab` switches the destination (new tab here ⇄ fork a child task) and `ctrl+f` the context (fresh ⇄ continue this chat) |
+| `ctrl+e` | New-conversation dialog — engine/shell picker; inside it, `tab` switches the destination (new tab here ⇄ fork a child task) and `ctrl+f` the context (fresh ⇄ continue this chat). The trailing "scratch shell" choice opens a Scratch shell task |
 | `ctrl+w` | Close the active split, otherwise the tab |
 | `ctrl+[` / `ctrl+]` | Previous / next tab |
 | `ctrl+\` | Split right |

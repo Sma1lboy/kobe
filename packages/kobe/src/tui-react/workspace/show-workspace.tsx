@@ -31,6 +31,8 @@ export function ShowWorkspace(props: {
   onTabVisited?: (taskId: string, tabId: string) => void
   /** A scratch task's last shell exited — the host deletes the row (issue #33). */
   onScratchExit?: (taskId: string) => void
+  /** ctrl+e's trailing "scratch shell" choice — open a Scratch task. */
+  onOpenScratch?: () => void
 }): ReactNode {
   const { theme } = useTheme()
   const t = useT()
@@ -65,6 +67,7 @@ export function ShowWorkspace(props: {
         const taskId = props.task?.id
         if (taskId) props.onScratchExit?.(taskId)
       }}
+      onOpenScratch={props.onOpenScratch}
       command={engineLaunchArgv({
         command: props.task?.command,
         vendor: props.task?.vendor,

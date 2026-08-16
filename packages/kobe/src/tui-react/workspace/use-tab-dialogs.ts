@@ -72,6 +72,9 @@ export function useTabDialogs(deps: {
   activeLeafSize: () => { cols: number; rows: number } | null
   onChooseEngine?: (vendor: VendorId) => void
   onQuickFork?: (repo: string, result: QuickTaskResult) => void
+  /** The dialog's trailing "scratch shell" choice (issue #33): open a
+   *  Scratch temp shell task. Absent = the choice isn't offered. */
+  onOpenScratch?: () => void
   /** Toast for the "nothing to continue from" refusals. */
   notifyError: (title: string) => void
 }): {
@@ -178,6 +181,7 @@ export function useTabDialogs(deps: {
         preset.context === "continue" ? source : deps.vendor,
         {
           allowShell: true,
+          allowScratch: deps.onOpenScratch !== undefined,
           extraChoices: panes.map((p) => ({ key: `pane:${p.pluginId}.${p.paneId}`, label: p.title })),
           initialDestination: preset.destination,
           initialContext: preset.context,
@@ -198,6 +202,13 @@ export function useTabDialogs(deps: {
       // tab is named by its live foreground process ("zsh", "vim"…).
       if (choice.pick === "shell") {
         update(openCommandTab(state, [defaultShell()], null))
+        return
+      }
+      // "scratch" = a whole Scratch temp shell TASK, not a tab of this one
+      // (issue #33 — owner entry point 2026-08-16, replacing the rejected
+      // prefix+t chord).
+      if (choice.pick === "scratch") {
+        deps.onOpenScratch?.()
         return
       }
       await openTabHere(choice, source)

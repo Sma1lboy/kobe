@@ -27,9 +27,11 @@ import { useBindings } from "../lib/keymap"
 import { type DialogContext, showDialog, useDialog, useDialogPaddingX } from "../ui/dialog"
 import { ChoiceRow } from "./new-task-dialog/picker-list"
 
-/** What the picker can resolve to: an engine vendor or a plain shell tab.
- *  With `extraChoices`, an extra choice's `key` (e.g. a plugin pane) too. */
-export type EnginePick = VendorId | "shell" | (string & {})
+/** What the picker can resolve to: an engine vendor, a plain shell tab, or
+ *  a Scratch shell task (issue #33 — owner placement 2026-08-16: trailing
+ *  choice, never a chord until frequency proves one out). With
+ *  `extraChoices`, an extra choice's `key` (e.g. a plugin pane) too. */
+export type EnginePick = VendorId | "shell" | "scratch" | (string & {})
 
 /** Where the new conversation lands. */
 export type NewChatDestination = "tab" | "fork"
@@ -47,6 +49,11 @@ export function NewChatDialogView(props: {
   defaultVendor: VendorId
   /** Offer a trailing "shell" choice (a plain terminal tab). */
   allowShell?: boolean
+  /** Offer the LAST-position "scratch" choice (a Scratch shell task — issue
+   *  #33). Tail placement is the owner's call (2026-08-16): the default
+   *  highlight and every existing choice's position stay untouched so
+   *  ctrl+e→enter muscle memory is preserved. */
+  allowScratch?: boolean
   /** Trailing extra choices (plugin panes): `key` is returned, `label` shown. */
   extraChoices?: readonly { key: string; label: string }[]
   /** Preset entries (`ctrl+a c` / `ctrl+a f`) open with a toggle flipped. */
@@ -68,11 +75,20 @@ export function NewChatDialogView(props: {
   // engine conversation by definition.
   const defaultCombo = destination === "tab" && context === "fresh"
   const choices: readonly EnginePick[] = defaultCombo
-    ? [...vendors, ...(props.allowShell ? (["shell"] as const) : []), ...extras.map((e) => e.key)]
+    ? [
+        ...vendors,
+        ...(props.allowShell ? (["shell"] as const) : []),
+        ...extras.map((e) => e.key),
+        // Scratch is LAST by owner placement — see allowScratch's doc.
+        ...(props.allowScratch ? (["scratch"] as const) : []),
+      ]
     : vendors
   const fallback = vendors.includes(props.defaultVendor) ? props.defaultVendor : (vendors[0] ?? "claude")
   const [pick, setPick] = useState<EnginePick>(fallback)
-  const display = (choice: EnginePick): string => extras.find((e) => e.key === choice)?.label ?? choice
+  const display = (choice: EnginePick): string =>
+    choice === "scratch"
+      ? t("terminal.tab.newChat.scratchChoice")
+      : (extras.find((e) => e.key === choice)?.label ?? choice)
 
   function commit(picked: EnginePick): void {
     props.onSubmit({ pick: picked, destination, context })
@@ -157,6 +173,7 @@ function show(
   defaultVendor: VendorId,
   opts: {
     allowShell?: boolean
+    allowScratch?: boolean
     extraChoices?: readonly { key: string; label: string }[]
     initialDestination?: NewChatDestination
     initialContext?: NewChatContext
@@ -167,6 +184,7 @@ function show(
       availableVendors={availableVendors}
       defaultVendor={defaultVendor}
       allowShell={opts.allowShell}
+      allowScratch={opts.allowScratch}
       extraChoices={opts.extraChoices}
       initialDestination={opts.initialDestination}
       initialContext={opts.initialContext}

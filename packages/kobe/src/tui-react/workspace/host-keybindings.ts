@@ -65,8 +65,6 @@ export type WorkspaceKeybindingDeps = {
   openInbox: () => void
   /** prefix+m — focus the sidebar and enter move mode on the current selection. */
   enterMoveMode: () => void
-  /** PROPOSED prefix+t (issue #33): open a Scratch temp shell task. */
-  openScratchShell: () => void
   /** prefix+p / prefix+P — send the Create PR prompt into the engine pane. */
   createPR: () => void
 }
@@ -144,7 +142,6 @@ export function useWorkspaceKeybindings(deps: WorkspaceKeybindingDeps): void {
         "automations.open": () => deps.openAutomations(),
         "workItems.open": () => deps.openWorkItems(),
         "task.moveMode": () => deps.enterMoveMode(),
-        "task.scratchShell": () => deps.openScratchShell(),
         // prefix+, — the global companion to the sidebar's bare `s`. The
         // row shipped in the table (and docs) without a handler here, so
         // the chord was dead outside the sidebar.
