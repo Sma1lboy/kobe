@@ -108,6 +108,10 @@ replacement in `nextCommandArgs`.
   hosted engine tabs is live (not just the first); `.tabs` = the task's
   terminal tabs (`id`/`kind`/`title`/`vendor`/`liveVendor`/`lastTitle`/
   `autoTitle` + per-tab `alive`) — the discovery read for `send --tab tab-N`.
+  `liveVendor` on a live tab is a fresh foreground process walk (which
+  engine actually runs in the tab's shell right now — a hand-typed `claude`
+  in a shell tab counts, a ctrl+C'd engine doesn't); dead tabs report the
+  last recorded value.
   A dead tab whose session ended abnormally also carries `exit`
   (`code`/`signal`/`at`); clean exits stay `exit: null`. A live PTY session
   the persisted snapshot does not list still gets a row, marked

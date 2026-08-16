@@ -29,6 +29,9 @@ export interface LiveSession {
   readonly alive?: boolean
   /** OSC window title of the live process, when the host observed one. */
   readonly title?: string | null
+  /** Shell pid of the hosted session — roots the live-engine probe's
+   *  process-tree walk for tabs this TUI never attached (issue #33). */
+  readonly pid?: number | null
 }
 
 /**

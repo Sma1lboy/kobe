@@ -18,7 +18,7 @@ import os from "node:os"
 import path from "node:path"
 import type { Issue } from "@sma1lboy/kobe-daemon/daemon/issues-store"
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
-import { buildIssueChatBackgroundSpawn } from "../../src/tui/workspace/issue-chat-spawn.ts"
+import { buildIssueChatBackgroundSpawn, buildIssueTabSpawn } from "../../src/tui/workspace/issue-chat-spawn.ts"
 import type { EngineTab } from "../../src/tui/workspace/terminal-tabs-core.ts"
 
 let tmpHome: string
@@ -77,5 +77,43 @@ describe("buildIssueChatBackgroundSpawn", () => {
     expect(tab.spawned).toBe(true)
     expect(tab.sessionId).toBeTruthy()
     expect(spawn.command[2]).toContain(`--session-id ${tab.sessionId}`)
+  })
+
+  // Issue #25: kimi's positional CLI slot is a subcommand, so the story
+  // prompt in the argv kills the launch (`Unknown command`). For a
+  // paste-delivery vendor the composition must surface the prompt as
+  // `firstMessage` (the hosted PTY pastes it post-spawn) and keep the
+  // launch line clean.
+  it("kimi: the story prompt rides as firstMessage, never in the argv", () => {
+    const spawn = buildIssueChatBackgroundSpawn({
+      issue: story,
+      taskId: "task-9",
+      repoRoot: "/repo",
+      worktreePath: "/repo/.wt/task-9",
+      vendor: "kimi",
+      api: "kobe api",
+      shell: "/bin/zsh",
+    })
+    expect(spawn.ptyKey).toBe("task-9::tab-1")
+    expect(spawn.command[2] ?? "").not.toContain("Work on user story #7")
+    expect(spawn.firstMessage).toContain("Work on user story #7: Fix the flaky poll")
+    expect(spawn.firstMessage).toContain("issue-set-status --repo . --id 7 --status done")
+    expect(spawn.engineBin).toBe("kimi")
+  })
+
+  it("kimi project-placement tab: same paste surfacing for the appended chattab", () => {
+    const spawn = buildIssueTabSpawn({
+      taskId: "main-1",
+      repoRoot: "/repo",
+      worktreePath: "/repo",
+      tab: { kind: "engine", id: "tab-2", title: null, ordinal: 2, vendor: "kimi", spawned: true },
+      vendor: "kimi",
+      prompt: "story prompt",
+      shell: "/bin/zsh",
+    })
+    expect(spawn.ptyKey).toBe("main-1::tab-2")
+    expect(spawn.command[2] ?? "").not.toContain("story prompt")
+    expect(spawn.firstMessage).toContain("story prompt")
+    expect(spawn.engineBin).toBe("kimi")
   })
 })

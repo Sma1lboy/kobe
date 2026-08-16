@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.8.116
+
+### Patch Changes
+
+- e413a37: Remove the sidebar ⚡ engine badge introduced with the live shell-tab identity: the row label already tracks the live OSC title, so the badge was a second parallel channel for the same information — and it lit redundantly on engine tabs running their own vendor. The data layer stays: `liveVendor` still feeds get-task/tab-snapshot from the live foreground walk, and a shell tab with a confirmed engine still renders through the same row path as an engine tab.
+
+## 0.8.115
+
+### Patch Changes
+
+- 975d35f: Shell tabs now carry a live engine identity (issue #33 step 1): the sidebar probes every hosted session's process tree — not just tabs mounted in this TUI — so a hand-typed `claude`/`codex` in any shell tab lights an engine badge on its row, and dims when the engine exits (debounced against mid-restart flicker). `rove api get-task`'s per-tab `liveVendor` now reflects a fresh foreground walk for live tabs instead of the last TUI-recorded value.
+
+## 0.8.114
+
+### Patch Changes
+
+- 42ecc09: Kimi sessions started from the TUI and the web dashboard now receive their first message (issue #25 follow-up).
+
+  `rove api send/add --prompt` already pasted kimi's first message post-spawn (kimi's positional argv slot is a subcommand, so an argv prompt exits the engine `Unknown command`), but the TUI's own spawn path still pinned argv — a quick-fork, issue-chat, or cross-engine-handoff prompt on a kimi tab still killed the session — and the web engine-spec path silently dropped a repo's init-prompt. The tab spawn now surfaces the message as `firstMessage` instead of appending it to the launch line, the hosted PTY bracketed-pastes it once the engine process is up (fresh spawns only — a reattach never redelivers), and the web PTY sidecar does the same for spec-carried messages.
+
 ## 0.8.113
 
 ### Patch Changes

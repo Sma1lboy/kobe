@@ -108,24 +108,35 @@ const abnormalExit = (exit: PtySessionExit | null | undefined): PtySessionExit |
  * `persistedExits` (the durable `pty-exits.json` records, keyed by session
  * key) answers "how did it die" after the host itself is gone; a live host's
  * in-memory exit wins when both exist.
+ *
+ * `liveVendors` (issue #33) is a fresh foreground-walk verdict per session
+ * key — the same tri-state the TUI's live-engine store speaks: a vendor =
+ * that engine runs under the session's shell NOW, null = walked and
+ * engine-free, absent = couldn't look. Where it answers it overrides the
+ * RECORDED `liveVendor` (a snapshot written only by a mounted TUI, so it
+ * goes stale for tasks never opened): a user-typed `claude` in a shell tab
+ * reads as live claude, and a ctrl+C'd engine reads as a plain shell. A
+ * dead session's verdict is meaningless — only alive rows take it.
  */
 export function joinTaskTabs(
   snapshot: TabsState | undefined,
   taskId: string,
   sessions: readonly TaskSessionRow[],
   persistedExits: Readonly<Record<string, PtySessionExit>> = {},
+  liveVendors?: ReadonlyMap<string, string | null>,
 ): TaskTabRow[] {
   const alive = aliveKeysOf(sessions)
   const sessionExits = new Map(sessions.map((s) => [s.key, s.exit]))
   const rows: TaskTabRow[] = (snapshot?.tabs ?? []).map((t) => {
     const key = `${taskId}::${t.id}`
     const isAlive = alive.has(key)
+    const walked = isAlive && liveVendors?.has(key) === true ? (liveVendors.get(key) ?? null) : undefined
     return {
       id: t.id,
       kind: t.kind,
       title: t.title ?? null,
       vendor: (t as { vendor?: string }).vendor ?? null,
-      liveVendor: t.liveVendor ?? null,
+      liveVendor: walked !== undefined ? walked : (t.liveVendor ?? null),
       lastTitle: t.lastTitle ?? null,
       autoTitle: t.autoTitle ?? null,
       alive: isAlive,

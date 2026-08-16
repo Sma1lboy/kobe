@@ -119,10 +119,10 @@ export interface EngineSessionLaunchInput {
   /** Which engine TAB this session is (defaults to tab-1, the key's tab). */
   readonly tabId?: string
   /**
-   * Override the registry's first-message delivery for this launch. Headless
-   * spawners (api `send`/`add`, daemon automation) leave it unset so a
-   * "paste" vendor (kimi) gets its prompt pasted post-spawn; the TUI owns no
-   * post-spawn paste hook yet and pins "argv" explicitly.
+   * Override the registry's first-message delivery for this launch. Spawners
+   * normally leave it unset so the registry contract applies — a "paste"
+   * vendor (kimi) gets its prompt back as `firstMessage` for the spawner to
+   * paste post-spawn. The override survives for tests pinning the argv path.
    */
   readonly firstMessageDelivery?: "argv" | "paste"
 }

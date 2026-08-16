@@ -197,3 +197,63 @@ describe("engineTabSpawnFor with a tab-owned handoff prompt", () => {
     )
   })
 })
+
+// Why (issue #25): kimi's positional CLI slot is a SUBCOMMAND — a prompt in
+// the argv exits the engine `Unknown command` before it does any work. The
+// registry declares `firstMessageDelivery: "paste"` for kimi, so the TUI
+// spawn must keep the prompt OUT of the launch line and surface it as
+// `firstMessage` for the hosted PTY's post-spawn paste
+// (`pastePromptWhenEngineUp`). This pins the composition half of that
+// contract; the delivery half lives in hosted-session.test.ts.
+describe("engineTabSpawnFor with a paste-delivery vendor (kimi — issue #25)", () => {
+  const opts = {
+    live: false,
+    shell: "/bin/zsh",
+    prompt: "fix the bug",
+    task: { id: "task-1", kind: "task" as const, vendor: "kimi" as const, repo: "/repo" },
+    worktreePath: "/repo/wt",
+    protocolGates: { status: () => false, notes: () => false, dispatcher: () => false },
+  }
+  const state: TabsState = {
+    tabs: [{ kind: "engine", id: "tab-1", title: null, ordinal: 1, vendor: "kimi" }],
+    activeId: "tab-1",
+    nextOrdinal: 2,
+  }
+  const first = state.tabs[0] as EngineTab
+
+  it("keeps the first prompt OUT of kimi's argv and surfaces it for post-spawn paste", () => {
+    const spawn = engineTabSpawnFor(state, first, ["kimi"], opts)
+    expect(spawn.command.slice(0, 2)).toEqual(["/bin/zsh", "-ilc"])
+    expect(spawn.command[2]).not.toContain("fix the bug")
+    expect(spawn.firstMessage).toContain("fix the bug")
+    // The paste's engine-up probe matches the launch binary.
+    expect(spawn.engineBin).toBe("kimi")
+  })
+
+  it("paste delivery follows the same first-spawn-only rule as argv delivery", () => {
+    expect(engineTabSpawnFor(state, { ...first, spawned: true }, ["kimi"], opts).firstMessage).toBeUndefined()
+    expect(engineTabSpawnFor(state, first, ["kimi"], { ...opts, live: true }).firstMessage).toBeUndefined()
+    // Second engine tab never gets the task-level prompt.
+    const two: TabsState = { ...state, tabs: [...state.tabs, tab({ vendor: "kimi" })], nextOrdinal: 3 }
+    expect(engineTabSpawnFor(two, two.tabs[1] as EngineTab, ["kimi"], opts).firstMessage).toBeUndefined()
+  })
+
+  it("delivers a tab-owned handoff prompt by paste too", () => {
+    const handoffState: TabsState = {
+      tabs: [
+        state.tabs[0],
+        { kind: "engine", id: "tab-2", title: null, ordinal: 2, vendor: "kimi", initialPrompt: "read /r.jsonl" },
+      ],
+      activeId: "tab-2",
+      nextOrdinal: 3,
+    }
+    const spawn = engineTabSpawnFor(handoffState, handoffState.tabs[1] as EngineTab, ["kimi"], {
+      ...opts,
+      prompt: undefined,
+    })
+    expect(spawn.command[2]).not.toContain("read /r.jsonl")
+    expect(spawn.firstMessage).toContain("read /r.jsonl")
+    // A handoff opens on an EXISTING worktree — no branch-rename coda.
+    expect(spawn.firstMessage).not.toContain("set-branch")
+  })
+})

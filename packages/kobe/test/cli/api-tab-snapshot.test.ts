@@ -245,6 +245,39 @@ describe("joinTaskTabs", () => {
     ])
   })
 
+  const vendorSnap = (tabs: unknown[]): TabsState =>
+    ({ tabs, activeId: "tab-1", nextOrdinal: tabs.length + 1 }) as unknown as TabsState
+
+  it("a live foreground-walk verdict overrides the recorded liveVendor (issue #33)", () => {
+    const snap = vendorSnap([
+      { kind: "command", id: "tab-1", title: null, ordinal: 1 }, // shell, user typed claude
+      { kind: "engine", id: "tab-2", title: null, ordinal: 2, liveVendor: "codex" }, // ctrl+C'd
+      { kind: "engine", id: "tab-3", title: null, ordinal: 3, liveVendor: "codex" }, // not walked
+    ])
+    const rows = joinTaskTabs(
+      snap,
+      "t1",
+      [
+        { key: "t1::tab-1", alive: true },
+        { key: "t1::tab-2", alive: true },
+        { key: "t1::tab-3", alive: true },
+      ],
+      {},
+      new Map([
+        ["t1::tab-1", "claude"], // shell running a live engine → lights up
+        ["t1::tab-2", null], // walked, engine-free → goes dark
+        // tab-3 absent: couldn't look → recorded value stands
+      ]),
+    )
+    expect(rows.map((r) => r.liveVendor)).toEqual(["claude", null, "codex"])
+  })
+
+  it("a dead tab never takes a walk verdict — recorded liveVendor stands", () => {
+    const snap = vendorSnap([{ kind: "engine", id: "tab-1", title: null, ordinal: 1, liveVendor: "claude" }])
+    const rows = joinTaskTabs(snap, "t1", [{ key: "t1::tab-1", alive: false }], {}, new Map([["t1::tab-1", null]]))
+    expect(rows[0]?.liveVendor).toBe("claude")
+  })
+
   it("a task with no snapshot still lists its live sessions as unregistered rows", () => {
     // Before issue #20 this returned [] — an alive engine invisible to the
     // discovery read.
