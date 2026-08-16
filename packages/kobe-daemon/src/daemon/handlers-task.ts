@@ -230,8 +230,23 @@ export const TASK_HANDLERS: readonly DaemonRequestHandler[] = [
     web: true,
     async handle(payload, ctx) {
       const dir = requireString(payload, "dir")
-      const task = await ctx.orch.openDirectoryTask({ dir, vendor: optionalVendor(payload, "vendor") })
+      const task = await ctx.orch.openDirectoryTask({
+        dir,
+        vendor: optionalVendor(payload, "vendor"),
+        scratch: optionalBoolean(payload, "scratch"),
+      })
       return { taskId: task.id, task: serializeTask(task) }
+    },
+  },
+  {
+    // Scratch → project migration (issue #33): repoint a scratch task at the
+    // repo its shell settled in and clear the flag. No-op on non-scratch rows.
+    name: "task.adoptScratchRepo",
+    web: true,
+    async handle(payload, ctx) {
+      const taskId = requireString(payload, "taskId")
+      await ctx.orch.adoptScratchRepo(taskId, requireString(payload, "repo"))
+      return {}
     },
   },
   {

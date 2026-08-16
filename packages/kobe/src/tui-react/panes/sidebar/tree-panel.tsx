@@ -17,7 +17,7 @@
 
 import type { ScrollBoxRenderable } from "@opentui/core"
 import type { SidebarView } from "../../../tui/panes/sidebar/groups"
-import type { TreeRow } from "../../../tui/panes/sidebar/tree-core"
+import { SCRATCH_SECTION_ID, type TreeRow } from "../../../tui/panes/sidebar/tree-core"
 import { sidebarEmptyStateKey } from "../../../tui/panes/sidebar/view-core"
 import { useTheme } from "../../context/theme"
 import { useT } from "../../i18n"
@@ -53,14 +53,20 @@ export function SidebarTreeBody(props: {
       <box flexShrink={0} gap={0}>
         {props.rows.map((row, i) => {
           if (row.kind === "project") {
+            // The Scratch header (issue #33) reuses the project-row shape but
+            // is a fixed section, not a repo: translated label, no context
+            // menu (nothing to file, nothing to move).
+            const isScratch = row.id === SCRATCH_SECTION_ID
             return (
               <SectionHeader
                 key={row.id}
-                label={row.label}
+                label={isScratch ? t("tasks.header.scratch") : row.label}
                 suffix={props.movingProjectId === row.id ? t("tasks.moveChip") : undefined}
                 topPad={i > 0}
                 onContextMenu={
-                  props.onProjectContextMenu ? (x, y) => props.onProjectContextMenu?.(row.id, x, y) : undefined
+                  props.onProjectContextMenu && !isScratch
+                    ? (x, y) => props.onProjectContextMenu?.(row.id, x, y)
+                    : undefined
                 }
               />
             )

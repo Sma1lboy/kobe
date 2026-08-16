@@ -47,6 +47,10 @@ export interface TabCloseDeps {
   readonly resumeTriedRef: { readonly current: Set<string> }
   /** Surface ctrl+w's refusal to close a task's only tab. */
   readonly notifyCannotCloseLast: (tabId: string) => void
+  /** Scratch task (issue #33): the LAST tab's shell exiting ends the task
+   *  itself (the host deletes the row) instead of recycling a fresh engine
+   *  tab in place. Absent on ordinary tasks. */
+  readonly onScratchExit?: () => void
 }
 
 export interface TabClose {
@@ -122,6 +126,14 @@ export function useTabClose(deps: TabCloseDeps): TabClose {
     }
     if (deps.stateRef.current.tabs.length > 1) {
       closeExited(active.id)
+      return
+    }
+    // Scratch task (issue #33): the last shell exiting IS the end of the
+    // task — zero ceremony, the row disappears. No recycle: a scratch task
+    // has no engine to respawn into.
+    if (deps.onScratchExit) {
+      getDefaultPtyRegistry().release(tabPtyKeyFor(taskId(), active))
+      deps.onScratchExit()
       return
     }
     // Last tab: the strip can never be empty — recycle it in place as a fresh

@@ -49,6 +49,8 @@ import { useCreatePR } from "./use-create-pr"
 import { useFileOpenActions } from "./use-file-open-actions"
 import { useInboxHost } from "./use-inbox-host"
 import { useIssueChat } from "./use-issue-chat"
+import { useScratchAdopt } from "./use-scratch-adopt"
+import { useScratchShell } from "./use-scratch-shell"
 import { useWorkspaceSelection } from "./use-workspace-selection"
 import { useZenMode } from "./use-zen-mode"
 
@@ -183,6 +185,17 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   // regardless of host, and this component is already near the file-size cap.
   const quickFork = useQuickFork(orch, { selectTask: setSelectedId, enterTask: activateTask, notifyError })
 
+  // Scratch temp shell tasks (issue #33): open gesture + last-shell-exit
+  // deletion, plus the quiet cwd+harness → project adoption loop.
+  const scratch = useScratchShell({
+    orchestrator: orch,
+    tasks,
+    enterTask: (id) => void activateTask(id),
+    forgetTaskTabs: (id) => forgetTaskTabs(kv, id),
+    notifyError,
+  })
+  useScratchAdopt({ tasks, orchestrator: orch, notifyInfo })
+
   /* --------- zen mode (issue #18, pure-tui shape) ----------------------- */
   const { zen, toggleZen } = useZenMode({ kv, focus })
 
@@ -275,6 +288,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
       setSelectedId(String(target))
       setMoveMode(true)
     },
+    openScratchShell: scratch.openScratchShell,
   })
 
   // Keybinding focus is suppressed while a dialog overlay is up: pane focus
@@ -438,6 +452,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
               onQuickFork={quickFork.onQuickFork}
               initialPrompt={quickFork.initialPromptFor(selectedTask?.id)}
               onTabVisited={inbox.resolveVisited}
+              onScratchExit={scratch.onScratchExit}
             />
           )}
         </box>

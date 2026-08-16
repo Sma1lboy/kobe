@@ -237,7 +237,13 @@ export class Orchestrator {
    * directory twice is two parallel sessions in it, so the title gets a
    * random suffix (`kobe-af3x`) to tell the rows apart.
    */
-  async openDirectoryTask(input: { readonly dir: string; readonly vendor?: VendorId }): Promise<Task> {
+  async openDirectoryTask(input: {
+    readonly dir: string
+    readonly vendor?: VendorId
+    /** Temp shell task for the sidebar's Scratch section (issue #33): same
+     *  dir-task shape, `scratch: true`, shell-exit deletes the row. */
+    readonly scratch?: boolean
+  }): Promise<Task> {
     if (!input.dir) throw new Error("openDirectoryTask: dir is required")
     const dir = canonPath(input.dir)
     return this.store.create({
@@ -247,8 +253,24 @@ export class Orchestrator {
       worktreePath: dir,
       status: "backlog",
       kind: "dir",
+      ...(input.scratch ? { scratch: true } : {}),
       vendor: input.vendor ?? resolvePreferredVendor(),
     })
+  }
+
+  /**
+   * Migrate a scratch task into a repo (issue #33 adoption): the shell's
+   * live cwd landed in `repo` and a coding harness was detected there, so
+   * the row earns a project home. Repoints `repo`/`worktreePath` at the
+   * repo root and clears the scratch flag — the task becomes an ordinary
+   * `kind: "dir"` row grouped under that repo. No-op unless the task is
+   * actually a scratch dir task.
+   */
+  async adoptScratchRepo(id: TaskId | string, repo: string): Promise<void> {
+    const task = this.store.get(id)
+    if (!task || task.kind !== "dir" || task.scratch !== true) return
+    const dir = canonPath(repo)
+    await this.store.update(id, { repo: dir, worktreePath: dir, scratch: false, title: titleFromRepo(dir) })
   }
 
   /**

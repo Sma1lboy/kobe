@@ -168,6 +168,8 @@ export type DaemonRequestName =
   | "task.ensureMain"
   // Open an existing directory as a standalone `kind:"dir"` task (`kobe .`).
   | "task.openDir"
+  // Scratch → project migration (issue #33): repoint + clear the flag.
+  | "task.adoptScratchRepo"
   | "project.forget"
   | "task.ensureWorktree"
   | "task.setActive"
@@ -413,6 +415,8 @@ export interface SerializedTask {
   readonly branch: string
   readonly worktreePath: string
   readonly kind: "main" | "task" | "dir"
+  /** Scratch shell task (issue #33) — Scratch-section row, cleared on adopt/rename. */
+  readonly scratch?: boolean
   readonly status: DaemonTask["status"]
   readonly archived: boolean
   readonly pinned: boolean
@@ -445,6 +449,7 @@ export function serializeTask(task: DaemonTask): SerializedTask {
     branch: task.branch,
     worktreePath: task.worktreePath,
     kind: task.kind ?? "task",
+    ...(task.scratch ? { scratch: true } : {}),
     status: task.status,
     archived: task.archived,
     pinned: task.pinned ?? false,

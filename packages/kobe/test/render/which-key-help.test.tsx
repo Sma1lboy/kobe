@@ -41,6 +41,7 @@ function WorkspaceHelpDriver() {
     jumpToNextAttention: NOOP,
     openInbox: NOOP,
     enterMoveMode: NOOP,
+    openScratchShell: NOOP,
     createPR: NOOP,
   })
   return <text>workspace base</text>

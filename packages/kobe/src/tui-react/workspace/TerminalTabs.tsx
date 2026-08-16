@@ -57,6 +57,7 @@ import {
   closeTab,
   cycleTab,
   engineTabSpawnFor,
+  initialShellTabs,
   initialTabs,
   isTabSplit,
   recycleTabs,
@@ -100,6 +101,13 @@ export interface TerminalTabsProps {
   worktree: string
   repo?: string
   taskKind?: "main" | "task" | "dir"
+  /** Scratch temp shell task (issue #33): tab-1 spawns as a BARE SHELL
+   *  instead of an engine, and the last tab's shell exiting deletes the
+   *  task outright (zero-ceremony lifecycle) via `onScratchExit` instead
+   *  of recycling into a fresh engine tab. */
+  scratch?: boolean
+  /** The scratch task's last shell exited — the host deletes the task row. */
+  onScratchExit?: () => void
   command: readonly string[]
   /** Task's current engine + effort — used to build a per-tab command when
    *  a tab pins its own vendor via `chooseEngine`. */
@@ -176,7 +184,10 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
     const saved = kv.get(persistKey, null) as TabsState | null
     const fromDisk = saved && Array.isArray(saved.tabs) ? rehydrateTabs(saved, [defaultShell()]) : null
     rehydratedRef.current = fromDisk !== null
-    const fresh = fromDisk ?? pinSession(initialTabs(), undefined)
+    // A scratch task's first tab is a BARE SHELL (issue #33) — the task IS
+    // the shell; an engine only appears if the user types one.
+    const fresh =
+      fromDisk ?? (props.scratch === true ? initialShellTabs(defaultShell()) : pinSession(initialTabs(), undefined))
     tabsByTask.set(props.taskId, fresh)
     return fresh
   }
@@ -328,6 +339,7 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
     resumeTriedRef,
     notifyCannotCloseLast: (tabId) =>
       notif.notify({ kind: "error", taskId: props.taskId, tabId, title: t("terminal.tab.cannotCloseLast") }),
+    onScratchExit: props.scratch === true ? props.onScratchExit : undefined,
   })
   // The pending-close listener is mount-only, so it reaches the CURRENT hook
   // through a ref rather than the one from its first render.

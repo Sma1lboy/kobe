@@ -64,6 +64,14 @@ export type TreeRow =
 export const RECENT_ROW_ID = "~recent"
 
 /**
+ * Header id of the Scratch section (issue #33). Like {@link RECENT_ROW_ID},
+ * not a repo path and free of the separator, so project-header consumers
+ * (move mode, context menu, `mainTaskIdOfProject`) that look it up simply
+ * miss — a Scratch header has no main task to move and no repo to file into.
+ */
+export const SCRATCH_SECTION_ID = "~scratch"
+
+/**
  * Prepend the "↩ recent: <task>" jump row (narrow mode only — the caller
  * gates). The row names the last task the user was INSIDE, so a cold
  * reconnect (phone SSH) gets a one-keystroke way back into it.
@@ -125,7 +133,14 @@ export function buildTreeRows(input: TreeInput): TreeRow[] {
   const { tasks, tabsByTask } = input
   const byProject = new Map<string, { repo: string; tasks: Task[] }>()
 
+  // Scratch tasks (issue #33) never mint a project header: their cwd is
+  // unsettled by definition, so grouping them under their (temporary)
+  // directory would name a home they don't have. They render in one
+  // Scratch section ABOVE every project — the "unfiled live sessions" bench.
+  const scratchTasks = tasks.filter((task) => task.kind === "dir" && task.scratch === true)
+
   for (const task of tasks) {
+    if (task.kind === "dir" && task.scratch === true) continue
     const key = sidebarProjectKey(task.repo)
     const entry = byProject.get(key) ?? { repo: task.repo, tasks: [] }
     // The main task carries the canonical repo path — a regular task's
@@ -162,6 +177,14 @@ export function buildTreeRows(input: TreeInput): TreeRow[] {
   }
 
   const rows: TreeRow[] = []
+  // Scratch section first — above pinned and every project (issue #33): the
+  // bench of unfiled live shells is what you reach for next, not an archive.
+  // The header reuses the project-row shape (id is a sentinel no repo path
+  // can be — see SCRATCH_SECTION_ID); the renderer translates its label.
+  if (scratchTasks.length > 0) {
+    rows.push({ kind: "project", id: SCRATCH_SECTION_ID, repo: "", label: "Scratch", depth: 0 })
+    for (const task of scratchTasks) pushWorktree(rows, task, tabsByTask)
+  }
   for (const key of orderedKeys) {
     const entry = byProject.get(key)
     if (!entry) continue
@@ -198,6 +221,7 @@ export function treeFlatIds(rows: readonly TreeRow[]): string[] {
 /** The project a row belongs to. A `dir` task's project is its directory —
  *  the same key `buildTreeRows` groups it under. */
 function ownerProjectKey(task: Task): string | null {
+  if (task.kind === "dir" && task.scratch === true) return SCRATCH_SECTION_ID
   return sidebarProjectKey(task.repo)
 }
 

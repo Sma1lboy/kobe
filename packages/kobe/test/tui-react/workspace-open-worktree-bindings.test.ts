@@ -58,6 +58,7 @@ describe("workspace open-worktree bindings", () => {
       jumpToNextAttention: vi.fn(),
       openInbox: vi.fn(),
       enterMoveMode: vi.fn(),
+      openScratchShell: vi.fn(),
       createPR: vi.fn(),
     })
 
@@ -112,6 +113,7 @@ describe("workspace open-worktree bindings", () => {
       jumpToNextAttention: vi.fn(),
       openInbox: vi.fn(),
       enterMoveMode: vi.fn(),
+      openScratchShell: vi.fn(),
       createPR: vi.fn(),
     })
 

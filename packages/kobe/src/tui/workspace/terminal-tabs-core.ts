@@ -48,6 +48,17 @@ export function initialTabs(): TabsState {
   return { tabs: [{ kind: "engine", id: "tab-1", title: null, ordinal: 1 }], activeId: "tab-1", nextOrdinal: 2 }
 }
 
+/** A SCRATCH task's initial state (issue #33): one bare shell tab, active —
+ *  the task is the shell, an engine only appears when the user types one.
+ *  Same shape the ctrl+e "shell" pick mints ({@link openCommandTab}). */
+export function initialShellTabs(shell: string): TabsState {
+  return {
+    tabs: [{ kind: "command", id: "tab-1", title: null, ordinal: 1, command: [shell] }],
+    activeId: "tab-1",
+    nextOrdinal: 2,
+  }
+}
+
 /** Shared insert: append `tab` after the active tab and focus it. */
 function insertAfterActive(state: TabsState, tab: TerminalTab): TabsState {
   const i = state.tabs.findIndex((t) => t.id === state.activeId)
