@@ -110,6 +110,16 @@ describe("verifiedSelfSession (issue #24: env identity is inheritable, so it mus
     expect(await verifiedSelfSession({ KOBE_TASK_ID: "d1" }, probe)).toBeNull()
   })
 
+  it("the warning is read-and-CLEAR, and a verified resolution leaves none behind", async () => {
+    await verifiedSelfSession({ KOBE_TASK_ID: "d1" }, probeFor("d1::tab-1", { detached: true }))
+    expect(takeIdentityWarning()).toBeTruthy()
+    // One notice per degrade: a second read must not re-warn a later verb.
+    expect(takeIdentityWarning()).toBeNull()
+    await verifiedSelfSession({ KOBE_TASK_ID: "d1" }, probeFor("d1::tab-1", { detached: true }))
+    await verifiedSelfSession({ KOBE_TASK_ID: "d1" }, probeFor("d1::tab-1"))
+    expect(takeIdentityWarning()).toBeNull()
+  })
+
   it("stays silent (no warning) for a plain shell with no env at all", async () => {
     expect(await verifiedSelfSession({}, probeFor("d1::tab-1"))).toBeNull()
     expect(takeIdentityWarning()).toBeNull()

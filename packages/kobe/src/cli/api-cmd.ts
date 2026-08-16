@@ -82,7 +82,9 @@ function emit(value: unknown, pretty: boolean): void {
   // for the one JSON error envelope (docs/API.md), and a silent degrade is
   // exactly what made the wrong reply address invisible for weeks.
   const warning = takeIdentityWarning()
-  const payload = warning && value && typeof value === "object" ? { ...value, identityWarning: warning } : value
+  // Objects only — spreading an array would flatten it into numeric keys.
+  const mergeable = warning && value && typeof value === "object" && !Array.isArray(value)
+  const payload = mergeable ? { ...value, identityWarning: warning } : value
   const text = pretty ? JSON.stringify(payload, null, 2) : JSON.stringify(payload)
   process.stdout.write(`${text}\n`)
 }

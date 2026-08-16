@@ -110,7 +110,13 @@ async function resolveSelfSession(env: NodeJS.ProcessEnv, probe?: SelfSessionPro
     const session = (await p.sessions()).find((s) => s.key === key && s.alive)
     if (session?.pid) {
       const { hasAncestor, parsePsSnapshot } = await import("../../engine/foreground.ts")
-      if (hasAncestor(parsePsSnapshot(await p.ps()), p.pid, session.pid)) return { taskId, tabId }
+      if (hasAncestor(parsePsSnapshot(await p.ps()), p.pid, session.pid)) {
+        // A verified resolution clears any warning a previous one left. The
+        // memo makes that a single resolution per process today; this keeps
+        // the pair honest if the memo is ever relaxed.
+        identityWarning = null
+        return { taskId, tabId }
+      }
     }
   } catch {
     /* unreadable host/ps — fall through to the refusal below */
@@ -119,7 +125,7 @@ async function resolveSelfSession(env: NodeJS.ProcessEnv, probe?: SelfSessionPro
   // it is a kobe session and its dispatcher/peer fields just vanished. stderr
   // carries exactly one JSON error envelope by contract (docs/API.md), so the
   // notice rides the verb's own stdout result instead — see `takeIdentityWarning`.
-  identityWarning = `$ROVE_TASK_ID names task ${taskId} ${tabId}, but this process is not running inside that tab (an inherited env, not an identity) — dispatcher/peer provenance omitted`
+  identityWarning = `$ROVE_TASK_ID/$KOBE_TASK_ID names task ${taskId} ${tabId}, but this process is not running inside that tab (an inherited env, not an identity) — dispatcher/peer provenance omitted`
   return null
 }
 
