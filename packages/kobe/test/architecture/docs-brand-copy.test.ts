@@ -14,7 +14,7 @@
  * Deliberately NOT covered here, because they are preserved compatibility:
  * the `kobe` executable and `@sma1lboy/kobe` package, `KOBE_*` env aliases,
  * `packages/kobe*` workspace names, `~/.kobe` runtime + plugin paths, legacy
- * `.kobe/worktrees` discovery, the `kobe-plugin` topic, `kobe.sma1lboy.me`,
+ * `.kobe/worktrees` discovery, the `kobe-plugin` topic,
  * the installed `.agents/skills/kobe/SKILL.md` path,
  * the persisted `kobe hook` invocation, and `[KOBE PEER]`/`[KOBE FIELD NOTE]`.
  * Historical records (`docs/adr/`, `docs/superpowers/`, CHANGELOG, and the
@@ -55,8 +55,8 @@ const TYPED_KOBE_COMMAND =
 
 /**
  * The product called by its retired name. Compatibility spellings survive the
- * lookahead: `packages/kobe-docs`, `kobe-plugin`, `.agents/skills/kobe/`,
- * `packages/kobe/src/…`, and `kobe.sma1lboy.me` all continue with `-`, `/`,
+ * lookahead: `packages/kobe-docs`, `kobe-plugin`, `.agents/skills/kobe/`, and
+ * `packages/kobe/src/…` all continue with `-`, `/`,
  * or `.`, so only a bare "kobe"/"Kobe"/"kobe's" — the product itself — trips.
  */
 const PRODUCT_NAME_KOBE = /\bkobe(?:['’]s)?\b(?![-/.])/i
@@ -124,7 +124,8 @@ describe("current docs and landing copy speak Rove", () => {
     expect(read("packages/kobe-landing/index.js"), "the fan-out demo still prints kobe/ branches").not.toContain(
       "'kobe/'",
     )
-    // `kobe.sma1lboy.me` stays (canonical domain); only a `kobe/<branch>` slug is stale.
+    // The canonical domain is now `rove.sma1lboy.me` (kobe.sma1lboy.me 301s to
+    // it); only a `kobe/<branch>` slug is stale.
     expect(
       read("packages/kobe-landing/index.html"),
       "the static fan-in fallback still prints a kobe/ branch",

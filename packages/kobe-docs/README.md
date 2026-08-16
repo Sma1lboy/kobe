@@ -1,6 +1,6 @@
 # @sma1lboy/kobe-docs
 
-Public docs site for Rove — https://docs.kobe.sma1lboy.me
+Public docs site for Rove — https://docs.rove.sma1lboy.me
 
 Built with [Fumadocs](https://fumadocs.dev) (Next.js 16, static export via
 `output: 'export'`). Branded through Fumadocs' official `--color-fd-*` CSS

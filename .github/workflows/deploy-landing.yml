@@ -1,7 +1,7 @@
 # Landing-page auto-deploy.
 #
 # Deploys the marketing site (`packages/kobe-landing`, a static HTML site)
-# to Vercel production (project `kobe-landing`, kobe.sma1lboy.me) whenever
+# to Vercel production (project `kobe-landing`, rove.sma1lboy.me) whenever
 # the landing files change on `main`. This exists because the Vercel CLI
 # can't always run from a local machine behind a TLS-intercepting network
 # (node's fetch fails cert verification); a GitHub-hosted runner has a clean

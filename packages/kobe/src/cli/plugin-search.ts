@@ -71,7 +71,7 @@ export async function searchMarketplace(query: string | undefined): Promise<void
     const stars = e.stars !== undefined ? `★${e.stars}` : e.firstParty ? "first-party" : ""
     console.log(`${e.ref.padEnd(width)}${stars.padEnd(12)}${e.desc}`)
   }
-  console.log(`\ninstall: ${CLI_NAME} plugin install <owner/repo[/subdir]> — browse: https://kobe.sma1lboy.me/plugins`)
+  console.log(`\ninstall: ${CLI_NAME} plugin install <owner/repo[/subdir]> — browse: https://rove.sma1lboy.me/plugins`)
 }
 
 function dedupeEntries(entries: readonly MarketEntry[]): MarketEntry[] {
