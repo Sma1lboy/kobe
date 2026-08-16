@@ -95,9 +95,9 @@ is active.
 | `o` | Open Task directory in your editor | | `s` | Settings |
 | `a` | Archive non-main Task | | `u` | Update page |
 | `d` | Delete Task / forget project | | `/` | Search |
-| `[` / `]` | Switch Working / Archives | | `x` | Worktrees page |
-| `gg` / `shift+g` | Top / bottom | | `shift+p` | Pin / unpin managed Task |
-| `shift+m` | Enter project reorder mode | | `right` | Focus the current engine pane |
+| `gg` / `shift+g` | Top / bottom | | `x` | Worktrees page |
+| `shift+p` | Pin / unpin managed Task | | `right` | Focus the current engine pane |
+| `shift+m` | Enter project reorder mode | | | |
 
 In reorder mode, `j`/`k` moves the highlighted project and `enter` or `esc`
 finishes. Project headings themselves aren't cursor rows; the move routes

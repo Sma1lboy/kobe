@@ -16,7 +16,6 @@
  */
 
 import type { ScrollBoxRenderable } from "@opentui/core"
-import type { SidebarView } from "../../../tui/panes/sidebar/groups"
 import { SCRATCH_SECTION_ID, type TreeRow } from "../../../tui/panes/sidebar/tree-core"
 import { sidebarEmptyStateKey } from "../../../tui/panes/sidebar/view-core"
 import { useTheme } from "../../context/theme"
@@ -28,9 +27,8 @@ export function SidebarTreeBody(props: {
   readonly rows: readonly TreeRow[]
   /** Row id → index in the tree's navigable flat id list. */
   readonly flatIndexOf: ReadonlyMap<string, number>
-  readonly view: SidebarView
   /** A query is open and non-empty — picks the "no matches" empty state over
-   *  the view's own "nothing here yet". */
+   *  the plain "nothing here yet". */
   readonly searching: boolean
   readonly shared: TreeRowShared
   readonly onProjectContextMenu?: (projectId: string, x: number, y: number) => void
@@ -107,7 +105,7 @@ export function SidebarTreeBody(props: {
         {props.rows.length === 0 ? (
           <box paddingTop={1} paddingLeft={1}>
             <text fg={theme.textMuted}>
-              {t(sidebarEmptyStateKey({ searching: props.searching, projectFilter: false, view: props.view }))}
+              {t(sidebarEmptyStateKey({ searching: props.searching, projectFilter: false }))}
             </text>
           </box>
         ) : null}

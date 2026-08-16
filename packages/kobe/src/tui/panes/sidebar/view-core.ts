@@ -8,7 +8,6 @@
 
 import { charWidth, displayWidth } from "../../../lib/display-width"
 import { truncateEnd, truncateEndCells } from "../../lib/truncate"
-import type { SidebarView } from "./groups"
 import type { SidebarTone } from "./row-view"
 
 /** Default width of the PureTUI task-list rail (32 → 26 → 24, owner calls
@@ -18,29 +17,10 @@ export const SIDEBAR_WIDTH = 24
 /** Polling interval for the per-main-row git branch refresh. */
 export const MAIN_BRANCH_POLL_MS = 2_000
 
-/** The view tab strip, in `[` / `]` cycle order. */
-export const VIEW_TABS: ReadonlyArray<{ view: SidebarView }> = [{ view: "active" }, { view: "archived" }]
-
-/** i18n key for a view tab's label — callers translate with their own `t`. */
-export function viewTabLabelKey(view: SidebarView): string {
-  switch (view) {
-    case "active":
-      return "tasks.view.workspace"
-    case "archived":
-      return "tasks.view.archives"
-  }
-}
-
-/**
- * Cycle the view by `delta` (-1 = `[` / left, +1 = `]` / right). Wraps:
- * `[` from the leftmost lands on the rightmost and vice versa (loop is the
- * confirmed intended behavior). Returns null when `cur` isn't a known tab.
- */
-export function cycleViewTarget(cur: SidebarView, delta: -1 | 1): SidebarView | null {
-  const idx = VIEW_TABS.findIndex((t) => t.view === cur)
-  if (idx < 0) return null
-  return VIEW_TABS[(idx + delta + VIEW_TABS.length) % VIEW_TABS.length]?.view ?? null
-}
+// VIEW_TABS / viewTabLabelKey / cycleViewTarget were retired with the
+// Archived sidebar view (issue #33 IA convergence): the sidebar always
+// shows the working set; `archived` remains a task flag readable via
+// `rove api list` and the web board.
 
 /**
  * Two-line card budgets. Line 1: selection marker (1) + badge (1) +
@@ -92,18 +72,13 @@ export function projectScrollMaxHeightFor(terminalHeight: number, projectRowCoun
 /**
  * i18n key for the task list's empty-state / scoped-empty placeholder.
  * `searching` wins (no fuzzy match), then a project-scoped empty, then the
- * plain per-view empty copy.
+ * plain empty copy. (The per-view archived variants left with the Archived
+ * view — issue #33.)
  */
-export function sidebarEmptyStateKey(opts: {
-  readonly searching: boolean
-  readonly projectFilter: boolean
-  readonly view: SidebarView
-}): string {
+export function sidebarEmptyStateKey(opts: { readonly searching: boolean; readonly projectFilter: boolean }): string {
   if (opts.searching) return "tasks.empty.noMatchSearch"
-  if (opts.projectFilter) {
-    return opts.view === "active" ? "tasks.empty.noActiveProject" : "tasks.empty.noArchivedProject"
-  }
-  return opts.view === "active" ? "tasks.empty.noActive" : "tasks.empty.noArchived"
+  if (opts.projectFilter) return "tasks.empty.noActiveProject"
+  return "tasks.empty.noActive"
 }
 
 /** Widest branch label a two-line card renders before tail-truncation. */

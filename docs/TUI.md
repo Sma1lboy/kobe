@@ -72,8 +72,7 @@ input, `○` idle).
 
 Press `/` to fuzzy-search task titles, repositories, branches, and live tab
 titles. Parent rows stay visible around a match. Arrow keys move through the
-results, `enter` opens one, and `esc` restores the previous selection. `[` / `]`
-switches between the Active and Archived lists when archived Tasks exist.
+results, `enter` opens one, and `esc` restores the previous selection.
 
 The selected Task answers these actions whether the cursor is on its worktree
 row or one of its tab rows:
@@ -88,7 +87,9 @@ row or one of its tab rows:
   reorders whole projects rather than individual Tasks.
 - `a` archives a managed or directory Task after confirmation, stopping its
   hosted sessions but preserving its directory, branch, tab snapshot, and
-  engine history. Run it again in Archived to restore the Task.
+  engine history. Archived Tasks leave the sidebar entirely; they remain
+  listed by `rove api list` and on the web board, and unarchiving from there
+  brings the row back.
 - `d` is kind-aware: it forgets a project-main row, removes only the Rove
   record for a directory Task, or removes a managed Task and its worktree after
   the dirty-worktree safety check.

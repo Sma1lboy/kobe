@@ -22,10 +22,10 @@ import type { BoxRenderable, ScrollBoxRenderable } from "@opentui/core"
 import { useTerminalDimensions } from "@opentui/react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { createSidebarController } from "../../../tui/panes/sidebar/controller"
-import { type SidebarView, filterByView } from "../../../tui/panes/sidebar/groups"
+import { filterByView } from "../../../tui/panes/sidebar/groups"
 import { RECENT_ROW_ID, type TreeRow, parseRowId } from "../../../tui/panes/sidebar/tree-core"
 import type { TreeMenuAction } from "../../../tui/panes/sidebar/tree-menu"
-import { MAIN_BRANCH_POLL_MS, SIDEBAR_WIDTH, cycleViewTarget } from "../../../tui/panes/sidebar/view-core"
+import { MAIN_BRANCH_POLL_MS, SIDEBAR_WIDTH } from "../../../tui/panes/sidebar/view-core"
 import { usePaneHintMark } from "../../component/keyboard-hints"
 import { bindByIds } from "../../context/keybindings"
 import { useOptionalKV } from "../../context/kv"
@@ -33,14 +33,7 @@ import { useTheme } from "../../context/theme"
 import { useBindings } from "../../lib/keymap"
 import { useLatest } from "../../lib/use-latest"
 import { ContextMenu } from "../../ui/context-menu"
-import {
-  SidebarBrandHeader,
-  SidebarCreateAction,
-  SidebarNavRail,
-  SidebarSearchInput,
-  SidebarViewTabs,
-  SidebarZenChip,
-} from "./chrome"
+import { SidebarBrandHeader, SidebarCreateAction, SidebarNavRail, SidebarSearchInput, SidebarZenChip } from "./chrome"
 import { SidebarTreeBody } from "./tree-panel"
 import type { TreeRowShared } from "./tree-rows"
 import type { SidebarProps } from "./types"
@@ -68,13 +61,11 @@ export function SidebarTree(props: SidebarTreeProps) {
   const kv = useOptionalKV()
   const focused = props.focused ?? true
   const dims = useTerminalDimensions()
-  const [view, setView] = useState<SidebarView>("active")
-  const viewTasks = useMemo(() => filterByView(props.tasks, view), [props.tasks, view])
-
-  // Same rule as the flat sidebar: the Active/Archived row stays hidden until
-  // something is actually archived, and stays visible while you are IN the
-  // archived view so there is a way back.
-  const showViewTabs = view === "archived" || props.tasks.some((task) => task.archived === true)
+  // Archived tasks have no sidebar surface (issue #33 IA convergence): the
+  // lifecycle view split is gone — the tree always shows the working set.
+  // Archived rows remain reachable through `rove api list` and the web board
+  // until GC (issue #29) settles what an archive even is.
+  const viewTasks = useMemo(() => filterByView(props.tasks, "active"), [props.tasks])
 
   // The same ~2s branch/changes poll tick the flat sidebar runs — the row
   // cards' `useChanges`/`pollCurrentBranch` effects key on it.
@@ -309,20 +300,6 @@ export function SidebarTree(props: SidebarTreeProps) {
   // View switching stays live during search (flat sidebar's Block B): `[`/`]`
   // are not text, and re-scoping the list mid-query is a reasonable thing to
   // want.
-  useBindings(() => ({
-    enabled: focused,
-    bindings: bindByIds({
-      "sidebar.view": (_evt, slot) => {
-        // Follows the row: with nothing archived there is no second view to
-        // cycle into, and landing there would strand you in a list whose only
-        // content is "No archived tasks."
-        if (!showViewTabs) return
-        const target = cycleViewTarget(view, (slot ?? 0) % 2 === 0 ? -1 : 1)
-        if (target) setView(target)
-      },
-    }),
-  }))
-
   // Search-mode chords — registered only while the query row shows. j/k are
   // deliberately absent: they are text here, so ctrl+n/ctrl+p walk the results.
   useBindings(() => ({
@@ -451,14 +428,12 @@ export function SidebarTree(props: SidebarTreeProps) {
       {search.active ? (
         <SidebarSearchInput query={search.query} matchCount={tree.flatIds.length} totalCount={tree.totalCount} />
       ) : null}
-      {showViewTabs ? <SidebarViewTabs view={view} setView={setView} /> : null}
-      {/* Rail below the view tabs (owner 2026-08-02) — Kanban/Routines live
+      {/* Rail below the search row (owner 2026-08-02) — Kanban/Routines live
           within the workspace you're in, so they read as children of it. */}
       <SidebarNavRail nav={props.nav ?? "terminal"} setNav={(next) => props.onNavChange?.(next)} />
       <SidebarTreeBody
         rows={tree.rows}
         flatIndexOf={flatIndexOf}
-        view={view}
         searching={search.active && search.query.trim().length > 0}
         shared={shared}
         onProjectContextMenu={menu.openForProject}
