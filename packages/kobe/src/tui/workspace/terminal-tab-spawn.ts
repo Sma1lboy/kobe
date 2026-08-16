@@ -12,6 +12,16 @@
 export interface TabSpawn {
   readonly command: readonly string[]
   readonly initialInput?: string
+  /**
+   * First message the PTY layer must paste into the session once the engine
+   * process is up (`TaskPtyOpts.firstMessage`) — paste-delivery vendors
+   * (kimi, issue #25) whose positional argv slot is a subcommand, so the
+   * message can NOT ride {@link command}. Undefined when the message already
+   * rode the argv or there is none.
+   */
+  readonly firstMessage?: string
+  /** Engine binary name the paste's engine-up probe matches (base argv[0]). */
+  readonly engineBin?: string
 }
 
 /** Args that survive an interactive prompt unquoted; anything else gets

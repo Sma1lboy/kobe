@@ -239,6 +239,41 @@ describe("createPtySessionManager", () => {
     expect(ptys[0].writes).toEqual(["\x1b[200~hello\x1b[201~", "\r"])
   })
 
+  // Issue #25: a paste-delivery vendor's (kimi) launch keeps the first
+  // message OUT of its argv; the daemon's engine-spec carries it as
+  // `firstMessage` and the sidecar owes the FRESH spawn a paste. A re-attach
+  // must never redeliver it.
+  it("pastes a spec-carried first message into a fresh spawn only", async () => {
+    vi.useFakeTimers()
+    const { manager, ptys } = setup({
+      submitDelays: { spawnedPasteMs: 25, existingPasteMs: 0, enterMs: 10 },
+      fetchSpec: async () => ({ cwd: "/repo/task", command: ["kimi"], firstMessage: "repo init" }),
+    })
+
+    await manager.ensureSession("tab", "task", "engine", 80, 24)
+    expect(ptys[0].writes).toEqual([])
+    await vi.advanceTimersByTimeAsync(25)
+    expect(ptys[0].writes).toEqual(["\x1b[200~repo init\x1b[201~"])
+    await vi.advanceTimersByTimeAsync(10)
+    expect(ptys[0].writes).toEqual(["\x1b[200~repo init\x1b[201~", "\r"])
+
+    // Reusing the live session must not paste it again.
+    await manager.ensureSession("tab", "task", "engine", 80, 24)
+    await vi.advanceTimersByTimeAsync(100)
+    expect(ptys).toHaveLength(1)
+    expect(ptys[0].writes).toHaveLength(2)
+  })
+
+  it("skips the first-message paste when the spec carries none", async () => {
+    vi.useFakeTimers()
+    const { manager, ptys } = setup({
+      submitDelays: { spawnedPasteMs: 25, existingPasteMs: 0, enterMs: 10 },
+    })
+    await manager.ensureSession("tab", "task", "engine", 80, 24)
+    await vi.advanceTimersByTimeAsync(100)
+    expect(ptys[0].writes).toEqual([])
+  })
+
   it("closes sockets and clears the session on process exit", async () => {
     const { manager, ptys } = setup()
     const ws = new FakeSocket()

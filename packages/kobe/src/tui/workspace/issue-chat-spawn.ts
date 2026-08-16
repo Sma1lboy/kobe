@@ -34,6 +34,11 @@ export interface IssueChatBackgroundSpawn {
   readonly ptyKey: string
   readonly command: readonly string[]
   readonly initialInput?: string
+  /** Paste-delivery vendor's first message (kimi — issue #25): the story
+   *  prompt rode OUTSIDE the argv; the hosted PTY pastes it post-spawn. */
+  readonly firstMessage?: string
+  /** Engine binary name for the first-message engine-up probe. */
+  readonly engineBin?: string
   /** Persist to `terminalTabsKey(taskId)` so a visit attaches, not respawns. */
   readonly tabsSnapshot: TabsState
 }
@@ -65,6 +70,8 @@ export function buildIssueChatBackgroundSpawn(input: {
     ptyKey: tabPtyKey(input.taskId, tab.id),
     command: spawn.command,
     initialInput: spawn.initialInput,
+    firstMessage: spawn.firstMessage,
+    engineBin: spawn.engineBin,
     tabsSnapshot: setTabSpawned(state, tab.id, true),
   }
 }
@@ -86,7 +93,12 @@ export function buildIssueTabSpawn(input: {
   vendor: VendorId
   prompt: string
   shell?: string
-}): { readonly ptyKey: string; readonly command: readonly string[] } {
+}): {
+  readonly ptyKey: string
+  readonly command: readonly string[]
+  readonly firstMessage?: string
+  readonly engineBin?: string
+} {
   const base = interactiveEngineCommand(input.vendor)
   const fresh: EngineTab = { ...input.tab, spawned: false }
   const synthetic: TabsState = { tabs: [fresh], activeId: fresh.id, nextOrdinal: fresh.ordinal + 1 }
@@ -97,5 +109,10 @@ export function buildIssueTabSpawn(input: {
     task: { id: input.taskId, kind: "main", vendor: input.vendor, repo: input.repoRoot },
     worktreePath: input.worktreePath,
   })
-  return { ptyKey: tabPtyKey(input.taskId, fresh.id), command: spawn.command }
+  return {
+    ptyKey: tabPtyKey(input.taskId, fresh.id),
+    command: spawn.command,
+    firstMessage: spawn.firstMessage,
+    engineBin: spawn.engineBin,
+  }
 }

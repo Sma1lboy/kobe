@@ -204,7 +204,7 @@ async function sessionResponse(runtime: DaemonRuntimeAdapter, req: Request, link
 async function specResponse(
   url: URL,
   link: DaemonWebLink,
-  spec: (link: DaemonWebLink, taskId: string) => Promise<{ cwd: string; command: string[] }>,
+  spec: (link: DaemonWebLink, taskId: string) => Promise<{ cwd: string; command: string[]; firstMessage?: string }>,
 ): Promise<Response> {
   try {
     const taskId = url.searchParams.get("taskId")

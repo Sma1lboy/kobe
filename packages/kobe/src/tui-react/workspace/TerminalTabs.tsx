@@ -245,8 +245,9 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
   const hydrating = useTabHydration(rehydratedRef.current, { stateRef, propsRef, update })
 
   // Parent handoffs — mount-once effects, extracted to use-tab-handoffs.ts
-  // (file-size cap split). The quick-fork initial prompt no longer needs a
-  // delivery effect: it rides the first spawn's argv (engineTabSpawn).
+  // (file-size cap split). The quick-fork initial prompt needs no delivery
+  // effect: it rides the first spawn (argv, or firstMessage paste for
+  // paste-delivery vendors — engineTabSpawn).
   const { sendToEngine } = useTabHandoffs({
     stateRef,
     propsRef,
@@ -441,6 +442,8 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
           cwd={tabCwdFor(active, props.worktree)}
           command={spawn.command}
           initialInput={spawn.initialInput}
+          firstMessage={spawn.firstMessage}
+          engineBin={spawn.engineBin}
           onUserInput={active.kind === "engine" ? (data) => noteEngineInput(props.taskId, data) : undefined}
           splitTree={active.splitTree ?? null}
           onSplitChange={(next) => update(setTabSplit(state, active.id, next))}

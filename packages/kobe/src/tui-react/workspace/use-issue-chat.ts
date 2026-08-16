@@ -117,7 +117,11 @@ export function useIssueChat(
       vendor,
       prompt: issueProjectPrompt(issue, api),
     })
-    getDefaultPtyRegistry().acquire(spawn.ptyKey, main.worktreePath, { command: spawn.command })
+    getDefaultPtyRegistry().acquire(spawn.ptyKey, main.worktreePath, {
+      command: spawn.command,
+      firstMessage: spawn.firstMessage,
+      engineBin: spawn.engineBin,
+    })
     await finish(request, main.id)
   }
 
@@ -136,7 +140,12 @@ export function useIssueChat(
       .catch((err: unknown) => console.error("[rove kanban] issue link failed:", err))
     const worktreePath = await orch.ensureWorktree(task.id)
     const spawn = buildIssueChatBackgroundSpawn({ issue, taskId: task.id, repoRoot, worktreePath, vendor, api })
-    getDefaultPtyRegistry().acquire(spawn.ptyKey, worktreePath, { command: spawn.command })
+    getDefaultPtyRegistry().acquire(spawn.ptyKey, worktreePath, {
+      command: spawn.command,
+      initialInput: spawn.initialInput,
+      firstMessage: spawn.firstMessage,
+      engineBin: spawn.engineBin,
+    })
     kv.set(terminalTabsKey(task.id), spawn.tabsSnapshot)
     return { task, worktreePath, tab: spawn.tabsSnapshot.tabs[0] as EngineTab }
   }

@@ -105,7 +105,11 @@ function taskEngineLaunch(task: SerializedTask, worktreePath: string, promptInte
 export async function engineSpecAdapter(link: DaemonRpcClient, taskId: string) {
   const { task, worktreePath } = await ensureTaskWorktree(link, taskId)
   const launch = taskEngineLaunch(task, worktreePath, { kind: "repo-init" })
-  return { cwd: worktreePath, command: [...launch.command] }
+  // Paste-delivery vendor (kimi — issue #25): the repo init-prompt rode
+  // OUTSIDE the argv; the web PTY sidecar pastes it after the fresh spawn
+  // (the sidecar owns its own PTYs — the daemon's hosted paste can't reach
+  // them). Without this the message would be silently dropped.
+  return { cwd: worktreePath, command: [...launch.command], firstMessage: launch.firstMessage }
 }
 
 export async function terminalSpecAdapter(link: DaemonRpcClient, taskId: string) {

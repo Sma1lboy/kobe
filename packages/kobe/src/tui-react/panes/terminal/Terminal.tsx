@@ -94,11 +94,8 @@ export type TerminalProps = {
    * inside the terminal would never reach the global focus setter.
    */
   onRequestFocus?: () => void
-  /**
-   * Override the embedded process argv. When set the pane runs this
-   * command instead of an interactive shell — e.g. `["claude"]` to make
-   * this a PTY view of an interactive Claude Code session.
-   */
+  /** Override the embedded process argv (e.g. `["claude"]` to embed an
+   *  interactive Claude Code session instead of a plain shell). */
   command?: readonly string[]
   /**
    * Typed into a FRESH spawn right after `command` starts (`TaskPtyOpts.
@@ -106,6 +103,12 @@ export type TerminalProps = {
    * existing session never resend it.
    */
   initialInput?: string
+  /** Paste-delivery vendor's first message + the engine binary its up-probe
+   *  matches (`TaskPtyOpts.firstMessage`, issue #25): the hosted backend
+   *  pastes it once the fresh-spawned engine is up; reattaches never
+   *  redeliver it. */
+  firstMessage?: string
+  engineBin?: string
   /**
    * Fires once when the PTY reports exit (or is already dead at mount) —
    * `undefined` for the default "leave the dead shell + exit banner up"
@@ -148,6 +151,8 @@ export function Terminal(props: TerminalProps) {
     taskId: props.taskId,
     command: props.command,
     initialInput: props.initialInput,
+    firstMessage: props.firstMessage,
+    engineBin: props.engineBin,
     resetToken: props.resetToken,
     onExit: props.onExit,
     registry,

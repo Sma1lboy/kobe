@@ -37,6 +37,16 @@ export type TaskPtyOpts = {
    */
   initialInput?: string
   /**
+   * First message to bracketed-paste once the engine process is up
+   * (paste-delivery vendors, issue #25 — their positional argv slot is a
+   * subcommand, so the message can't ride `command`). Same fresh-spawn-only
+   * rule as `initialInput`: a reattach must NOT redeliver it. Delivered by
+   * the hosted backend (`pastePromptWhenEngineUp`); other backends ignore it.
+   */
+  firstMessage?: string
+  /** Engine binary name the first-message engine-up probe matches against. */
+  engineBin?: string
+  /**
    * A previously parked screen to restore (issue #29). When the host
    * confirms the recorded byte offset is still inside its ring window,
    * the fresh emulator is primed with `serialized` and fed only the

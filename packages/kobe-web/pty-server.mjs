@@ -43,7 +43,7 @@ async function fetchSpec(taskId, mode) {
   const res = await fetch(`http://localhost:${DAEMON_WEB_PORT}${path}?taskId=${encodeURIComponent(taskId)}`)
   const json = await res.json()
   if (!res.ok || json.error) throw new Error(json.error ?? `engine-spec failed (${res.status})`)
-  return json // { cwd, command: string[] }
+  return json // { cwd, command: string[], firstMessage?: string }
 }
 
 const ptySessions = createPtySessionManager({
