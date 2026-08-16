@@ -47,6 +47,7 @@ import { GeneralSettingsSection, SettingsSectionSidebar } from "./sections-gener
 import { DevSettingsSection, FeedbackSettingsSection, KeybindingsSettingsSection } from "./sections-misc"
 import { PluginSettingsSection } from "./sections-plugins"
 import { useEngineSettings } from "./use-engine-settings"
+import { usePrefixSetting } from "./use-prefix-setting"
 import { useAccountProbes, usePluginSettings } from "./use-section-data"
 import { useSettingsPrefs } from "./use-settings-prefs"
 
@@ -91,6 +92,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
   const hasDaemon = hasRestartableDaemon(props.orchestrator)
 
   const prefs = useSettingsPrefs(props.kv, dialog)
+  const prefixSetting = usePrefixSetting(dialog)
   const engines = useEngineSettings(props.kv, dialog, (max) => setBodyRow((r) => Math.max(0, Math.min(r, max))))
 
   // Daemon-pushed per-vendor quota snapshots (General's top-right dashboard).
@@ -239,6 +241,7 @@ export function SettingsDialog(props: SettingsDialogProps) {
     worktreeCustom: () => void prefs.editWorktreeCustom(),
     scrollbackRows: () => void prefs.editScrollbackRows(),
     tabStripHideSingle: () => prefs.cycleTabStripMode(),
+    prefixKey: () => void prefixSetting.editPrefixKey(),
     engine: (row) => void engines.editEngine(row.vendor),
     engineAdd: () => void engines.addEngineFlow(),
     pluginToggle: (row) => plugins.toggle(row.pluginId),
@@ -393,7 +396,9 @@ export function SettingsDialog(props: SettingsDialogProps) {
               editSetting={(id, key) => void plugins.editSetting(id, key)}
             />
           ) : null}
-          {section === "keys" ? <KeybindingsSettingsSection /> : null}
+          {section === "keys" ? (
+            <KeybindingsSettingsSection {...cursorProps} editPrefixKey={() => void prefixSetting.editPrefixKey()} />
+          ) : null}
           {section === "feedback" ? (
             <FeedbackSettingsSection
               {...cursorProps}

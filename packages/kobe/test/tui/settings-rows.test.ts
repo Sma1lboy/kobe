@@ -26,6 +26,7 @@ import {
   focusAccentRowId,
   generalRows,
   humanizeSlug,
+  keybindingRows,
   pluginRowId,
   pluginRows,
   pluginSettingRowId,
@@ -181,10 +182,16 @@ describe("feedbackRows", () => {
   })
 })
 
+describe("keybindingRows", () => {
+  it("exposes the prefix key as the Keybindings section's editable row", () => {
+    expect(keybindingRows()).toEqual([{ id: "prefix-key", kind: "prefixKey" }])
+  })
+})
+
 describe("sectionRows / bodyRowCount", () => {
-  it("accounts and keys are read-only — zero navigable rows", () => {
+  it("accounts stays read-only while keys exposes the prefix editor", () => {
     expect(sectionRows("accounts", input())).toEqual([])
-    expect(sectionRows("keys", input())).toEqual([])
+    expect(sectionRows("keys", input())).toEqual(keybindingRows())
   })
 
   it("bodyRowCount is the registry length for every section", () => {
@@ -201,7 +208,7 @@ describe("sectionRows / bodyRowCount", () => {
     expect(bodyRowCount("general", inp)).toBe(12 + LANG + 1 + 3 + 14) // themes + langs + transparent + accents + retained general rows
     expect(bodyRowCount("engines", inp)).toBe(ALL_VENDORS.length + 2 + 1) // 6
     expect(bodyRowCount("accounts", inp)).toBe(0)
-    expect(bodyRowCount("keys", inp)).toBe(0)
+    expect(bodyRowCount("keys", inp)).toBe(1)
     expect(bodyRowCount("feedback", inp)).toBe(3)
     expect(bodyRowCount("dev", inp)).toBe(6)
     expect(bodyRowCount("dev", { ...inp, hasDaemon: false })).toBe(5)

@@ -62,6 +62,7 @@ export type SettingsRow =
   | { id: "worktree-custom"; kind: "worktreeCustom" }
   | { id: "scrollback-rows"; kind: "scrollbackRows" }
   | { id: "tab-strip-hide-single"; kind: "tabStripHideSingle" }
+  | { id: "prefix-key"; kind: "prefixKey" }
   | { id: string; kind: "engine"; vendor: VendorId }
   | { id: "add-engine"; kind: "engineAdd" }
   | { id: string; kind: "pluginToggle"; pluginId: string }
@@ -185,6 +186,10 @@ export function feedbackRows(): SettingsRow[] {
   ]
 }
 
+export function keybindingRows(): SettingsRow[] {
+  return [{ id: "prefix-key", kind: "prefixKey" }]
+}
+
 /**
  * Dev section: Reset (always), Restart (daemon only), then the
  * Experimental remote-projects toggle — kept last so its presence never
@@ -212,8 +217,9 @@ export function sectionRows(section: SectionId, input: SettingsRowsInput): Setti
     case "engines":
       return engineRows(input.engineList)
     case "accounts":
-    case "keys":
       return []
+    case "keys":
+      return keybindingRows()
     case "plugins":
       return pluginRows(input.plugins)
     case "feedback":

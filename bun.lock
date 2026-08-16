@@ -46,6 +46,7 @@
         "node-pty": "^1.1.0",
         "react": "^19.2.8",
         "ws": "^8.18.0",
+        "yaml": "^2.9.0",
       },
       "devDependencies": {
         "@biomejs/biome": "1.9.4",
