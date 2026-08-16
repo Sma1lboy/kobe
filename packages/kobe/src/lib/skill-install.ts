@@ -44,7 +44,7 @@ import { getPersistedString, setPersistedString } from "../state/repos.ts"
  * didn't, so we prompt the developer to re-run the active CLI's
  * `skill install` command.
  */
-export const KOBE_SKILL_VERSION = 25
+export const KOBE_SKILL_VERSION = 26
 
 /**
  * Where an installed kobe skill can be FOUND, relative to a home/project

@@ -3,7 +3,7 @@ name: rove
 description: Use when controlling Rove tasks, parallel coding attempts, hosted agent sessions, task lifecycle, or the daemon-owned issue tracker from a shell. Also the ONLY channel for messaging another agent session on this machine — `rove api send`, never a peer/MCP side channel.
 ---
 
-<!-- rove-skill-version: 25 — bump in lockstep with KOBE_SKILL_VERSION (src/lib/skill-install.ts). -->
+<!-- rove-skill-version: 26 — bump in lockstep with KOBE_SKILL_VERSION (src/lib/skill-install.ts). -->
 
 # Rove shell control
 
@@ -138,6 +138,23 @@ branch, and which sibling tabs exist" — `.tabs[]` carries each tab's `id`, `ki
 `vendor`, `lastTitle` and `alive`, which is exactly the target list for
 `send --tab`. A tab flagged `unregistered: true` is a live session the tab
 snapshot lost; it is addressable like any other.
+
+## Fresh worktrees start empty — install before you judge
+
+A managed task's worktree is a **brand-new checkout**: no `node_modules`, no
+build artifacts, nothing a lockfile promises. Two consequences:
+
+- **A test failure in a fresh worktree may be fake.** Missing dependencies
+  masquerade as product bugs ("Could not resolve: react-dom/client" reads
+  like a regression, not a missing install). Before reporting any failure as
+  real, confirm the repo's install step ran — and when a failure looks
+  unrelated to your change, compare against the same command on the base
+  branch before believing it.
+- **Repos with an install step should ship `.rove/init.sh`** — it runs once
+  per worktree, before the engine, in the worktree (per-user override:
+  `rove repo set --init-script`; inspect with `rove repo show`, which lists
+  `.rove/init.sh: absent` when unset). Working in a repo that lacks one and
+  you just paid the install tax? Suggest adding it.
 
 ## Discover before calling
 
