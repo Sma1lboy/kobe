@@ -1,0 +1,12 @@
+{
+  "name": "rove",
+  "version": "0.1.0",
+  "description": "Rove activity hooks + agent skill for Claude Code: every session reports normalized activity events to the Rove daemon, and the bundled skill teaches the agent to drive `rove api`.",
+  "author": {
+    "name": "Sma1lboy",
+    "url": "https://github.com/Sma1lboy"
+  },
+  "homepage": "https://docs.rove.sma1lboy.me",
+  "repository": "https://github.com/Sma1lboy/rove",
+  "hooks": "./hooks/hooks.json"
+}

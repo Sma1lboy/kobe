@@ -1,0 +1,16 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "rove",
+  "description": "Rove — terminal-native multiplexer for AI coding sessions. This marketplace ships the Claude Code integration plugin.",
+  "owner": {
+    "name": "Sma1lboy"
+  },
+  "plugins": [
+    {
+      "name": "rove",
+      "description": "Rove activity hooks (session/turn/compact/subagent reporting to the Rove daemon) plus the bundled `rove api` agent skill.",
+      "source": "./claude-plugin",
+      "category": "productivity"
+    }
+  ]
+}

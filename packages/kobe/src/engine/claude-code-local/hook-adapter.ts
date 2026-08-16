@@ -41,7 +41,7 @@ export { buildWorktreeWatchHook, mergeWorktreeWatchHook }
 
 /** Claude Code hook event → normalized kobe verb. The ONE place Claude event
  *  names live. `matcher` narrows which Notification types fire. */
-const EVENT_MAP: readonly HookEventSpec[] = [
+export const CLAUDE_HOOK_EVENT_MAP: readonly HookEventSpec[] = [
   { event: "SessionStart", verb: "session-start" },
   { event: "UserPromptSubmit", verb: "turn-start" },
   { event: "Stop", verb: "turn-complete" },
@@ -69,14 +69,14 @@ const EVENT_MAP: readonly HookEventSpec[] = [
 
 /** The events kobe owns — used to replace only these in a merge. Deduped:
  *  one event can carry several matcher-scoped specs. */
-export const KOBE_HOOK_EVENTS: readonly string[] = [...new Set(EVENT_MAP.map((e) => e.event))]
+export const KOBE_HOOK_EVENTS: readonly string[] = [...new Set(CLAUDE_HOOK_EVENT_MAP.map((e) => e.event))]
 
 /** Normalized kobe verb for a Claude Code hook event name, or undefined for an
- *  event kobe doesn't install — the query side of {@link EVENT_MAP}, so tests
+ *  event kobe doesn't install — the query side of {@link CLAUDE_HOOK_EVENT_MAP}, so tests
  *  (and future callers) can exercise the adapter's install-time translation
  *  without parsing generated hook commands. */
 export function claudeVerbForHookEvent(event: string): EngineActivityKind | undefined {
-  return EVENT_MAP.find((e) => e.event === event)?.verb
+  return CLAUDE_HOOK_EVENT_MAP.find((e) => e.event === event)?.verb
 }
 
 /** Map a Claude StopFailure `error_type` to the neutral failure class. Claude
@@ -106,21 +106,21 @@ function isKobeWorktreeSyncGroup(group: unknown): boolean {
 }
 
 /** Build kobe's Claude activity hook groups (thin wrapper over the shared core,
- *  bound to Claude's {@link EVENT_MAP}). Exported for tests. */
+ *  bound to Claude's {@link CLAUDE_HOOK_EVENT_MAP}). Exported for tests. */
 export function buildClaudeHooks(inv?: readonly string[]): Record<string, unknown> {
-  return inv ? buildActivityHooks(EVENT_MAP, inv) : buildActivityHooks(EVENT_MAP)
+  return inv ? buildActivityHooks(CLAUDE_HOOK_EVENT_MAP, inv) : buildActivityHooks(CLAUDE_HOOK_EVENT_MAP)
 }
 
 /** Add/remove kobe's Claude activity hooks (thin wrapper over the shared core,
- *  bound to Claude's {@link EVENT_MAP}). Exported for tests. */
+ *  bound to Claude's {@link CLAUDE_HOOK_EVENT_MAP}). Exported for tests. */
 export function mergeActivityHooks(
   current: Record<string, unknown>,
   install: boolean,
   inv?: readonly string[],
 ): Record<string, unknown> {
   return inv
-    ? mergeActivityHooksCore(current, install, EVENT_MAP, inv)
-    : mergeActivityHooksCore(current, install, EVENT_MAP)
+    ? mergeActivityHooksCore(current, install, CLAUDE_HOOK_EVENT_MAP, inv)
+    : mergeActivityHooksCore(current, install, CLAUDE_HOOK_EVENT_MAP)
 }
 
 /**
@@ -144,7 +144,7 @@ export function mergeWorktreeSyncHook(
 
 export class ClaudeHookAdapter extends JsonHookAdapter {
   readonly vendor = "claude" as const
-  protected readonly eventMap = EVENT_MAP
+  protected readonly eventMap = CLAUDE_HOOK_EVENT_MAP
 
   globalSettingsPath(): string {
     return claudeSettingsPath()
