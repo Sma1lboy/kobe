@@ -32,6 +32,7 @@ import type { EngineActivityDetail } from "../engine/hook-events.ts"
 import { isEngineActivityKind } from "../engine/hook-events.ts"
 import { getPersistedString, setPersistedString } from "../state/repos.ts"
 import { ALL_VENDORS } from "../types/vendor.ts"
+import { activeCliName } from "./rename-compat.ts"
 
 /** Default timeout for the stdin race — bounds a manual invocation without
  *  stdin so it can't hang. */
@@ -199,6 +200,13 @@ export async function runHookSubcommand(argv: readonly string[]): Promise<void> 
     await runHookSetup(rest)
     return
   }
+  // `cleanup` — the sanctioned migration path (issue #37): remove the
+  // settings-managed Rove hooks after the Claude Code plugin takes over.
+  // User-invoked and loud; the launch-time gate only ever PROMPTS for this.
+  if (verb === "cleanup") {
+    await runHookCleanup()
+    return
+  }
   // Worktree lifecycle sync: the global `PostToolUse` (Bash) hook. Fires after
   // EVERY Bash tool call machine-wide, so it must no-op fast — it only touches
   // the daemon when the command was a `git worktree add`/`remove`.
@@ -336,12 +344,33 @@ function persistedSyncPath(stored: string | undefined): string | undefined {
  */
 export async function ensureGlobalKobeHooks(): Promise<void> {
   try {
+    // 0. Plugin takeover (issue #37): when the Rove Claude Code PLUGIN is
+    //    enabled, its own hooks.json already carries the Claude activity +
+    //    worktree-watch hooks, so the settings-managed install for CLAUDE is
+    //    skipped — installing both would double-fire every event. Detection
+    //    is prompt-only: legacy settings-managed hooks / a pre-plugin skill
+    //    dir are reported to stderr, never silently removed (the sanctioned
+    //    path is the user-invoked `rove hook cleanup`). Other engines
+    //    (codex/…) are untouched by plugin mode. Note: the volume-gated
+    //    tool-pre/post/failed family is settings-managed only, so a Rove
+    //    plugin subscribing tool.* events needs the settings install (run
+    //    `rove hook cleanup` only after disabling such plugins, or keep the
+    //    Claude plugin off).
+    const { isRovePluginEnabled, detectLegacyInstalls, migrationHint } = await import(
+      "../engine/claude-code-local/plugin-migration.ts"
+    )
+    const pluginMode = isRovePluginEnabled()
+    if (pluginMode) {
+      const hint = migrationHint(detectLegacyInstalls(), activeCliName())
+      if (hint) process.stderr.write(`\n${hint}\n`)
+    }
     // 1. Activity hooks + the creation-time worktree-watch hook — both global,
     //    each written into the ENGINE's own settings file (Claude's
     //    ~/.claude/settings.json, Codex's ~/.codex/hooks.json) so every session
     //    of that engine reports.
     const toolEvents = pluginsWantToolEvents()
     for (const a of activityHookAdapters()) {
+      if (pluginMode && a.vendor === "claude") continue
       const enginePath = a.globalSettingsPath()
       if (!enginePath) continue
       await a.installActivityHooks(enginePath, { toolEvents })
@@ -396,6 +425,34 @@ async function cleanupWorktreeSyncHook(): Promise<void> {
   if (prev) paths.add(prev)
   for (const a of adapters) for (const p of paths) await a.removeWorktreeSyncHook(p)
   if (stored !== "off") setPersistedString(SYNC_SETTING_KEY, "off")
+}
+
+/**
+ * `kobe hook cleanup` — remove Rove's settings-managed activity +
+ * worktree-watch hooks from the CLAUDE settings file. The migration step
+ * after installing the Claude Code plugin: the plugin's hooks.json carries
+ * the same hooks, so the settings copy would double-fire every event. Merge
+ * mechanics are the adapter's own remove path — only Rove-tagged groups are
+ * touched, user hooks and other engines (codex/…) stay intact. Idempotent.
+ */
+async function runHookCleanup(): Promise<void> {
+  const claude = activityHookAdapters().find((a) => a.vendor === "claude")
+  const path = claude?.globalSettingsPath()
+  if (!claude || !path) {
+    process.stdout.write("rove hook cleanup: no Claude hook adapter — nothing to do.\n")
+    return
+  }
+  await claude.removeActivityHooks(path)
+  await claude.removeWorktreeWatchHook(path)
+  process.stdout.write(
+    [
+      `rove hook cleanup: removed Rove's settings-managed hooks from ${path}.`,
+      "Only Rove's own entries were touched; your other hooks are intact.",
+      "The Claude Code plugin's hooks.json now carries these events (if the plugin",
+      "is not installed, the next Rove launch reinstalls the settings-managed set).",
+      "",
+    ].join("\n"),
+  )
 }
 
 /**

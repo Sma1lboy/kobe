@@ -99,6 +99,19 @@ describe("maybeHintSkillInstall", () => {
     expect(msg).toContain("`kobe doctor`")
   })
 
+  it("plugin mode: absent AND stale skill both stay silent (skill versions with the plugin)", async () => {
+    // The Rove Claude Code plugin bundles the skill, so neither the install
+    // nudge nor the staleness prompt may fire — the mocked homedir means this
+    // reads the test's own settings.json, never the developer's.
+    mkdirSync(join(tmpHome, ".claude"), { recursive: true })
+    writeFileSync(join(tmpHome, ".claude", "settings.json"), JSON.stringify({ enabledPlugins: { "rove@rove": true } }))
+    await maybeHintSkillInstall() // absent
+    writeStaleSkill()
+    await maybeHintSkillInstall() // stale
+    expect(stderrSpy).not.toHaveBeenCalled()
+    rmSync(join(tmpHome, ".claude"), { recursive: true, force: true })
+  })
+
   it("fresh skill: no hint at all", async () => {
     mkdirSync(skillDir(cwd), { recursive: true })
     writeFileSync(join(skillDir(cwd), "SKILL.md"), `<!-- kobe-skill-version: ${KOBE_SKILL_VERSION} -->`)
