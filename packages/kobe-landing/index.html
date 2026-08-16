@@ -6,10 +6,10 @@
 <title>Rove — the agent multiplexer in your shell</title>
 <link rel="icon" href="/assets/favicon.png" type="image/png">
 <link rel="apple-touch-icon" href="/assets/favicon.png">
-<meta name="description" content="Rove is a local-first TUI for graph engineering: run many AI coding agents as a graph of isolated attempts — git worktrees, hosted engine sessions, explicit reports — and merge the winner.">
+<meta name="description" content="Rove is a local-first TUI for graph engineering: run many AI coding agents as isolated attempts — git worktrees, hosted engine sessions, dispatcher replies — then compare and merge the winner.">
 <link rel="canonical" href="https://rove.sma1lboy.me/">
 <meta property="og:title" content="Rove — the agent multiplexer in your shell">
-<meta property="og:description" content="Run many AI coding agents as a graph of isolated attempts — git worktrees, hosted engine sessions, explicit reports — and merge the winner.">
+<meta property="og:description" content="Run many AI coding agents as isolated attempts — git worktrees, hosted engine sessions, dispatcher replies — then compare and merge the winner.">
 <meta property="og:type" content="website">
 <meta property="og:url" content="https://rove.sma1lboy.me/">
 <meta name="twitter:card" content="summary_large_image">
@@ -253,16 +253,16 @@ h1{font-family:var(--font-display);font-optical-sizing:auto;font-size:clamp(44px
   <article class="stage">
     <div class="stage-txt">
       <span class="stage-no" data-i18n="s2.no">2.0 · SUPERVISE</span>
-      <h2 data-i18n="s2.title">Silence is not a status. Attempts report.</h2>
-      <p data-i18n="s2.body">In a fleet of terminals, a quiet agent could be thinking or could be dead. So in Rove every attempt ends by reporting an explicit outcome — succeeded or failed — and an orchestrating agent can block until the whole fleet resolves. Agents orchestrating agents, with real completion semantics.</p>
+      <h2 data-i18n="s2.title">Completion comes back through chat.</h2>
+      <p data-i18n="s2.body">Each spawned task remembers the exact Rove session that dispatched it. When the work is done, the worker replies into that chat with its outcome and branch; collect remains a read-only snapshot for comparing the fleet. No report store, no polling loop.</p>
     </div>
     <div class="stage-vis">
-      <figure class="term-frame"><div class="tbar" aria-hidden="true"><i class="r"></i><i class="y"></i><i class="g"></i><span>report · await</span></div>
-      <pre class="term-out"><span class="d"># inside an attempt, as its last act</span>
-<span class="ps">$</span> rove api report --outcome succeeded
-<span class="d"># in your orchestrator</span>
-<span class="ps">$</span> rove api await --task-ids a,b,c
-<span class="ok">✓</span> a succeeded  <span class="ok">✓</span> b succeeded  <span class="del">✗</span> c failed</pre></figure>
+      <figure class="term-frame"><div class="tbar" aria-hidden="true"><i class="r"></i><i class="y"></i><i class="g"></i><span>reply to dispatcher</span></div>
+      <pre class="term-out"><span class="d"># inside a spawned task, reply to its dispatcher</span>
+<span class="ps">$</span> rove api send --prompt <span class="a">"succeeded: tests green; branch ready"</span>
+<span class="ok">✓</span> delivered to the dispatching engine tab
+<span class="d"># the orchestrator receives it in the same chat</span>
+<span class="ok">worker b</span>  succeeded: tests green; branch ready</pre></figure>
     </div>
   </article>
 
