@@ -55,6 +55,9 @@ export const daemonRuntime: DaemonRuntimeAdapter = {
     return out
   },
   titleTurnHint: engineTitleTurnHint,
+  // Per-turn telemetry (issue #32) — delegated straight to the vendor's own
+  // adapter; an engine without a turn reader simply reports none.
+  readEngineTurns: async (vendor, transcriptPath) => (await engineEntry(vendor).readTurns?.(transcriptPath)) ?? [],
   checkLatestVersion,
   latestTranscriptMtime,
   deriveTitleFromSession,

@@ -7,6 +7,7 @@ import type { TaskStatus } from "../../types/task.ts"
 import { F, FANOUT_CAP } from "./flags.ts"
 import { handlePtyList, simpleRpc } from "./handler-helpers.ts"
 import { add } from "./handlers-add.ts"
+import { AGENT_TURNS_VERB } from "./handlers-agent-turns.ts"
 import { DIGEST_VERB } from "./handlers-digest.ts"
 import { ENGINE_LIST_VERB, SET_COMMAND_VERB } from "./handlers-engines.ts"
 import { collect, feedback } from "./handlers-fanout.ts"
@@ -92,7 +93,7 @@ export const RETIRED_VERBS: Readonly<Record<string, { hint: string; nextCommandA
  */
 export const VERB_GROUPS: Readonly<Record<string, readonly string[]>> = {
   discover: ["schema", "engine-list"],
-  read: ["list", "get-task", "collect", "digest", "pty-list", "read-output", "inspect"],
+  read: ["list", "get-task", "collect", "digest", "agent-turns", "pty-list", "read-output", "inspect"],
   create: ["add"],
   drive: ["send", "dispatch", "note", "note-list", "set-active", "pane-open", "pane-close", "notify"],
   edit: ["rename", "set-branch", "set-command", "set-status"],
@@ -354,6 +355,7 @@ export const VERBS: readonly VerbSpec[] = [
   // The ruler: an aggregate read over recent tasks + routine runs. Spec +
   // handler in ./handlers-digest.ts.
   DIGEST_VERB,
+  AGENT_TURNS_VERB,
   // Production diagnostics aggregate (daemon activity registry + pty
   // sessions with live foreground walk + persisted tab snapshots). Spec +
   // handler in ./handlers-inspect.ts.

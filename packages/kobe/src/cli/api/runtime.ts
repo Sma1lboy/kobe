@@ -12,6 +12,7 @@ import { withClaudeSessionId } from "../../engine/interactive-command.ts"
 import { buildEngineSessionLaunch } from "../../engine/session-launch.ts"
 import { trustEngineWorktree } from "../../engine/trust-worktree.ts"
 import type { DaemonRpc } from "../daemon-session.ts"
+import { verifiedSelfSession } from "./dispatcher.ts"
 import {
   deliverHostedPrompt,
   deliverToExactTab,
@@ -81,11 +82,15 @@ async function deliverHosted(target: PromptTarget, worktree: string, prompt: str
       worktreePath: worktree,
       shell: process.env.SHELL?.trim() || "/bin/zsh",
       argv,
-      // Spawner identity is read HERE, in the CLI process — an `add`
-      // run from inside an engine tab carries the spawner's $KOBE_TASK_ID, and
-      // the coda tells the new agent to `send` its outcome back (repo-init.ts).
+      // Spawner identity is resolved HERE, in the CLI process — an `add` run
+      // from inside an engine tab carries the spawner's $KOBE_TASK_ID, and
+      // the coda tells the new agent to `send` its outcome back
+      // (repo-init.ts). VERIFIED, not raw env: an inherited id would write a
+      // stranger's task into the worker's own instructions (issue #24), which
+      // is the one place a wrong address survives even after the record is
+      // right — it's baked into the prompt, not read back from the store.
       promptIntent: target.newTask
-        ? { kind: "new-task", prompt, spawnerTaskId: process.env.KOBE_TASK_ID || undefined }
+        ? { kind: "new-task", prompt, spawnerTaskId: (await verifiedSelfSession())?.taskId }
         : { kind: "explicit", prompt },
       tabId: newTab,
     })

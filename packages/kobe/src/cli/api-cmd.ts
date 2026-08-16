@@ -55,6 +55,7 @@
  */
 
 import { errorMessage } from "@/lib/error-message"
+import { takeIdentityWarning } from "./api/dispatcher.ts"
 import { VerbArgs, buildCountPlan, parseAgentsSpec, parseFlags, validateAgainstSpec } from "./api/flags.ts"
 import { defaultApiRuntime, deliverPrompt } from "./api/runtime.ts"
 import { API_SCHEMA_VERSION, apiUsage, fullSchema, schemaIndex, verbHelp, verbSchema } from "./api/schema.ts"
@@ -75,7 +76,16 @@ import { type DaemonSession, openDaemonSession } from "./daemon-session.ts"
 import type { DaemonRpc } from "./daemon-session.ts"
 
 function emit(value: unknown, pretty: boolean): void {
-  const text = pretty ? JSON.stringify(value, null, 2) : JSON.stringify(value)
+  // A verb that refused an UNVERIFIED $ROVE_TASK_ID (issue #24) degraded
+  // quietly — the create/send succeeded, it just recorded no dispatcher. Ride
+  // the notice on the result object so an agent sees it: stderr is reserved
+  // for the one JSON error envelope (docs/API.md), and a silent degrade is
+  // exactly what made the wrong reply address invisible for weeks.
+  const warning = takeIdentityWarning()
+  // Objects only — spreading an array would flatten it into numeric keys.
+  const mergeable = warning && value && typeof value === "object" && !Array.isArray(value)
+  const payload = mergeable ? { ...value, identityWarning: warning } : value
+  const text = pretty ? JSON.stringify(payload, null, 2) : JSON.stringify(payload)
   process.stdout.write(`${text}\n`)
 }
 

@@ -44,6 +44,13 @@ export function requireNumber(payload: Record<string, unknown>, key: string): nu
   return value
 }
 
+export function optionalNumber(payload: Record<string, unknown>, key: string): number | undefined {
+  const value = payload[key]
+  if (value === undefined || value === null) return undefined
+  if (typeof value !== "number" || !Number.isFinite(value)) throw new Error(`${key} must be a finite number`)
+  return value
+}
+
 export function optionalVendor(payload: Record<string, unknown>, key: string): VendorId | undefined {
   // Engines are open: a vendor id may be a built-in OR a user-registered
   // custom engine (its launch command lives in the kobe-side customEngineIds

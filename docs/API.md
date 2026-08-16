@@ -125,6 +125,14 @@ replacement in `nextCommandArgs`.
   tasks touched in the window plus routine outcomes by status. Default
   window 7 days. Task outcomes are deliberately absent: completion travels
   to the spawning agent's engine tab (`send`), not into Rove state.
+- `agent-turns [--task-id ID] [--repo PATH] [--since-days N] [--limit N]`:
+  per-turn agent telemetry — one record per completed engine turn
+  (`taskId`/`tabId`/`vendor`/`model`/`sessionId`/`startedAt`/`endedAt`/
+  `usage`), newest first, plus a `totals` roll-up (token sums, summed
+  wall-clock, turn counts per model). Default window 7 days, 200 records.
+  Records are produced by each engine's own adapter from that vendor's
+  transcript and stored by the daemon on `turn-complete`; engines without a
+  turn reader contribute nothing. Read-only.
 - `pty-list` *(offline)*: hosted PTY sessions (key, alive, pid, command,
   live window title). Empty when no PTY host runs.
 - `read-output [--task-id ID] [--tab TAB] [--source auto|history|terminal]
@@ -174,6 +182,17 @@ A create issued from inside a Rove engine tab records
 the caller as the new task's `dispatcher` (`{taskId, tabId}` from
 `$ROVE_TASK_ID`/`$ROVE_TAB_ID`, with Kobe aliases) — the reply address the worker's bare
 `send` routes back to. Creates from a plain shell or the TUI record none.
+
+Those env vars are **verified, not trusted**: an environment variable is
+inherited by every descendant process, so an agent's detached background
+process keeps exporting the ids of a tab it no longer runs in, and every
+task it creates would name a stranger's session as its dispatcher. Rove
+believes the pair only when `<taskId>::<tabId>` is a live session AND that
+session's shell is an ancestor of the calling process. When it isn't, the
+dispatcher / `[KOBE PEER]` provenance / spawner coda are all omitted (a
+wrong reply address delivers to someone else; no address at least fails
+visibly), and the verb's JSON result carries an `identityWarning` field
+saying so.
 
 A new task's FIRST prompt (`add --prompt`, a parallel round, quick-fork) gets a
 short coda appended asking the agent to `set-branch` the auto-generated

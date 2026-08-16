@@ -13,6 +13,7 @@ import { ptyHostHasLiveSessions, sweepPtyHostSessions } from "../client/pty-proc
 import { maybeStartPluginHost } from "../plugins/runtime.ts"
 import { readActivityLiveness } from "./activity-liveness.ts"
 import { type ActivityLivenessProbe, DaemonActivityRegistry } from "./activity-registry.ts"
+import { AgentTurnsStore, defaultAgentTurnsPath } from "./agent-turns-store.ts"
 import { AttentionInboxStore, defaultAttentionInboxPath } from "./attention-inbox.ts"
 import { initAutomationsStore } from "./automation-wiring.ts"
 import { type ClientState, broadcast, drainClientBuffer, writeFrame } from "./client-connection.ts"
@@ -138,8 +139,16 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
   const activity = new DaemonActivityRegistry(bus, undefined, undefined, livenessAt)
   const inbox = new AttentionInboxStore(defaultAttentionInboxPath(options.homeDir), bus)
   await inbox.init().catch((err) => logDaemonError("attention-inbox-init", err))
+  // Durable per-turn telemetry (issue #32) — written by the `turn-complete`
+  // hook ingest, read by `agentTurn.list`. Same homeDir isolation as the
+  // other daemon-owned stores so a sandbox home never writes to the real one.
+  const agentTurns = new AgentTurnsStore(defaultAgentTurnsPath(options.homeDir))
+  await agentTurns.init().catch((err) => logDaemonError("agent-turns-init", err))
   const clearTaskState = (taskId: string) =>
-    inbox.deleteTaskBestEffort(taskId).finally(() => activity.clearTask(taskId))
+    inbox
+      .deleteTaskBestEffort(taskId)
+      .finally(() => agentTurns.deleteTask(taskId).catch((err) => logDaemonError("agent-turns-delete", err)))
+      .finally(() => activity.clearTask(taskId))
   const deletions = new TaskDeletionRunner(orch, runtime, clearTaskState)
   // Daemon-owned issue tracker (web Issues panel) — a single store keyed by
   // git common-dir, sharing the server's homeDir so sandbox/test homes
@@ -351,6 +360,7 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
       bus,
       activity,
       inbox,
+      agentTurns,
       deletions,
       issues,
       notes,

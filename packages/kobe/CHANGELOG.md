@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.8.113
+
+### Patch Changes
+
+- 4de2d31: Verify session identity before recording a dispatcher (issue #24)
+
+  `$ROVE_TASK_ID`/`$ROVE_TAB_ID` are ordinary environment variables, so any
+  detached descendant of an engine tab — a Claude Code background process, for
+  instance — keeps exporting that tab's ids indefinitely. Every task such a
+  process created recorded a dispatcher pointing at a stranger's session, which
+  is where finished workers sent their reports.
+
+  `add`, `send`, and the new-task coda now cross-check the env against the pty
+  host before believing it: the named tab must be alive AND its shell must be an
+  ancestor of the calling process. Unverified means no dispatcher, no
+  `[KOBE PEER]` provenance, and no spawner address in the worker's own
+  instructions — with an `identityWarning` on the verb's JSON result so the
+  degrade is visible rather than silent.
+
+## 0.8.112
+
+### Patch Changes
+
+- 680dbb8: Record per-turn agent telemetry. Every completed engine turn now leaves an attributed record — task, tab, engine, model, start/end time, and token usage — read back with `rove api agent-turns` (filter by task or repo; the response carries a totals roll-up alongside the page).
+
+  The turn data is engine-owned: each adapter lifts it from its own transcript, so nothing outside the engine layer parses a vendor's files. Claude Code ships the first reader; other engines contribute nothing until theirs lands.
+
 ## 0.8.111
 
 ### Patch Changes
