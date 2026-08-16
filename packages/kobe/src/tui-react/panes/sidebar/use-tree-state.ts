@@ -164,10 +164,6 @@ export function useTreeState(opts: TreeStateOpts): TreeState {
             // re-mounts, and demoting the row to a plain dot for that gap
             // reads as a lie.
             engine: tab.kind === "engine" || (live ?? null) !== null,
-            // Engine badge for SHELL tabs only (issue #33): a shell whose
-            // foreground is a confirmed engine wears that engine's badge;
-            // engine-born tabs already name their engine in the label.
-            ...(tab.kind !== "engine" && live ? { liveVendor: live } : {}),
           }
         }),
       )
