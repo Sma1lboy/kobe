@@ -14,7 +14,7 @@
  */
 
 import { describe, expect, it } from "vitest"
-import { engineSessionIdFromTitle, stripEngineStatusPrefix } from "../../src/engine/registry"
+import { engineSessionIdFromTitle, engineTabNamingPolicy, stripEngineStatusPrefix } from "../../src/engine/registry"
 import { deriveTitleFromMessages } from "../../src/monitor/auto-title"
 import { recordLiveTabTitle } from "../../src/tui/workspace/terminal-tab-recording"
 import {
@@ -67,34 +67,40 @@ describe("golden: title stream → recording → display", () => {
 
   it("ignores image attachment metadata when deriving the readable title", () => {
     expect(
-      deriveTitleFromMessages([
-        {
-          role: "user",
-          sessionId: "codex-session",
-          timestamp: "2026-08-16T00:00:00.000Z",
-          blocks: [
-            { type: "text", text: '<image name=[Image #1] path="/tmp/sidebar.png">' },
-            { type: "text", text: "[codex: input_image]" },
-            { type: "text", text: "</image>" },
-            { type: "text", text: "让 Codex tab 显示可读标题" },
-          ],
-        },
-      ]),
+      deriveTitleFromMessages(
+        [
+          {
+            role: "user",
+            sessionId: "codex-session",
+            timestamp: "2026-08-16T00:00:00.000Z",
+            blocks: [
+              { type: "text", text: '<image name=[Image #1] path="/tmp/sidebar.png">' },
+              { type: "text", text: "[codex: input_image]" },
+              { type: "text", text: "</image>" },
+              { type: "text", text: "让 Codex tab 显示可读标题" },
+            ],
+          },
+        ],
+        engineTabNamingPolicy("codex").promptText,
+      ),
     ).toBe("让 Codex tab 显示可读标题")
 
     expect(
-      deriveTitleFromMessages([
-        {
-          role: "user",
-          sessionId: "codex-session",
-          timestamp: "2026-08-16T00:00:00.000Z",
-          blocks: [
-            { type: "text", text: "[codex: image]" },
-            { type: "text", text: '<image name=[Image #2] path="/tmp/other.png">' },
-            { type: "text", text: "</image>" },
-          ],
-        },
-      ]),
+      deriveTitleFromMessages(
+        [
+          {
+            role: "user",
+            sessionId: "codex-session",
+            timestamp: "2026-08-16T00:00:00.000Z",
+            blocks: [
+              { type: "text", text: "[codex: image]" },
+              { type: "text", text: '<image name=[Image #2] path="/tmp/other.png">' },
+              { type: "text", text: "</image>" },
+            ],
+          },
+        ],
+        engineTabNamingPolicy("codex").promptText,
+      ),
     ).toBe("")
   })
 
@@ -103,6 +109,12 @@ describe("golden: title stream → recording → display", () => {
     expect(engineSessionIdFromTitle("codex", `  ${uppercase}  `)).toBe(uppercase)
     expect(engineSessionIdFromTitle("codex", `${uppercase}-extra`)).toBeNull()
     expect(engineSessionIdFromTitle("codex", "01a00808-9b77-7083-8f32")).toBeNull()
+  })
+
+  it("declares title decoding and naming cadence as independent engine capabilities", () => {
+    expect(engineTabNamingPolicy("codex").trigger).toBe("immediate")
+    expect(engineTabNamingPolicy("claude").trigger).toBe("poll")
+    expect(engineTabNamingPolicy("my-custom-engine").trigger).toBe("poll")
   })
 
   it("leaves unknown tabs and non-engine tabs untouched by Codex UUID observations", () => {

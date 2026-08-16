@@ -5,6 +5,7 @@ const target = (n: number, sessionId = `session-${n}`): TabNamingTarget => ({
   tabId: `tab-${n}`,
   sessionId,
   vendor: "codex",
+  trigger: "immediate",
 })
 
 afterEach(() => vi.useRealTimers())
@@ -113,6 +114,27 @@ describe("TabNamingQueue", () => {
     expect(readTitle).toHaveBeenCalledTimes(2)
     await vi.runAllTicks()
     expect(applyTitle).toHaveBeenCalledWith(target(1), "落盘后的标题")
+  })
+
+  it("honors the target engine's retry policy", async () => {
+    vi.useFakeTimers()
+    const readTitle = vi.fn().mockResolvedValueOnce("").mockResolvedValueOnce("vendor title")
+    const applyTitle = vi.fn()
+    const queue = new TabNamingQueue({
+      readTitle,
+      isCurrent: () => true,
+      applyTitle,
+      retryDelaysMs: [9_999],
+    })
+
+    queue.enqueue([{ ...target(1), retryDelaysMs: [75] }])
+    await vi.runAllTicks()
+    await vi.advanceTimersByTimeAsync(74)
+    expect(readTitle).toHaveBeenCalledTimes(1)
+    await vi.advanceTimersByTimeAsync(1)
+    expect(readTitle).toHaveBeenCalledTimes(2)
+    await vi.runAllTicks()
+    expect(applyTitle).toHaveBeenCalledWith(expect.objectContaining({ tabId: "tab-1" }), "vendor title")
   })
 
   it("retries a failed history read and follows the configured backoff steps", async () => {

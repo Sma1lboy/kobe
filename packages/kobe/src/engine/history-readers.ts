@@ -12,9 +12,8 @@ import path from "node:path"
 import * as claudeHistory from "./claude-code-local/history.ts"
 import * as codexHistory from "./codex-local/history.ts"
 import * as copilotHistory from "./copilot-local/history.ts"
+import type { EngineHistoryReader } from "./history-reader.ts"
 import * as kimiHistory from "./kimi-local/history.ts"
-// Type-only, so the registry↔readers pair is not a runtime cycle.
-import type { EngineHistoryReader } from "./registry.ts"
 
 /**
  * The documented empty history reader for engines with no on-disk

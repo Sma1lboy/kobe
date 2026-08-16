@@ -65,7 +65,12 @@ function writeRollout(): void {
       payload: {
         type: "message",
         role: "user",
-        content: [{ type: "input_text", text: PROMPT_TITLE }],
+        content: [
+          { type: "input_text", text: '<image name=[Image #1] path="/tmp/sidebar.png">' },
+          { type: "input_image" },
+          { type: "input_text", text: "</image>" },
+          { type: "input_text", text: PROMPT_TITLE },
+        ],
       },
     },
   ]

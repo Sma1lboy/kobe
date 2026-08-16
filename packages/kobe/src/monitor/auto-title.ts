@@ -20,33 +20,22 @@
  * transcripts.
  */
 
-import { engineEntry } from "@/engine/registry"
+import { engineEntry, engineTabNamingPolicy } from "@/engine/registry"
+import { defaultPromptText } from "@/engine/tab-naming-policy"
 import { deriveTitleFromPrompt } from "@/orchestrator/title"
 import type { Message } from "@/types/engine"
 import { DEFAULT_TASK_VENDOR, type VendorId } from "@/types/task"
 
 const MAX_SESSIONS_SCANNED = 8
 
-/** Attachment wrapper text is useful in history but must never name a task. */
-function isAttachmentMetadataText(text: string): boolean {
-  const trimmed = text.trim()
-  return (
-    /^<image name=\[Image #\d+\] path="[^"]+">$/.test(trimmed) ||
-    trimmed === "</image>" ||
-    /^\[codex: (?:input_)?image\]$/.test(trimmed)
-  )
-}
-
 /** First user message's visible text, truncated to a title, or `""`. */
-export function deriveTitleFromMessages(messages: Message[]): string {
+export function deriveTitleFromMessages(
+  messages: Message[],
+  promptText: (message: Message) => string = defaultPromptText,
+): string {
   const firstUser = messages.find((m) => m.role === "user")
   if (!firstUser) return ""
-  const text = firstUser.blocks
-    .filter((b): b is { type: "text"; text: string } => b.type === "text")
-    .map((b) => b.text)
-    .filter((block) => !isAttachmentMetadataText(block))
-    .join(" ")
-  const title = deriveTitleFromPrompt(text)
+  const title = deriveTitleFromPrompt(promptText(firstUser))
   // Force-copy before the title escapes into long-lived state (the task
   // store in the daemon process, via orch.setTitle). `deriveTitleFromPrompt`
   // truncates with `.slice(...)`, and in JSC (Bun) a slice SHARES the parent
@@ -68,6 +57,7 @@ export async function deriveTitleFromSession(
 ): Promise<string> {
   if (!worktree) return ""
   const { history } = engineEntry(vendor)
+  const { promptText } = engineTabNamingPolicy(vendor)
   const ids = await history.listSessionIdsForWorktree(worktree)
   // Walk sessions oldest-first (the task's origin conversation comes
   // first) and return the first that yields a usable title. We don't
@@ -76,7 +66,7 @@ export async function deriveTitleFromSession(
   // give an empty title. Capped so a busy worktree doesn't read dozens
   // of transcripts.
   for (const sessionId of ids.slice(0, MAX_SESSIONS_SCANNED)) {
-    const title = deriveTitleFromMessages(await history.readHistory(sessionId))
+    const title = deriveTitleFromMessages(await history.readHistory(sessionId), promptText)
     if (title) return title
   }
   return ""
@@ -92,7 +82,8 @@ export async function deriveTitleFromSession(
 export async function deriveTitleFromSessionId(vendor: VendorId, sessionId: string): Promise<string> {
   if (!sessionId) return ""
   try {
-    return deriveTitleFromMessages(await engineEntry(vendor).history.readHistory(sessionId))
+    const entry = engineEntry(vendor)
+    return deriveTitleFromMessages(await entry.history.readHistory(sessionId), engineTabNamingPolicy(vendor).promptText)
   } catch {
     return ""
   }

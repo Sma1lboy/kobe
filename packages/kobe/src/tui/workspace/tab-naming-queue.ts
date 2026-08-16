@@ -4,6 +4,8 @@ export interface TabNamingTarget {
   readonly tabId: string
   readonly sessionId: string
   readonly vendor: VendorId
+  readonly trigger: "poll" | "immediate"
+  readonly retryDelaysMs?: readonly number[]
 }
 
 export interface TabNamingQueueDeps {
@@ -19,6 +21,7 @@ interface NamingEntry {
   attempt: number
   state: "queued" | "running" | "waiting"
   timer?: ReturnType<typeof setTimeout>
+  readonly retryDelaysMs: readonly number[]
 }
 
 const DEFAULT_RETRY_DELAYS_MS = [250, 1_000, 2_000, 5_000] as const
@@ -64,6 +67,7 @@ export class TabNamingQueue {
         targets: new Map([[target.tabId, target]]),
         attempt: 0,
         state: "queued",
+        retryDelaysMs: target.retryDelaysMs?.length ? target.retryDelaysMs : this.retryDelaysMs,
       })
       this.queuedKeys.push(key)
     }
@@ -129,8 +133,8 @@ export class TabNamingQueue {
     } else if (entry.targets.size === 0) {
       this.entries.delete(key)
     } else {
-      const retryIndex = Math.min(entry.attempt, this.retryDelaysMs.length - 1)
-      const delay = this.retryDelaysMs[retryIndex] ?? 5_000
+      const retryIndex = Math.min(entry.attempt, entry.retryDelaysMs.length - 1)
+      const delay = entry.retryDelaysMs[retryIndex] ?? 5_000
       entry.attempt += 1
       entry.state = "waiting"
       entry.timer = setTimeout(() => {

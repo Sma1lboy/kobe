@@ -8,7 +8,7 @@
  * synchronously). See the TerminalTabs file header for why refs.
  */
 
-import { engineEntry } from "@/engine/registry"
+import { engineEntry, engineTabNamingPolicy } from "@/engine/registry"
 import { deriveTitleFromSessionId } from "@/monitor/auto-title"
 import type { VendorId } from "@/types/vendor"
 import { useEffect, useRef, useState } from "react"
@@ -76,11 +76,17 @@ export function useTabNaming(io: TabLifecycleIO): void {
         (tab): tab is EngineTab =>
           tab.kind === "engine" && !!tab.sessionId && (!tab.spawned || (!tab.title && !tab.autoTitle)),
       )
-      .map((tab) => ({
-        tabId: tab.id,
-        sessionId: tab.sessionId as string,
-        vendor: tab.vendor ?? ioRef.current.propsRef.current.vendor,
-      }))
+      .map((tab) => {
+        const vendor = tab.vendor ?? ioRef.current.propsRef.current.vendor
+        const policy = engineTabNamingPolicy(vendor)
+        return {
+          tabId: tab.id,
+          sessionId: tab.sessionId as string,
+          vendor,
+          trigger: policy.trigger,
+          retryDelaysMs: policy.retryDelaysMs,
+        }
+      })
 
   const isCurrent = (target: TabNamingTarget): boolean => {
     const tab = ioRef.current.stateRef.current.tabs.find((candidate) => candidate.id === target.tabId)
@@ -98,8 +104,7 @@ export function useTabNaming(io: TabLifecycleIO): void {
     ioRef.current.update(next)
   }
 
-  const needsImmediateTitle = (target: TabNamingTarget): boolean =>
-    engineEntry(target.vendor).terminalTitle?.sessionIdFromTitle !== undefined
+  const needsImmediateTitle = (target: TabNamingTarget): boolean => target.trigger === "immediate"
 
   const queue = (): TabNamingQueue => {
     if (queueRef.current) return queueRef.current
@@ -111,13 +116,12 @@ export function useTabNaming(io: TabLifecycleIO): void {
     return queueRef.current
   }
 
-  // Immediate path: a render carrying a newly-discovered session id queues
-  // its history read now. Keep this scoped to Codex: other engines retain
-  // the existing interval behavior in this Codex-title-focused change.
+  // Engines opt into immediate resolution through their registry policy;
+  // undeclared and custom engines retain the legacy polling behavior.
   useEffect(() => queue().enqueue(candidates().filter(needsImmediateTitle)))
 
-  // Slow safety net for Codex plus the unchanged naming pass for other
-  // engines. The direct loop deliberately preserves their previous cadence.
+  // Slow safety net for immediate engines plus the unchanged naming pass for
+  // poll-triggered engines. No vendor identity is encoded in this scheduler.
   // biome-ignore lint/correctness/useExhaustiveDependencies: mount-once fallback; callbacks read ioRef for freshness.
   useEffect(() => {
     const namingQueue = queue()

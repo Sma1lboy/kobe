@@ -199,11 +199,20 @@ title instead of the repo name. Before Codex has a readable thread title, that
 slot contains the session UUID: Rove retains it as history identity but names
 the tab from the first visible user prompt, ignoring image-attachment wrapper
 text. The lookup starts as soon as the UUID appears, is concurrency-bounded,
-and retries briefly while the first transcript record reaches disk. Everywhere
-a live engine title is displayed (tab labels, split corner tags) it collapses
-to the launch binary (`✳ Claude Code` renders as `claude`), so all Rove
-surfaces speak one vocabulary for a process. Vendor identity comes from the
-process tree, never from matching the title string.
+and retries briefly while the first transcript record reaches disk.
+
+Those behaviors are separate engine capabilities rather than Codex branches
+in the lifecycle: `terminalTitle.sessionIdFromTitle` optionally recovers
+identity, while `tabNaming` declares the resolution trigger, retry schedule,
+and the adapter-owned projection from neutral history to visible prompt text.
+An engine that declares no naming policy inherits the legacy five-second poll.
+Adding another UUID-title or attachment format therefore changes only its
+registry entry and adapter; the queue and React lifecycle stay vendor-neutral.
+
+Everywhere a live engine title is displayed (tab labels, split corner tags) it
+collapses to the launch binary (`✳ Claude Code` renders as `claude`), so all
+Rove surfaces speak one vocabulary for a process. Vendor identity comes from
+the process tree, never from matching the title string.
 
 ## Transcript readers
 

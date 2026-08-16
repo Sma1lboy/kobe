@@ -26,7 +26,7 @@
  * Must stay importable from vitest and MUST NOT import from `src/tui/`.
  */
 
-import type { EngineCapabilities, EngineIdentity, EngineQuotaUsage, Message } from "@/types/engine"
+import type { EngineCapabilities, EngineIdentity, EngineQuotaUsage } from "@/types/engine"
 import { type VendorId, isBuiltinVendor } from "@/types/vendor"
 import {
   type ClaudeAccount,
@@ -49,7 +49,9 @@ import { readClaudeTurns } from "./claude-code-local/turns.ts"
 import { codexCapabilities, codexIdentity } from "./codex-local/capabilities.ts"
 import { CodexHookAdapter } from "./codex-local/hook-adapter.ts"
 import { fetchCodexQuotaUsage } from "./codex-local/quota.ts"
+import { codexTabNamingPolicy } from "./codex-local/tab-naming.ts"
 import { trustCodexWorktree } from "./codex-local/trust.ts"
+import type { EngineHistoryReader } from "./history-reader.ts"
 import {
   EMPTY_HISTORY,
   claudeHistoryReader,
@@ -59,39 +61,10 @@ import {
 } from "./history-readers.ts"
 import { type EngineHookAdapter, NoopHookAdapter } from "./hook-adapter.ts"
 import { trustKimiWorktree } from "./kimi-local/trust.ts"
+import { DEFAULT_TAB_NAMING_POLICY, type EngineTabNamingPolicy } from "./tab-naming-policy.ts"
 import { ClaudeTurnDetector, CodexTurnDetector, type EngineTurnDetector, UnknownTurnDetector } from "./turn-detector.ts"
 
-/**
- * Reader over an engine's on-disk transcript store, in the neutral shape
- * auto-title (and future recap) consumes. Vendor formats stay behind it:
- * claude's per-worktree `~/.claude/projects/*` dirs, codex's global
- * `~/.codex/sessions/**` rollouts, copilot's `~/.copilot/session-state`.
- */
-export interface EngineHistoryReader {
-  /**
-   * Session ids recorded for `worktree`, OLDEST-FIRST (the task's origin
-   * conversation comes first — auto-title depends on this order). `[]`
-   * when the worktree has no transcripts. Never throws.
-   */
-  listSessionIdsForWorktree(worktree: string): Promise<readonly string[]>
-  /** Neutral messages for one session id; `[]` when not found. */
-  readHistory(sessionId: string): Promise<Message[]>
-  /**
-   * Absolute path of the on-disk transcript for `sessionId`, or null when
-   * the engine has no file to point at. Not for kobe to PARSE (that's
-   * `readHistory`) — it is what the cross-engine handoff hands the next
-   * agent to read itself, so its native format never has to be converted.
-   * `worktree` scopes stores that key by directory (claude's project dir).
-   */
-  transcriptPath(sessionId: string, worktree: string): Promise<string | null>
-  /**
-   * Newest transcript mtime (epoch ms) for `worktree`, or 0 when the task
-   * has no transcript yet. The Ops pane's activity poll watches this to
-   * light its "new activity" badge. Never throws — readers are
-   * best-effort and the poller treats 0 as "no activity seen".
-   */
-  latestTranscriptMtimeForWorktree(worktree: string): Promise<number>
-}
+export type { EngineHistoryReader } from "./history-reader.ts"
 
 /** Any built-in engine's account shape (each union already has a `none` arm). */
 export type EngineAccount = ClaudeAccount | CodexAccount | CopilotAccount | KimiAccount
@@ -116,6 +89,8 @@ export interface EngineRegistryEntry {
   readonly effortLevels?: readonly string[]
   /** Transcript store reader. Empty (not claude's!) for custom engines. */
   readonly history: EngineHistoryReader
+  /** First-prompt tab naming schedule and engine-owned text projection. */
+  readonly tabNaming?: EngineTabNamingPolicy
   /**
    * Read-only binary + login probe (Settings → Accounts). `deps` is the
    * injectable fs/env surface from `account-detect.ts`; omit for production.
@@ -262,6 +237,7 @@ const BUILTIN_ENGINES: Record<"claude" | "codex" | "copilot" | "kimi", EngineReg
     // deliberately excluded — CHANGELOG 0.5.17).
     effortLevels: ["none", "low", "medium", "high", "xhigh"],
     history: codexHistoryReader,
+    tabNaming: codexTabNamingPolicy,
 
     detectAccount: (deps) => detectCodexAccount(deps),
     createHookAdapter: () => new CodexHookAdapter(),
@@ -430,6 +406,11 @@ export function stripEngineStatusPrefix(title: string, vendor: VendorId | null |
 /** Session identity encoded in an engine's already-undecorated OSC title. */
 export function engineSessionIdFromTitle(vendor: VendorId, title: string): string | null {
   return engineEntry(vendor).terminalTitle?.sessionIdFromTitle?.(title.trim()) ?? null
+}
+
+/** Explicit naming policy, with the legacy polling behavior as the default. */
+export function engineTabNamingPolicy(vendor: VendorId): EngineTabNamingPolicy {
+  return engineEntry(vendor).tabNaming ?? DEFAULT_TAB_NAMING_POLICY
 }
 
 /**
