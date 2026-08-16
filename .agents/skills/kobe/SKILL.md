@@ -3,7 +3,7 @@ name: rove
 description: Use when controlling Rove tasks, parallel coding attempts, hosted agent sessions, task lifecycle, or the daemon-owned issue tracker from a shell. Also the ONLY channel for messaging another agent session on this machine — `rove api send`, never a peer/MCP side channel.
 ---
 
-<!-- rove-skill-version: 24 — bump in lockstep with KOBE_SKILL_VERSION (src/lib/skill-install.ts). -->
+<!-- rove-skill-version: 25 — bump in lockstep with KOBE_SKILL_VERSION (src/lib/skill-install.ts). -->
 
 # Rove shell control
 
@@ -293,6 +293,23 @@ an unfamiliar engine or an unfamiliar flag, probe it yourself (`<cmd> --help`,
 `<cmd> --version`) and only then compose the command. A bad command line
 starts a session that dies or ignores you; Rove will not catch it for you.
 
+**Model is a conscious either/or — default to WITHOUT.** Your own model
+knowledge is training-data stale; the user's engine default is fresher than
+your guess, and model ids you have never heard of are routinely valid.
+
+- **Without a model (the default):** compose the command with no model flag —
+  the session runs on the user's own default for that engine. Choose this
+  whenever the user did not name a model this turn.
+- **With a model (explicit request only):** the user named a model → pin it,
+  passing their string VERBATIM (`--help` first to confirm the flag exists;
+  never "correct" an unfamiliar model id to one you know).
+
+```bash
+rove api add --repo "$PWD" --command claude --prompt "…"                    # user's default model
+rove api add --repo "$PWD" --command "claude --model claude-fable-5" \
+  --prompt "…"                                     # user said "use Fable 5" this turn
+```
+
 Omit `--command` to use the repo's default engine. `engine-list`'s `protocol`
 field says how much Rove understands about an entry — `generic` means it
 launches fine but Rove reads no history and pre-answers no trust dialog.
@@ -300,7 +317,8 @@ launches fine but Rove reads no history and pre-answers no trust dialog.
 ## Parallel-round rules
 
 Spawn a parallel round (`add --count N` / `--agents`) only when the user
-requests parallel approaches, comparison, or an Give each round a scoped prompt, report returned IDs, then use
+requests parallel approaches, comparison, or an explicit count.
+Give each round a scoped prompt, report returned IDs, then use
 `collect` to compare. Do not recursively fan out from spawned tasks. Do not
 poll `send` in a tight loop or use it as casual chat; every call is a full
 engine turn.
