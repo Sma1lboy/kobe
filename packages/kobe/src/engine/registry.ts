@@ -40,10 +40,12 @@ import {
   detectCopilotAccount,
   detectKimiAccount,
 } from "./account-detect.ts"
+import type { EngineTurnReader } from "./agent-turn.ts"
 import { claudeCapabilities, claudeIdentity } from "./claude-code-local/capabilities.ts"
 import { ClaudeHookAdapter } from "./claude-code-local/hook-adapter.ts"
 import { fetchClaudeQuotaUsage } from "./claude-code-local/quota.ts"
 import { trustClaudeWorktree } from "./claude-code-local/trust.ts"
+import { readClaudeTurns } from "./claude-code-local/turns.ts"
 import { codexCapabilities, codexIdentity } from "./codex-local/capabilities.ts"
 import { CodexHookAdapter } from "./codex-local/hook-adapter.ts"
 import { fetchCodexQuotaUsage } from "./codex-local/quota.ts"
@@ -210,6 +212,14 @@ export interface EngineRegistryEntry {
    * Absent = the vendor has no gate kobe knows how to pre-answer.
    */
   readonly trustWorktree?: (worktreePath: string) => void
+  /**
+   * Per-turn telemetry reader (issue #32): completed {@link AgentTurn}s
+   * lifted from ONE of this engine's session transcripts. Engine-owned by
+   * construction — only the adapter knows where its vendor records the
+   * model, timings, and token usage of a turn. Absent = this engine has no
+   * per-turn attribution kobe can read (nothing is guessed for it).
+   */
+  readonly readTurns?: EngineTurnReader
 }
 
 // The per-vendor readers live in `history-readers.ts` (file-size cap);
@@ -239,6 +249,7 @@ const BUILTIN_ENGINES: Record<"claude" | "codex" | "copilot" | "kimi", EngineReg
       workingPrefixes: ["⠂", "⠐", "◐", "◑"],
     },
     quotaUsage: () => fetchClaudeQuotaUsage(),
+    readTurns: readClaudeTurns,
   },
   codex: {
     vendor: "codex",

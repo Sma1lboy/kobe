@@ -221,6 +221,9 @@ export type DaemonRequestName =
   | "session.deliver"
   // Read one task's recent engine lifecycle events (the TUI event feed).
   | "task.recentEvents"
+  // Per-turn agent telemetry (issue #32): the durable turn store's read side.
+  // Written only by the hook-driven ingest on `turn-complete`.
+  | "agentTurn.list"
   // Production diagnostics (`kobe api inspect`): the activity registry's RAW
   // task/tab entries — probe vendor, armed watchdogs — beyond what the
   // engine-state wire payload carries. Read-only.

@@ -206,6 +206,41 @@ export interface EngineActivityDetail {
 
 export type TaskActivityState = "idle" | "running" | "turn_complete" | "rate_limited" | "permission_needed" | "error"
 
+/**
+ * The ENGINE half of a turn record (issue #32) — what the vendor's adapter
+ * lifts from its own transcript. Mirrors `kobe/src/engine/agent-turn.ts`,
+ * which is the contract's source of truth; this is the daemon's structural
+ * copy (the daemon package never imports kobe sources).
+ */
+export interface AgentTurn {
+  /** The engine's own stable turn id — dedupe key within a task. */
+  readonly id: string
+  readonly sessionId: string
+  readonly model?: string
+  /** Epoch ms. */
+  readonly startedAt: number
+  readonly endedAt: number
+  readonly usage?: {
+    readonly input_tokens?: number
+    readonly output_tokens?: number
+    readonly cache_read_input_tokens?: number
+    readonly cache_creation_input_tokens?: number
+  }
+}
+
+/**
+ * One agent turn joined to Rove identity: the engine's turn plus the
+ * task/tab/vendor/repo the daemon knows and the engine doesn't.
+ */
+export interface AgentTurnRecord extends Omit<AgentTurn, "sessionId"> {
+  readonly taskId: string
+  readonly tabId?: string
+  readonly vendor?: VendorId
+  readonly sessionId?: string
+  /** Source repo of the task, so a digest can scope by project. */
+  readonly repo?: string
+}
+
 /** States represented by pending Inbox items until handled or the same
  * Terminal Tab starts another turn. */
 export const ATTENTION_INBOX_STATES = [

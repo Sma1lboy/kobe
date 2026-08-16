@@ -35,6 +35,8 @@
 
 import type { DaemonRpcClient } from "../client/rpc.ts"
 import type { DaemonActivityRegistry } from "./activity-registry.ts"
+import { ingestAgentTurnsBestEffort } from "./agent-turns-ingest.ts"
+import type { AgentTurnsStore } from "./agent-turns-store.ts"
 import type { AttentionInboxStore } from "./attention-inbox.ts"
 import type { AutomationsStore } from "./automations-store.ts"
 import type { DaemonOrchestrator } from "./contracts.ts"
@@ -42,6 +44,7 @@ import { logDaemonError } from "./crash-log.ts"
 import { findAdoptableWorktree, matchTaskByCwd } from "./cwd-task.ts"
 import type { DaemonEventBus } from "./event-bus.ts"
 import { objectPayload, optionalActivityDetail, optionalString, requireString } from "./handler-validators.ts"
+import { AGENT_TURN_HANDLERS } from "./handlers-agent-turns.ts"
 import { ATTENTION_HANDLERS } from "./handlers-attention.ts"
 import { AUTOMATION_HANDLERS } from "./handlers-automations.ts"
 import { TASK_HANDLERS } from "./handlers-task.ts"
@@ -108,6 +111,8 @@ export interface DaemonHandlerContext {
   readonly selfLink: DaemonRpcClient
   /** Rate-limited cache in front of the engine quota probes. */
   readonly quotaUsage: QuotaUsageCache
+  /** Durable per-turn telemetry (issue #32; absent in older tests). */
+  readonly agentTurns?: AgentTurnsStore
   /** Per-task recent engine events (`task.recentEvents`; absent in older tests). */
   readonly engineEvents?: import("./engine-events-log.ts").EngineEventLog
   /** Pending host-dialog prompts (`ui.prompt` / `ui.promptReply`). */
@@ -300,6 +305,7 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
     ...ATTENTION_HANDLERS,
     ...AUTOMATION_HANDLERS,
     ...WORK_ITEM_HANDLERS,
+    ...AGENT_TURN_HANDLERS,
     ...UI_HANDLERS,
     {
       name: "issue.list",
@@ -442,6 +448,18 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
           ...(tabId ? { tabId } : {}),
           ...(sessionId ? { sessionId } : {}),
         })
+        // Per-turn telemetry (issue #32): a finished turn is the moment its
+        // records are complete on disk. Fire-and-forget — the transcript read
+        // must not delay the hook RPC, and losing a record is a telemetry
+        // gap, never an engine failure.
+        if (kind === "turn-complete") {
+          ingestAgentTurnsBestEffort(ctx.agentTurns, ctx.runtime, ctx.orch, {
+            taskId,
+            ...(tabId ? { tabId } : {}),
+            ...(vendor ? { vendor } : {}),
+            ...(transcriptPath ? { transcriptPath } : {}),
+          })
+        }
         // Auto status flow (docs/design/web-kanban.md M5): an engine
         // STARTING a turn on a backlog task means work began — a pure rule
         // advances it to in_progress. (in_progress → in_review is the
