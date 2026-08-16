@@ -8,7 +8,7 @@
 
 import { useTerminalDimensions } from "@opentui/react"
 import { connectOrStartDaemon } from "@sma1lboy/kobe-daemon/client/daemon-process"
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { RemoteOrchestrator } from "../../client/remote-orchestrator.ts"
 import { SIDEBAR_WIDTH } from "../../tui/panes/sidebar/view-core"
 import { getDefaultPtyRegistry } from "../../tui/panes/terminal/registry"
@@ -34,13 +34,7 @@ import { useWorkspaceKeybindings } from "./host-keybindings"
 import { renderContentPage, renderFullWindowPage, useHostPagesState } from "./host-pages"
 import { HostSidebar } from "./host-sidebar"
 import { useWorkspaceTaskActions } from "./host-task-actions"
-import { requestTaskWorktreeOpen } from "./open-task-worktree"
-import {
-  clearOptimisticMark,
-  mergeOptimisticActivity,
-  optimisticActivityStore,
-  supersededMarks,
-} from "./optimistic-activity"
+import { openTaskWorktreeFor } from "./open-task-worktree"
 import { useQuickFork } from "./quick-fork"
 import { ShowWorkspace } from "./show-workspace"
 import { activeTabIdFor, forgetTaskTabs, requestTabActivation, setUiEventReporter } from "./terminal-tabs-shared"
@@ -49,7 +43,7 @@ import { useCreatePR } from "./use-create-pr"
 import { useFileOpenActions } from "./use-file-open-actions"
 import { useInboxHost } from "./use-inbox-host"
 import { useIssueChat } from "./use-issue-chat"
-import { useScratchAdopt } from "./use-scratch-adopt"
+import { useOptimisticEngineState } from "./use-optimistic-engine-state"
 import { useScratchShell } from "./use-scratch-shell"
 import { useWorkspaceSelection } from "./use-workspace-selection"
 import { useZenMode } from "./use-zen-mode"
@@ -75,17 +69,8 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   // rollup last described reads as idle. The sidebar tree needs the tab
   // level to light the right row.
   const engineTabState = useAccessor(orch.engineTabStatesSignal())
-  // Sidebar-only optimistic overlay: local enter/esc keypresses flip the
-  // icon immediately; authoritative events always win, and a superseded
-  // mark is dropped so the overlay never becomes a second source of truth.
-  const optimisticMarks = useAccessor(optimisticActivityStore)
-  const sidebarEngineState = useMemo(
-    () => mergeOptimisticActivity(engineState, optimisticMarks),
-    [engineState, optimisticMarks],
-  )
-  useEffect(() => {
-    for (const taskId of supersededMarks(engineState, optimisticMarks)) clearOptimisticMark(taskId)
-  }, [engineState, optimisticMarks])
+  // Sidebar-only optimistic overlay — see use-optimistic-engine-state.ts.
+  const sidebarEngineState = useOptimisticEngineState(engineState)
   const inboxItems = useAccessor(orch.attentionInboxSignal())
   const taskJobs = useAccessor(orch.taskJobsSignal())
   const worktreeChanges = useAccessor(orch.worktreeChangesSignal())
@@ -185,16 +170,16 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   // regardless of host, and this component is already near the file-size cap.
   const quickFork = useQuickFork(orch, { selectTask: setSelectedId, enterTask: activateTask, notifyError })
 
-  // Scratch temp shell tasks (issue #33): open gesture + last-shell-exit
-  // deletion, plus the quiet cwd+harness → project adoption loop.
+  // Scratch temp shell tasks (issue #33) — open gesture, exit deletion, and
+  // the quiet adoption loop all live in the hook.
   const scratch = useScratchShell({
     orchestrator: orch,
     tasks,
     enterTask: (id) => void activateTask(id),
     forgetTaskTabs: (id) => forgetTaskTabs(kv, id),
     notifyError,
+    notifyInfo,
   })
-  useScratchAdopt({ tasks, orchestrator: orch, notifyInfo })
 
   /* --------- zen mode (issue #18, pure-tui shape) ----------------------- */
   const { zen, toggleZen } = useZenMode({ kv, focus })
@@ -262,13 +247,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     searchActive,
     selectedId,
     openTaskWorktree: (id) =>
-      void requestTaskWorktreeOpen(id, {
-        taskPath: tasks.find((task) => task.id === id)?.worktreePath,
-        ensureWorktree: orch.ensureWorktree.bind(orch),
-        notifyError,
-        noEditorMessage: t("tasks.toast.noEditor"),
-        openFailedMessage: (label) => t("tasks.toast.openWorktreeFailed", { label }),
-      }),
+      openTaskWorktreeFor(id, { tasks, ensureWorktree: orch.ensureWorktree.bind(orch), notifyError }),
     openSettings: pages.openSettings,
     closeSettings: pages.closeSettings,
     createTask: () => void createTask(),
@@ -279,8 +258,8 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     openInbox: inbox.show,
     createPR: () => void createPR(),
     // prefix+m — global entry into the sidebar's move mode: focus the
-    // sidebar, highlight the current selection, j/k reorders, enter/esc
-    // exits. Falls back to the first task when nothing is selected.
+    // sidebar, highlight the selection (falling back to the first task),
+    // then j/k reorders and enter/esc exits.
     enterMoveMode: () => {
       const target = selectedId ?? tasks[0]?.id
       if (!target) return

@@ -18,6 +18,7 @@ import type { RemoteOrchestrator } from "../../client/remote-orchestrator"
 import { t } from "../../tui/i18n"
 import { finishDeletedTaskFlow } from "../../tui/lib/task-actions"
 import type { Task } from "../../types/task"
+import { useScratchAdopt } from "./use-scratch-adopt"
 
 export function useScratchShell(deps: {
   readonly orchestrator: RemoteOrchestrator
@@ -25,11 +26,16 @@ export function useScratchShell(deps: {
   readonly enterTask: (taskId: string) => void
   readonly forgetTaskTabs: (taskId: string) => void
   readonly notifyError: (message: string) => void
+  readonly notifyInfo: (message: string) => void
 }): {
   openScratchShell: () => void
   onScratchExit: (taskId: string) => void
 } {
   const { orchestrator, enterTask, forgetTaskTabs, notifyError } = deps
+
+  // The quiet cwd+harness → project adoption loop rides along: one hook is
+  // the whole scratch lifecycle from the host's perspective.
+  useScratchAdopt({ tasks: deps.tasks, orchestrator, notifyInfo: deps.notifyInfo })
 
   const openScratchShell = (): void => {
     void orchestrator
