@@ -86,11 +86,14 @@ export function previewSchedule(expression: string, nowMs: number): SchedulePrev
 }
 
 function formatRelative(deltaMs: number): string {
-  const minutes = Math.max(1, Math.round(deltaMs / 60_000))
+  // Floor every bucket, matching the elapsed formatter (`formatAgo`): a
+  // countdown reads "in Nh" as *at least* N hours away, so rounding up would
+  // promise headroom that isn't there — 90 minutes out is "in 1h", not "in 2h".
+  const minutes = Math.max(1, Math.floor(deltaMs / 60_000))
   if (minutes < 60) return `in ${minutes}m`
-  const hours = Math.round(minutes / 60)
+  const hours = Math.floor(minutes / 60)
   if (hours < 24) return `in ${hours}h`
-  return `in ${Math.round(hours / 24)}d`
+  return `in ${Math.floor(hours / 24)}d`
 }
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const
