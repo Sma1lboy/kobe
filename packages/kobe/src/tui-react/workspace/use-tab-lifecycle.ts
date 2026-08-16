@@ -11,7 +11,8 @@
 import { engineEntry } from "@/engine/registry"
 import { deriveTitleFromSessionId } from "@/monitor/auto-title"
 import type { VendorId } from "@/types/vendor"
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
+import { TabNamingQueue, type TabNamingTarget } from "../../tui/workspace/tab-naming-queue"
 import { type EngineTab, type TabsState, setTabAutoTitle, setTabSpawned } from "../../tui/workspace/terminal-tabs-core"
 
 /** Cadence of the tab auto-naming pass (tmux ran its pass on the monitor tick). */
@@ -63,34 +64,86 @@ export function useTabHydration(rehydrated: boolean, io: TabLifecycleIO): boolea
   return hydrating
 }
 
-/** Auto-naming + existence tracking (the tmux naming pass), mount-only. */
+/** Immediate auto-naming + existence tracking, with a mount-owned fallback. */
 export function useTabNaming(io: TabLifecycleIO): void {
-  // biome-ignore lint/correctness/useExhaustiveDependencies: mount-once interval; reads propsRef/stateRef for freshness.
-  useEffect(() => {
-    let namingBusy = false
-    const timer = setInterval(() => {
-      if (namingBusy) return
-      const candidates = io.stateRef.current.tabs.filter(
+  const ioRef = useRef(io)
+  ioRef.current = io
+  const queueRef = useRef<TabNamingQueue | null>(null)
+
+  const candidates = (): TabNamingTarget[] =>
+    ioRef.current.stateRef.current.tabs
+      .filter(
         (tab): tab is EngineTab =>
           tab.kind === "engine" && !!tab.sessionId && (!tab.spawned || (!tab.title && !tab.autoTitle)),
       )
-      if (candidates.length === 0) return
+      .map((tab) => ({
+        tabId: tab.id,
+        sessionId: tab.sessionId as string,
+        vendor: tab.vendor ?? ioRef.current.propsRef.current.vendor,
+      }))
+
+  const isCurrent = (target: TabNamingTarget): boolean => {
+    const tab = ioRef.current.stateRef.current.tabs.find((candidate) => candidate.id === target.tabId)
+    return (
+      tab?.kind === "engine" && tab.sessionId === target.sessionId && (!tab.spawned || (!tab.title && !tab.autoTitle))
+    )
+  }
+
+  const applyTitle = (target: TabNamingTarget, title: string): void => {
+    const current = ioRef.current.stateRef.current
+    const tab = current.tabs.find((candidate) => candidate.id === target.tabId)
+    if (tab?.kind !== "engine" || tab.sessionId !== target.sessionId) return
+    let next = setTabSpawned(current, tab.id, true)
+    if (!tab.title && !tab.autoTitle) next = setTabAutoTitle(next, tab.id, title)
+    ioRef.current.update(next)
+  }
+
+  const needsImmediateTitle = (target: TabNamingTarget): boolean =>
+    engineEntry(target.vendor).terminalTitle?.sessionIdFromTitle !== undefined
+
+  const queue = (): TabNamingQueue => {
+    if (queueRef.current) return queueRef.current
+    queueRef.current = new TabNamingQueue({
+      readTitle: (target) => deriveTitleFromSessionId(target.vendor, target.sessionId),
+      isCurrent,
+      applyTitle,
+    })
+    return queueRef.current
+  }
+
+  // Immediate path: a render carrying a newly-discovered session id queues
+  // its history read now. Keep this scoped to Codex: other engines retain
+  // the existing interval behavior in this Codex-title-focused change.
+  useEffect(() => queue().enqueue(candidates().filter(needsImmediateTitle)))
+
+  // Slow safety net for Codex plus the unchanged naming pass for other
+  // engines. The direct loop deliberately preserves their previous cadence.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: mount-once fallback; callbacks read ioRef for freshness.
+  useEffect(() => {
+    const namingQueue = queue()
+    let namingBusy = false
+    const timer = setInterval(() => {
+      const current = candidates()
+      namingQueue.enqueue(current.filter(needsImmediateTitle))
+      const intervalTargets = current.filter((target) => !needsImmediateTitle(target))
+      if (namingBusy || intervalTargets.length === 0) return
       namingBusy = true
       void (async () => {
         try {
-          for (const tab of candidates) {
-            if (!tab.sessionId) continue
-            const title = await deriveTitleFromSessionId(tab.vendor ?? io.propsRef.current.vendor, tab.sessionId)
-            if (!title) continue
-            let next = setTabSpawned(io.stateRef.current, tab.id, true)
-            if (!tab.title && !tab.autoTitle) next = setTabAutoTitle(next, tab.id, title)
-            io.update(next)
+          for (const target of intervalTargets) {
+            if (!isCurrent(target)) continue
+            const title = await deriveTitleFromSessionId(target.vendor, target.sessionId)
+            if (title) applyTitle(target, title)
           }
         } finally {
           namingBusy = false
         }
       })()
     }, NAMING_POLL_MS)
-    return () => clearInterval(timer)
+    return () => {
+      clearInterval(timer)
+      namingQueue.stop()
+      if (queueRef.current === namingQueue) queueRef.current = null
+    }
   }, [])
 }

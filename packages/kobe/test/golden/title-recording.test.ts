@@ -81,6 +81,38 @@ describe("golden: title stream → recording → display", () => {
         },
       ]),
     ).toBe("让 Codex tab 显示可读标题")
+
+    expect(
+      deriveTitleFromMessages([
+        {
+          role: "user",
+          sessionId: "codex-session",
+          timestamp: "2026-08-16T00:00:00.000Z",
+          blocks: [
+            { type: "text", text: "[codex: image]" },
+            { type: "text", text: '<image name=[Image #2] path="/tmp/other.png">' },
+            { type: "text", text: "</image>" },
+          ],
+        },
+      ]),
+    ).toBe("")
+  })
+
+  it("accepts only complete Codex UUID titles", () => {
+    const uppercase = "01A00808-9B77-7083-8F32-1F21B99E5EB3"
+    expect(engineSessionIdFromTitle("codex", `  ${uppercase}  `)).toBe(uppercase)
+    expect(engineSessionIdFromTitle("codex", `${uppercase}-extra`)).toBeNull()
+    expect(engineSessionIdFromTitle("codex", "01a00808-9b77-7083-8f32")).toBeNull()
+  })
+
+  it("leaves unknown tabs and non-engine tabs untouched by Codex UUID observations", () => {
+    const state = initialTabs()
+    expect(recordLiveTabTitle(state, "missing", "01a00808-9b77-7083-8f32-1f21b99e5eb3", "codex", SHELL)).toBe(state)
+
+    const shellTab = { ...tabOf(state, "tab-1"), kind: "command" as const, command: SHELL }
+    const shellState = { ...state, tabs: [shellTab] }
+    const next = recordLiveTabTitle(shellState, "tab-1", "01a00808-9b77-7083-8f32-1f21b99e5eb3", "codex", SHELL)
+    expect("sessionId" in tabOf(next, "tab-1")).toBe(false)
   })
 
   it("an engine's status stream records the NAME; the tree shows it beside kobe's own glyph", () => {
