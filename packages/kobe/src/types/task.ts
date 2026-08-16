@@ -152,6 +152,16 @@ export interface Task {
    * Optional on disk: records without it normalize to `"task"` at load time.
    */
   readonly kind?: "main" | "task" | "dir"
+  /**
+   * A SCRATCH shell task (issue #33): a `kind: "dir"` task whose cwd is not
+   * settled yet — an ad-hoc shell opened to poke around, living in the
+   * sidebar's Scratch section instead of a project group. Zero-ceremony
+   * lifecycle: its shell exiting deletes the row outright. The flag CLEARS
+   * when the task earns a place — the user renames it (`setTitle`) or its
+   * live cwd + a detected harness migrate it into a project
+   * (`adoptScratchRepo`) — after which it is an ordinary directory task.
+   */
+  readonly scratch?: boolean
   readonly status: TaskStatus
   /**
    * Archive flag — orthogonal to `status`. The sidebar splits tasks

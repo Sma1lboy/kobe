@@ -74,6 +74,9 @@ export interface DaemonTask {
   readonly branch: string
   readonly worktreePath: string
   readonly kind?: "main" | "task" | "dir"
+  /** Scratch shell task (issue #33): a dir task with no settled cwd, living
+   *  in the sidebar's Scratch section; cleared when named or adopted. */
+  readonly scratch?: boolean
   readonly status: TaskStatus
   readonly archived: boolean
   readonly pinned?: boolean
@@ -131,8 +134,12 @@ export interface DaemonOrchestrator {
     dispatcher?: TaskDispatcher
   }): Promise<DaemonTask>
   ensureMainTask(repo: string): Promise<DaemonTask>
-  /** Open an existing directory as a standalone `kind:"dir"` task (`kobe .`). */
-  openDirectoryTask(input: { dir: string; vendor?: VendorId }): Promise<DaemonTask>
+  /** Open an existing directory as a standalone `kind:"dir"` task (`kobe .`).
+   *  `scratch` marks it a temp shell task for the sidebar's Scratch section. */
+  openDirectoryTask(input: { dir: string; vendor?: VendorId; scratch?: boolean }): Promise<DaemonTask>
+  /** Migrate a scratch task into `repo` (issue #33 adoption): repoint the
+   *  task at the repo root and clear the scratch flag. */
+  adoptScratchRepo(id: string, repo: string): Promise<void>
   ensureWorktree(id: string): Promise<string>
   forgetProject(repo: string): Promise<void>
   setTitle(id: string, title: string): Promise<void>

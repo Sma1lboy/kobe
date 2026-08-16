@@ -72,6 +72,7 @@ import {
   worktreeChangesSignalOp,
 } from "./remote-orchestrator-reads.ts"
 import {
+  adoptScratchRepoOp,
   adoptWorktreeOp,
   automationRunsOp,
   createAutomationOp,
@@ -91,6 +92,7 @@ import {
   markAttentionReadOp,
   moveTaskOp,
   mutateIssueOp,
+  openDirectoryTaskOp,
   removeWorktreeOp,
   reportEngineInterruptOp,
   runAutomationNowOp,
@@ -390,6 +392,9 @@ export class RemoteOrchestrator {
 
   createTask = (input: Parameters<typeof createTaskOp>[1]): Promise<Task> => createTaskOp(this.client, input)
   ensureMainTask = (repo: string): Promise<Task> => ensureMainTaskOp(this.client, repo)
+  openDirectoryTask = (input: { dir: string; scratch?: boolean }): Promise<Task> =>
+    openDirectoryTaskOp(this.client, input)
+  adoptScratchRepo = (id: TaskId | string, repo: string): Promise<void> => adoptScratchRepoOp(this.client, id, repo)
   ensureWorktree = (id: TaskId | string): Promise<string> => ensureWorktreeOp(this.client, id)
   forgetProject = (repo: string): Promise<void> => forgetProjectOp(this.client, repo)
   setTitle = (id: TaskId | string, title: string): Promise<void> => setTitleOp(this.client, id, title)

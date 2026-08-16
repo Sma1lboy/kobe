@@ -24,6 +24,16 @@ the same directory. Only managed tasks get Rove-created branch/worktree
 isolation; project-main and directory tasks deliberately reuse directories you
 already own.
 
+**Scratch shells** are directory Tasks with an unsettled home: a temp shell
+opened from the TUI (PROPOSED `ctrl+a` `t`) starts as a bare shell in `$HOME`,
+lives in the sidebar's Scratch section above every project, and follows a
+zero-ceremony lifecycle — the shell exiting removes the row (no archive, no
+confirm; nothing on disk is touched). A scratch row earns a permanent place
+two ways: rename it (naming is the keep gesture), or start a coding harness
+inside a git repository — Rove detects the live harness plus the shell's
+settled directory and quietly migrates the row into that repository's project
+group.
+
 Each Task has a `status` you set yourself — `backlog`, `in_progress`,
 `in_review`, `done`, `canceled`, `error` — and a separate `archived` flag.
 

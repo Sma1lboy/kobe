@@ -38,6 +38,7 @@ the actions that can actually run right now.
 | `ctrl+a` `h` / `l` | Move focus left / right across panes |
 | `ctrl+a` `o` | Open the Task directory in your editor |
 | `ctrl+a` `m` | Reorder projects in the sidebar |
+| `ctrl+a` `t` | Open a Scratch shell (PROPOSED — pending owner sign-off) |
 | `ctrl+a` `w` | Close the active split |
 | `ctrl+a` `1` / `2` / `3` | Kanban / Automations / GitHub Issues |
 | `ctrl+a` `z` | Toggle zen mode |

@@ -25,6 +25,7 @@ export const en = {
   header: {
     projects: "PROJECTS",
     tasks: "TASKS",
+    scratch: "SCRATCH",
   },
   /** Search bar */
   search: {
@@ -112,6 +113,9 @@ export const en = {
     worktreeErrorNotGit:
       "This project isn't a git repo yet — a task needs a git branch. Run `git init` (+ a first commit) in the project, then open the task. Non-git support is coming.",
     worktreeErrorGeneric: "Couldn't create the worktree: {message}",
+    scratchAdopted: "Adopted into {repo} — save it as a project from New Task if you want it in the picker",
+    scratchOpenFailed: "Couldn't open a scratch shell: {message}",
+    scratchCloseFailed: "Couldn't close the scratch task: {message}",
   },
 }
 
@@ -129,6 +133,7 @@ export const zh: typeof en = {
   header: {
     projects: "项目",
     tasks: "任务",
+    scratch: "临时",
   },
   search: {
     placeholder: "模糊搜索",
@@ -199,5 +204,8 @@ export const zh: typeof en = {
     worktreeErrorNotGit:
       "该项目尚非 git 仓库——任务需要 git 分支。请在项目中执行 `git init`（+ 首次提交）后再打开任务。非 git 项目的支持即将推出。",
     worktreeErrorGeneric: "无法创建 worktree：{message}",
+    scratchAdopted: "已归入 {repo}——若要出现在项目选择器里,可在新建任务中保存为项目",
+    scratchOpenFailed: "无法打开临时 Shell:{message}",
+    scratchCloseFailed: "无法关闭临时任务:{message}",
   },
 }

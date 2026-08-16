@@ -29,6 +29,8 @@ export function ShowWorkspace(props: {
   initialPrompt?: string
   /** The user landed on a tab of the selected task — resolve its episodes. */
   onTabVisited?: (taskId: string, tabId: string) => void
+  /** A scratch task's last shell exited — the host deletes the row (issue #33). */
+  onScratchExit?: (taskId: string) => void
 }): ReactNode {
   const { theme } = useTheme()
   const t = useT()
@@ -58,6 +60,11 @@ export function ShowWorkspace(props: {
       worktree={path}
       repo={props.task?.repo}
       taskKind={props.task?.kind}
+      scratch={props.task?.scratch === true}
+      onScratchExit={() => {
+        const taskId = props.task?.id
+        if (taskId) props.onScratchExit?.(taskId)
+      }}
       command={engineLaunchArgv({
         command: props.task?.command,
         vendor: props.task?.vendor,

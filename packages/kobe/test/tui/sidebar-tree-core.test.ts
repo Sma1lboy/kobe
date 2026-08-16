@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest"
 import {
   RECENT_ROW_ID,
+  SCRATCH_SECTION_ID,
   type TreeTab,
   buildTreeRows,
   filterTreeRows,
@@ -115,6 +116,37 @@ describe("buildTreeRows", () => {
     // matters because every task has at least one tab once it mounts.
     const result = rows({ tasks: [task("a")] })
     expect(result.filter((r) => r.kind === "tab")).toHaveLength(0)
+  })
+
+  test("scratch tasks render in one Scratch section above every project (issue #33)", () => {
+    const result = rows({
+      tasks: [
+        task("m", { kind: "main", repo: "/repos/kobe", branch: "", worktreePath: "/repos/kobe" }),
+        task("s1", { kind: "dir", scratch: true, repo: "/Users/me" }),
+        task("s2", { kind: "dir", scratch: true, repo: "/Users/me" }),
+      ],
+    })
+    expect(result.map((r) => [r.kind, r.id])).toEqual([
+      ["project", SCRATCH_SECTION_ID],
+      ["worktree", "s1"],
+      ["worktree", "s2"],
+      ["project", "/repos/kobe"],
+      ["worktree", "m"],
+    ])
+  })
+
+  test("a scratch task never mints a project header for its directory", () => {
+    // Same dir, one scratch + one ordinary dir task: only the ordinary one
+    // groups under the directory; the scratch row lives in Scratch.
+    const result = rows({
+      tasks: [task("s", { kind: "dir", scratch: true, repo: "/tmp/x" }), task("d", { kind: "dir", repo: "/tmp/x" })],
+    })
+    expect(result.map((r) => [r.kind, r.id])).toEqual([
+      ["project", SCRATCH_SECTION_ID],
+      ["worktree", "s"],
+      ["project", "/tmp/x"],
+      ["worktree", "d"],
+    ])
   })
 })
 

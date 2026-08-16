@@ -148,6 +148,20 @@ export const KobeKeymap: readonly KobeBinding[] = [
     description: "Open active Task directory in editor",
   },
   {
+    // PROPOSED chord (issue #33 — awaiting owner sign-off, see
+    // docs/KEYBINDINGS.md rules): open a Scratch temp shell task — a bare
+    // shell row at the top of the sidebar; exits with the shell, migrates
+    // into a project when a harness settles in a repo. `prefix+t` because
+    // t=temp/terminal and the second stroke is free; direct-vs-prefix and
+    // the letter are the owner's call.
+    id: "task.scratchShell",
+    scope: "global",
+    keys: [],
+    prefixKeys: ["t"],
+    category: "Global",
+    description: "Open a Scratch shell",
+  },
+  {
     // PROPOSED chord (owner picked prefix+m 2026-07-16): global entry into
     // the sidebar's move mode — focuses the sidebar, highlights the current
     // selection, then j/k reorders saved projects; enter/esc exits.
