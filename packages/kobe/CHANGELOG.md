@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.8.108
+
+### Patch Changes
+
+- 629b010: Remove the sidebar repo context filter (`ctrl+p`) shipped in #459: the chord shadowed in-terminal previous-history and the eventual session concept is a combination of repos, not a per-repo filter. Task-lifecycle changes from #459 (delete keeps the branch, archive→GC design) are untouched.
+
+## 0.8.107
+
+### Patch Changes
+
+- cc232fb: Task delete now keeps the git branch by default — git is the durable record; pass `--delete-branch` on `rove api delete` to drop it too (`--force` never implies it). The sidebar gains a repo context filter on `ctrl+p` (pure view-layer, nothing persisted), and `docs/design/task-lifecycle.md` records the archive→internal-GC direction for issue #29.
+
+## 0.8.106
+
+### Patch Changes
+
+- ae9e40b: Point user-facing URLs at the new domain family: the plugin marketplace link printed by `rove plugin search` now reads `rove.sma1lboy.me/plugins`, and docs/landing copy references `rove.sma1lboy.me` / `docs.rove.sma1lboy.me`. The old `kobe.sma1lboy.me` and `docs.kobe.sma1lboy.me` domains stay live as 301 redirects.
+
 ## 0.8.105
 
 ### Patch Changes

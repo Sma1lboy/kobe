@@ -15,12 +15,12 @@ Rove isolates parallel work in git worktrees and branches, while agent and shell
 </p>
 
 <p align="center">
-  <a href="https://docs.kobe.sma1lboy.me"><strong>Documentation</strong></a> ·
-  <a href="https://docs.kobe.sma1lboy.me/docs/quick-start">Quick start</a> ·
-  <a href="https://docs.kobe.sma1lboy.me/docs/concepts">Concepts</a> ·
-  <a href="https://docs.kobe.sma1lboy.me/docs/cli">CLI</a> ·
-  <a href="https://docs.kobe.sma1lboy.me/docs/api">Agent API</a> ·
-  <a href="https://kobe.sma1lboy.me">Website</a>
+  <a href="https://docs.rove.sma1lboy.me"><strong>Documentation</strong></a> ·
+  <a href="https://docs.rove.sma1lboy.me/docs/quick-start">Quick start</a> ·
+  <a href="https://docs.rove.sma1lboy.me/docs/concepts">Concepts</a> ·
+  <a href="https://docs.rove.sma1lboy.me/docs/cli">CLI</a> ·
+  <a href="https://docs.rove.sma1lboy.me/docs/api">Agent API</a> ·
+  <a href="https://rove.sma1lboy.me">Website</a>
 </p>
 
 <p align="center">
@@ -97,7 +97,7 @@ rove skill install
 
 Tasks created from inside another Rove session remember which task and tab dispatched them, so workers can report results back without an external coordinator. The API also covers task inspection, notifications, prompts, panes, issue tracking, routines, and worktree-safe lifecycle operations.
 
-See the [Agent API reference](https://docs.kobe.sma1lboy.me/docs/api) for every verb, flag, and exit code.
+See the [Agent API reference](https://docs.rove.sma1lboy.me/docs/api) for every verb, flag, and exit code.
 
 ## Built for the terminal
 

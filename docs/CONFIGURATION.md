@@ -177,13 +177,13 @@ more are one command away:
 
 ```sh
 rove theme list
-rove theme add https://kobe.sma1lboy.me/themes/gruvbox.json
+rove theme add https://rove.sma1lboy.me/themes/gruvbox.json
 rove theme remove gruvbox
 ```
 
 Available hosted: `catppuccin`, `dracula`, `everforest`, `gruvbox`,
 `kanagawa`, `nord`, `opencode`, `osaka-jade`, `rose-pine`, `solarized`.
-Preview them at <https://kobe.sma1lboy.me/themes>.
+Preview them at <https://rove.sma1lboy.me/themes>.
 
 You can also drop your own `<name>.json` into `~/.rove/themes/` — no
 recompile, loaded at boot, and a user theme wins over a bundled one with the
