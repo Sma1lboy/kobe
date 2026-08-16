@@ -144,8 +144,8 @@ export interface DaemonOrchestrator {
   /** Arm (or clear, with `null`) the rate-limit auto-resume schedule. */
   setQuotaResume(id: string, state: TaskQuotaResumeState | null): Promise<void>
   reorderTasks(moves: ReadonlyArray<{ taskId: string; position: number }>): Promise<void>
-  deleteTask(id: string, options?: { force?: boolean }): Promise<void>
-  prepareTaskDeletion(id: string, options?: { force?: boolean }): Promise<boolean>
+  deleteTask(id: string, options?: { force?: boolean; deleteBranch?: boolean }): Promise<void>
+  prepareTaskDeletion(id: string, options?: { force?: boolean; deleteBranch?: boolean }): Promise<boolean>
   beginTaskDeletion(id: string): Promise<boolean>
   finishTaskDeletion(id: string): Promise<void>
   landTask(

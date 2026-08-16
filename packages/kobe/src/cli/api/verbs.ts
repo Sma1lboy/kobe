@@ -448,8 +448,16 @@ export const VERBS: readonly VerbSpec[] = [
   {
     name: "delete",
     summary:
-      "Permanently remove a task (and its worktree). DESTRUCTIVE — prefer `archive`. Needs --force on a dirty worktree.",
-    flags: [F.taskId(), { name: "force", type: "bool", description: "Delete even with uncommitted changes." }],
+      "Remove a task and its worktree; the git branch stays unless --delete-branch. Needs --force on a dirty worktree.",
+    flags: [
+      F.taskId(),
+      {
+        name: "force",
+        type: "bool",
+        description: "Delete even with uncommitted changes (never implies --delete-branch).",
+      },
+      { name: "delete-branch", type: "bool", description: "Also delete the task's git branch (default: keep it)." },
+    ],
     handler: deleteTask,
   },
   {

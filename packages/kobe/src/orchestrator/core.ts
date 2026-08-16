@@ -15,7 +15,7 @@ import { canonPath, normalizeMainRepo, randomDirTaskSuffix, titleFromRepo } from
 import { DirtyWorktreeError, TaskDeletingError, TaskNotFoundError, WorktreeRemoveFailedError } from "./errors.ts"
 import type { TaskIndexStore, TaskIndexUnsubscribe } from "./index/store.ts"
 import { type LandResult, type LandTaskOpts, landTaskWithCleanup } from "./land.ts"
-import { TaskDeletionCoordinator } from "./task-deletion.ts"
+import { TaskDeletionCoordinator, type TaskDeletionOpts } from "./task-deletion.ts"
 import { TaskEditor } from "./task-editor.ts"
 import { PLACEHOLDER_TASK_TITLE } from "./title.ts"
 import { WorktreeCoordinator } from "./worktree-coordinator.ts"
@@ -393,12 +393,12 @@ export class Orchestrator {
    * invisible on-disk debris. The index entry is dropped only after the
    * worktree is genuinely gone.
    */
-  async deleteTask(id: TaskId | string, opts?: { readonly force?: boolean }): Promise<void> {
+  async deleteTask(id: TaskId | string, opts?: TaskDeletionOpts): Promise<void> {
     await this.deletions.deleteNow(id, opts)
   }
 
   /** Persist a deletion request after the normal safety checks. */
-  async prepareTaskDeletion(id: TaskId | string, opts?: { readonly force?: boolean }): Promise<boolean> {
+  async prepareTaskDeletion(id: TaskId | string, opts?: TaskDeletionOpts): Promise<boolean> {
     return this.deletions.prepare(id, opts)
   }
 

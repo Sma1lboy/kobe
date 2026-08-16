@@ -62,6 +62,18 @@ export function subtitleBudgetFor(width: number): number {
 }
 
 /**
+ * Next repo context filter for a `ctrl+p` press (issue #29): cycles
+ * all (null) → each project key in order → back to all. A current filter
+ * whose key vanished restarts from the first project. With fewer than two
+ * projects and no active filter there is nothing to scope — stay at null.
+ */
+export function cycleProjectFilterTarget(keys: readonly string[], current: string | null): string | null {
+  if (current === null && keys.length < 2) return null
+  const at = current === null ? -1 : keys.indexOf(current)
+  return at + 1 >= keys.length ? null : (keys[at + 1] ?? null)
+}
+
+/**
  * Fit the active project filter into the PROJECTS header. Besides the
  * translated section label, the row reserves two padding cells and two gaps,
  * plus one safety cell for the divider (which Yoga may shrink to zero). The

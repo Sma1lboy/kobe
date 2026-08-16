@@ -243,11 +243,14 @@ logs, dashboards), don't scatter panes for work `add`/`fan-out` should own.
 | `set-active --task-id ID` / `--none` | Change shared active task |
 | `ensure-worktree --task-id ID` | Materialize without starting an engine |
 | `land --task-id ID [--strategy merge\|squash] [--delete-branch] [--then-archive] [--remove-worktree]` | Merge the task's branch into the base repo's current branch; `--remove-worktree` cleans up the Worktree after (branch stays; dirty/self/base refused, outcome in the result's `worktree` field) |
-| `delete --task-id ID [--force]` | Destructive task + Worktree removal |
+| `delete --task-id ID [--force] [--delete-branch]` | Remove task + Worktree; the git branch stays unless `--delete-branch` (and `--force` never implies it) |
 | `discover-adoptable --repo PATH` | Find untracked Worktrees |
 | `adopt --repo PATH --worktree PATH` | Import a Worktree |
 
-Prefer `archive` unless the user explicitly authorizes deletion.
+Once a task's work is merged, `delete` is the normal cleanup — the branch is
+git's durable record and survives. `archive` remains as a manual "hide the
+row" override. `--delete-branch` (or a dirty-worktree `--force`) still needs
+explicit user authorization.
 
 ## Issue tracker
 
@@ -316,5 +319,7 @@ rove api archive --task-id <loser2>
 ```
 
 `land` refuses a dirty base checkout; on merge conflict it aborts cleanly and
-returns the conflicted files for manual resolution. Only `delete` destroys a
-Worktree — never use it on a loser without explicit user authorization.
+returns the conflicted files for manual resolution. `delete` removes a loser's
+Worktree but keeps its branch (recoverable); still don't use it — or
+`--delete-branch`, which destroys the history — without explicit user
+authorization.

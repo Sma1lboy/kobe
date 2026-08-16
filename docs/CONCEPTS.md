@@ -38,7 +38,8 @@ synthetic main row while keeping the repository, branches, worktrees, and
 managed Tasks. Deleting a directory Task removes only its Rove record, never
 the directory.
 Deleting a managed Task removes its worktree after the dirty-worktree safety
-check, then attempts to remove its task branch. The separate
+check. **The task branch stays** — git is the durable record of the work;
+pass `--delete-branch` on `rove api delete` to drop it too. The separate
 [Worktrees page](WORKTREES.md) is an audit/cleanup tool: removing a directory
 there keeps its Task record and branch so the worktree can be materialized
 again later.

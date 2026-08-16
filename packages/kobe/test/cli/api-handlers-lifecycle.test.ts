@@ -247,6 +247,19 @@ describe("task lifecycle handlers", () => {
     expect(order).toEqual(["rpc", "kill"])
   })
 
+  it("keeps the branch by default and passes --delete-branch through as opt-in", async () => {
+    const client = new FakeClient({ "task.delete": () => ({}) })
+    const { tearDownSession } = recordingTearDown()
+    await invokeVerb("delete", ["--task-id", "t1"], { client, runtime: stubRuntime({ tearDownSession }) })
+    expect(client.requests[0].payload).toEqual({ taskId: "t1", force: false, deleteBranch: false })
+
+    await invokeVerb("delete", ["--task-id", "t1", "--delete-branch"], {
+      client,
+      runtime: stubRuntime({ tearDownSession }),
+    })
+    expect(client.requests[1].payload).toEqual({ taskId: "t1", force: false, deleteBranch: true })
+  })
+
   it("does not stop hosted sessions when the delete RPC is refused (dirty worktree)", async () => {
     // Non-force delete of a dirty worktree: the daemon's preflight rejects
     // the RPC, so the CLI-side session teardown (which runs AFTER the RPC)

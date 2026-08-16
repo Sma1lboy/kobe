@@ -258,7 +258,7 @@ export async function deleteTaskFlow(ctx: TaskActionContext, taskId: string): Pr
     body:
       task.kind === "dir"
         ? "Removes the task entry. The directory itself stays on disk. Its hosted sessions are stopped."
-        : "Removes the task entry and its worktree. Its hosted sessions are stopped.",
+        : "Removes the task entry and its worktree. The git branch stays. Its hosted sessions are stopped.",
     cancelLabel: "cancel",
     confirmLabel: "delete",
   })
