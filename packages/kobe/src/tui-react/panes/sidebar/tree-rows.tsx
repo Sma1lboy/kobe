@@ -13,7 +13,6 @@ import type { TaskEngineState, TaskJobState } from "@/client/remote-orchestrator
 import type { Task } from "@/types/task"
 import { type BoxRenderable, MouseButton } from "@opentui/core"
 import { type ReactNode, useEffect } from "react"
-import { engineEntry } from "../../../engine/registry"
 import { currentBranch, pollCurrentBranch } from "../../../tui/panes/sidebar/git-head"
 import { NO_STATE_GLYPH, buildSidebarRowView, prCheckChip, withSpinnerFrame } from "../../../tui/panes/sidebar/row-view"
 import { type TreeTab, tabRowActivity } from "../../../tui/panes/sidebar/tree-core"
@@ -264,16 +263,6 @@ export function TabTreeRow(props: {
         <text fg={theme.textMuted} wrapMode="none" flexBasis={0} flexGrow={1} flexShrink={1}>
           {props.tab.label}
         </text>
-        {props.tab.liveVendor ? (
-          // Engine badge for a shell tab whose live foreground is a CONFIRMED
-          // engine (issue #33) — name from the engine registry, never a
-          // hard-coded vendor string. Accent-colored: the badge is the "an
-          // agent is live here" signal, the state glyph beside it says what
-          // it's doing.
-          <text fg={theme.accent} wrapMode="none" flexShrink={0}>
-            {`⚡${engineEntry(props.tab.liveVendor).identity?.shortName ?? engineEntry(props.tab.liveVendor).displayName}`}
-          </text>
-        ) : null}
         <JumpDigit flatIndex={props.flatIndex} dim={!isCursor} />
       </box>
     </RowShell>
