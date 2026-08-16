@@ -3,7 +3,7 @@ name: rove
 description: Use when controlling Rove tasks, parallel coding attempts, hosted agent sessions, task lifecycle, or the daemon-owned issue tracker from a shell. Also the ONLY channel for messaging another agent session on this machine — `rove api send`, never a peer/MCP side channel.
 ---
 
-<!-- rove-skill-version: 27 — bump in lockstep with KOBE_SKILL_VERSION (src/lib/skill-install.ts). -->
+<!-- rove-skill-version: 28 — bump in lockstep with KOBE_SKILL_VERSION (src/lib/skill-install.ts). -->
 
 # Rove shell control
 
@@ -169,6 +169,17 @@ A report worth sending carries: **symptoms** (what happened, concretely, how
 many times), **root cause** if you found it, **why it is worth fixing**
 (who else it bites), and **suggestions without prescribing the
 implementation** — the receiving project decides how to fix its own product.
+
+**Send the report — never `add` a task into someone else's repo.** You hold
+the problem-side context (symptoms, root cause, impact); only that project's
+main agent holds the solution-side context (code structure, existing issues,
+what's mid-flight, where this slots in the schedule). A task you compose
+would bake YOUR guess at the fix into the brief, and that guess is usually
+wrong — one field report here looked like "add a line to the docs" and
+actually split into a docs fix plus a runtime-detection issue anchored in
+files the reporter didn't know existed. **You raise the problem; their main
+agent decomposes it into tasks.** That translation is the main task's whole
+job, and it is why every project should keep one.
 
 ## Fresh worktrees start empty — install before you judge
 
