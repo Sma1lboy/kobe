@@ -148,21 +148,42 @@ export interface EngineLaunchSpec {
 /**
  * Launch argv for a task or tab.
  *
- * A pinned command that is just a preset ID routes back through
- * {@link interactiveEngineCommand} so the user's `engineCommand.<id>`
- * override still applies — `--command claude` must mean "my claude", not a
- * bare `claude` that ignores the launch command I configured in Settings.
- * A real command line is parsed as argv and still gets its protocol's
- * effort + terminal-title flags, exactly like a per-vendor override does.
+ * Two things have to hold at once, and they pull apart for a custom preset:
+ *
+ *   - the BASE command comes from the preset id when there is one, so
+ *     `--command claude` means "my claude" (the `engineCommand.claude`
+ *     override configured in Settings), not a bare `claude` that ignores it;
+ *   - the vendor-specific launch FLAGS (codex's effort + terminal-title
+ *     config) come from the resolved PROTOCOL, not from the id. A preset
+ *     `mycodex` declaring the codex protocol is a codex launch — keying the
+ *     decoration off its id would find the empty custom registry entry and
+ *     silently drop every flag, so a declared protocol would buy nothing at
+ *     launch time.
+ *
+ * A built-in id resolves to itself, so this is the same argv it always was.
  */
 export function engineLaunchArgv(spec: EngineLaunchSpec): readonly string[] {
   const command = spec.command?.trim()
   if (!command) return interactiveEngineCommand(spec.vendor, spec.effort)
-  if (isPresetId(command)) return interactiveEngineCommand(command, spec.effort)
-  const argv = parseEngineCommand(command)
-  if (argv.length === 0) return interactiveEngineCommand(spec.vendor, spec.effort)
-  const vendor = spec.vendor ?? resolveCommandProtocol(command)
-  return withEngineTerminalTitle(withEngineEffort(argv, vendor, spec.effort), vendor)
+  const vendor = (isPresetId(command) ? getEngineProtocol(command) : undefined) ?? resolveCommandProtocol(command)
+  const base = isPresetId(command)
+    ? presetBaseArgv(command)
+    : (() => {
+        const argv = parseEngineCommand(command)
+        return argv.length > 0 ? argv : null
+      })()
+  if (!base) return interactiveEngineCommand(spec.vendor, spec.effort)
+  return withEngineTerminalTitle(withEngineEffort(base, vendor, spec.effort), vendor)
+}
+
+/** A preset's UNDECORATED launch argv: its command override, else its default. */
+function presetBaseArgv(id: string): readonly string[] | null {
+  const override = getPersistedString(engineCommandKey(id))?.trim()
+  if (override) {
+    const argv = parseEngineCommand(override)
+    if (argv.length > 0) return argv
+  }
+  return defaultEngineCommand(id)
 }
 
 /** The launch binary a delivery gate should match this spec's engine by. */

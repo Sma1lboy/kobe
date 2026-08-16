@@ -75,6 +75,26 @@ describe("engineLaunchArgv", () => {
     ])
   })
 
+  it("decorates a custom preset from its DECLARED protocol, not its id", () => {
+    // The trap this closes: keying the vendor flags off the preset id finds
+    // the empty custom registry entry and silently drops every one of them —
+    // so declaring a protocol would buy nothing at launch time, which is the
+    // whole point of declaring it. The BASE argv still comes from the
+    // preset's own command.
+    writeState({
+      customEngineIds: ["mycodex"],
+      "engineCommand.mycodex": "codex-wrapper",
+      "engineProtocol.mycodex": "codex",
+    })
+    expect(engineLaunchArgv({ command: "mycodex", effort: "high" })).toEqual([
+      "codex-wrapper",
+      "-c",
+      "model_reasoning_effort=high",
+      "-c",
+      'tui.terminal_title=["activity","thread-title"]',
+    ])
+  })
+
   it("adds no vendor flags to a command whose protocol is generic", () => {
     expect(engineLaunchArgv({ command: "my-agent --go", effort: "high" })).toEqual(["my-agent", "--go"])
   })
