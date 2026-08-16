@@ -109,5 +109,6 @@ export function migrationHint(findings: MigrationFindings, cliName: string): str
       `    Remove that directory to keep the plugin's copy only.`,
     )
   }
+  lines.push("  Reading this inside a session? Just ask your agent to run the cleanup for you.")
   return `${lines.join("\n")}\n`
 }
