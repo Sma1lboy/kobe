@@ -70,7 +70,7 @@ import type {
   VerbContext,
   VerbSpec,
 } from "./api/types.ts"
-import { API_VERBS, VERBS, VERB_GROUPS, findVerb } from "./api/verbs.ts"
+import { API_VERBS, RETIRED_VERBS, VERBS, VERB_GROUPS, findVerb } from "./api/verbs.ts"
 import { type DaemonSession, openDaemonSession } from "./daemon-session.ts"
 import type { DaemonRpc } from "./daemon-session.ts"
 
@@ -94,6 +94,26 @@ const SCHEMA_STEP = {
   hint: "list every valid verb + flag as JSON, then retry with a real verb",
   nextCommandArgs: ["api", "schema"],
 } as const
+
+/**
+ * The typed rejection for a verb name that does not resolve. A REMOVED verb
+ * ({@link RETIRED_VERBS}) points at its replacement instead of the schema
+ * index — an agent that learned `fan-out` from an older skill or a stale
+ * transcript gets the exact argv for `add --count`, not a 40-verb dump to
+ * re-derive it from.
+ */
+function unknownVerbError(verbName: string): ApiError {
+  const retired = RETIRED_VERBS[verbName]
+  if (retired) {
+    return new ApiError(`unknown verb: ${verbName} (removed)`, "UNKNOWN_VERB", {
+      hint: retired.hint,
+      nextCommandArgs: [...retired.nextCommandArgs],
+    })
+  }
+  // BAD_VERB (not UNKNOWN_VERB) for a name that never existed — the
+  // documented code for a typo'd verb, unchanged.
+  return new ApiError(`unknown verb: ${verbName}`, "BAD_VERB", SCHEMA_STEP)
+}
 
 /**
  * Normalize any handler/RPC failure into an {@link ApiError} so the emitted
@@ -125,7 +145,7 @@ export async function invokeVerb(
   deps: { client: DaemonRpc | null; runtime?: ApiRuntime },
 ): Promise<unknown> {
   const verb = findVerb(verbName)
-  if (!verb) throw new ApiError(`unknown verb: ${verbName}`, "BAD_VERB", SCHEMA_STEP)
+  if (!verb) throw unknownVerbError(verbName)
   const booleanFlags = new Set(verb.flags.filter((f) => f.type === "bool").map((f) => f.name))
   const parsed = parseFlags(argv, booleanFlags)
   validateAgainstSpec(verb, parsed.flags)
@@ -144,7 +164,10 @@ export async function runApiSubcommand(argv: readonly string[]): Promise<void> {
     return
   }
   const verb = findVerb(verbName)
-  if (!verb) fail(`unknown verb: ${verbName}\n${apiUsage()}`, "BAD_VERB", 2, SCHEMA_STEP)
+  if (!verb) {
+    const err = unknownVerbError(verbName)
+    fail(`${err.message}\n${apiUsage()}`, err.code, 2, err.data)
+  }
 
   const booleanFlags = new Set(verb.flags.filter((f) => f.type === "bool").map((f) => f.name))
   let parsed: ParsedArgs

@@ -7,7 +7,8 @@
  */
 
 import type { PtySessionExit } from "@sma1lboy/kobe-daemon/daemon/protocol"
-import { interactiveEngineCommand, withClaudeSessionId } from "../../engine/interactive-command.ts"
+import { engineLaunchArgv } from "../../engine/engine-presets.ts"
+import { withClaudeSessionId } from "../../engine/interactive-command.ts"
 import { buildEngineSessionLaunch } from "../../engine/session-launch.ts"
 import { trustEngineWorktree } from "../../engine/trust-worktree.ts"
 import type { DaemonRpc } from "../daemon-session.ts"
@@ -50,28 +51,37 @@ async function deliverHosted(target: PromptTarget, worktree: string, prompt: str
     // engineBin covers the task's CUSTOM engine binary; builtins the
     // foreground gate recognizes on its own (cross-vendor send stays open).
     if (target.tab && target.tab !== "new") {
-      const engineBin = interactiveEngineCommand(target.vendor, target.modelEffort)[0]
+      const engineBin = engineLaunchArgv({
+        command: target.command,
+        vendor: target.vendor,
+        effort: target.modelEffort,
+      })[0]
       return await deliverToExactTab(host.rpc, target.id, target.tab, worktree, prompt, { engineBin })
     }
-    const newTab = target.tab === "new" ? mintCliTab(target.id, target.tabVendor) : undefined
+    const newTab = target.tab === "new" ? mintCliTab(target.id, target.tabVendor, target.tabCommand) : undefined
+    // A `--tab new` pin (command and/or protocol) applies to THIS launch
+    // only; the task's own engine is left alone.
+    const launchVendor = target.tabVendor ?? target.vendor
+    const launchCommand = target.tabCommand ?? (target.tabVendor ? undefined : target.command)
     // Pin the conversation's session id up front (claude only — the same
     // `withClaudeSessionId` contract the TUI launches with), so a LATER
     // reattach after a pty-host restart can resume THIS conversation
     // instead of opening a blank one. The id lands in the persisted tab
     // snapshot below once the session actually started.
     const { argv, sessionId } = withClaudeSessionId(
-      interactiveEngineCommand(target.vendor, target.modelEffort),
-      target.vendor,
+      engineLaunchArgv({ command: launchCommand, vendor: launchVendor, effort: target.modelEffort }),
+      launchVendor,
     )
-    // Pre-trust the worktree in the vendor's first-run store (issue #28) —
-    // a hosted session can't answer a trust dialog.
-    trustEngineWorktree(target.vendor, worktree)
+    // Pre-trust the worktree in the protocol's first-run store (issue #28) —
+    // a hosted session can't answer a trust dialog. A generic protocol has
+    // no store kobe knows how to pre-answer, and trustEngineWorktree no-ops.
+    trustEngineWorktree(launchVendor, worktree)
     const launch = buildEngineSessionLaunch({
-      task: { id: target.id, kind: target.kind, vendor: target.vendor, repo: target.repo },
+      task: { id: target.id, kind: target.kind, vendor: launchVendor, repo: target.repo },
       worktreePath: worktree,
       shell: process.env.SHELL?.trim() || "/bin/zsh",
       argv,
-      // Spawner identity is read HERE, in the CLI process — an `add`/`fan-out`
+      // Spawner identity is read HERE, in the CLI process — an `add`
       // run from inside an engine tab carries the spawner's $KOBE_TASK_ID, and
       // the coda tells the new agent to `send` its outcome back (repo-init.ts).
       promptIntent: target.newTask

@@ -73,7 +73,7 @@ type Field = "title" | "description" | "engine" | "workspace" | "jump" | "open"
  *  to keep the start config on screen. */
 const DESCRIPTION_ROWS = 8
 
-function IssueDetailDialogView(
+export function IssueDetailDialogView(
   props: IssueDetailOptions & {
     onSubmit: (outcome: IssueDetailOutcome) => void
     onCancel: () => void
@@ -333,7 +333,7 @@ function IssueDetailDialogView(
       </box>
 
       {startable ? (
-        <box gap={1}>
+        <box gap={0}>
           {/* ENGINE — chip buttons; selected = active border + primary bold. */}
           <box gap={0}>
             {sectionHeader(t("kanban.detail.engine"), "engine", "←/→")}
@@ -350,6 +350,7 @@ function IssueDetailDialogView(
                     borderColor={selected ? theme.primary : theme.borderSubtle}
                     paddingLeft={2}
                     paddingRight={2}
+                    paddingBottom={1}
                     onMouseUp={() => {
                       setField("engine")
                       setVendor(engine)
@@ -369,7 +370,7 @@ function IssueDetailDialogView(
           </box>
 
           {/* WORKSPACE — the three placements as one grouped, bordered list. */}
-          <box gap={0}>
+          <box gap={0} paddingBottom={1}>
             {sectionHeader(t("kanban.detail.workspace"), "workspace", "↑/↓")}
             <box
               border={true}
@@ -400,7 +401,7 @@ function IssueDetailDialogView(
 
           {/* AFTER START — follow the session or stay on the board;
               orthogonal to placement (all three support both). */}
-          <box gap={0}>
+          <box gap={0} paddingBottom={1}>
             {sectionHeader(t("kanban.detail.jumpLabel"), "jump", "←/→")}
             <box flexDirection="row" gap={1}>
               {([false, true] as const).map((option) => {

@@ -173,6 +173,10 @@ function coerceTask(value: unknown): Task | null {
     pinned: typeof v.pinned === "boolean" ? v.pinned : false,
     kind,
     vendor: coerceVendorId(typeof v.vendor === "string" ? v.vendor : undefined),
+    // Raw launch command (`add --command` / `set-command`) — must survive
+    // the load coercion or the task falls back to its protocol's preset on
+    // every daemon restart, silently dropping the user's own command line.
+    ...(typeof v.command === "string" && v.command.trim().length > 0 ? { command: v.command } : {}),
     prStatus: coercePRStatus(v.prStatus),
     // Web-board ordering key — must survive the load coercion or every
     // daemon restart silently forgets the user's column order.

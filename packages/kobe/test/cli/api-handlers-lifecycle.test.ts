@@ -288,17 +288,18 @@ describe("adopt handler", () => {
     expect(client.requests[0].payload).toEqual({ repo: "/repo/x", worktreePath: "/wt/z" })
   })
 
-  it("includes optional branch, vendor, and title", async () => {
+  it("includes optional branch, command, and title", async () => {
     const client = new FakeClient({ "worktree.adopt": () => ({ task: taskFixture() }) })
     await invokeVerb(
       "adopt",
-      ["--repo", "/repo/x", "--worktree", "/wt/z", "--branch", "b1", "--vendor", "codex", "--title", "Adopted"],
+      ["--repo", "/repo/x", "--worktree", "/wt/z", "--branch", "b1", "--command", "codex", "--title", "Adopted"],
       { client, runtime: stubRuntime() },
     )
     expect(client.requests[0].payload).toEqual({
       repo: "/repo/x",
       worktreePath: "/wt/z",
       branch: "b1",
+      command: "codex",
       vendor: "codex",
       title: "Adopted",
     })

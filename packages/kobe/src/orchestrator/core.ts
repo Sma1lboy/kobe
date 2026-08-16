@@ -39,8 +39,11 @@ export interface CreateTaskInput {
   readonly branch?: string
   /** Optional base ref for the new lazy worktree branch. */
   readonly baseRef?: string
-  /** Engine vendor for the monitor's history-reader hint. */
+  /** Engine PROTOCOL for the monitor's history-reader hint (derived from
+   *  {@link command} when the caller passed one). */
   readonly vendor?: VendorId
+  /** Raw engine launch command (`add --command`), recorded verbatim. */
+  readonly command?: string
   /** Reasoning/effort level for the engine, when the vendor supports one. */
   readonly modelEffort?: string
   /** Fan-out round marker shared by all siblings of one fan-out call. */
@@ -213,6 +216,7 @@ export class Orchestrator {
       status: "backlog",
       kind: "task",
       vendor: input.vendor ?? DEFAULT_TASK_VENDOR,
+      ...(input.command?.trim() ? { command: input.command.trim() } : {}),
       ...(input.modelEffort ? { modelEffort: input.modelEffort } : {}),
       ...(input.groupId ? { groupId: input.groupId } : {}),
       ...(input.dispatcher ? { dispatcher: input.dispatcher } : {}),
@@ -321,63 +325,30 @@ export class Orchestrator {
     this.worktreeCoordinator.forget(task.id)
   }
 
-  // In-place task-field edits (title / branch / vendor / pinned / archived /
-  // status / PR-status / move / reorder) live in the TaskEditor collaborator;
-  // these are thin delegators so the public interface is unchanged.
+  // In-place task-field edits (title / branch / engine / pinned / archived /
+  // status / PR-status / move / reorder) live in the TaskEditor collaborator.
+  // Terse one-liners below on purpose: they are PURE forwarding (the rules,
+  // guards, and doc comments all live on TaskEditor's own methods), and this
+  // file sits at the 500-line cap — same shape `remote-orchestrator.ts` uses
+  // for its own write delegates.
 
-  /** Rename a task. Empty / whitespace-only titles are rejected. */
-  async setTitle(id: TaskId | string, title: string): Promise<void> {
-    return this.editor.setTitle(id, title)
-  }
-
-  /** Rename a task's branch (git branch -m for a materialised worktree). Rejected for `main`. */
-  async setBranch(id: TaskId | string, branch: string): Promise<void> {
-    return this.editor.setBranch(id, branch)
-  }
-
-  /** Change a task's engine vendor. Pure metadata; takes effect on next enter. */
-  async setVendor(id: TaskId | string, vendor: VendorId): Promise<void> {
-    return this.editor.setVendor(id, vendor)
-  }
-
-  /** Toggle / set the `pinned` flag. No-op for `kind: "main"` (always pinned). */
-  async setPinned(id: TaskId | string, pinned?: boolean): Promise<void> {
-    return this.editor.setPinned(id, pinned)
-  }
-
-  /** Move a regular task up/down within its visible ordering partition. */
-  async moveTask(id: TaskId | string, delta: -1 | 1): Promise<void> {
-    return this.editor.moveTask(id, delta)
-  }
-
-  /** Toggle / set the `archived` flag. No-op for `kind: "main"`. */
-  async setArchived(id: TaskId | string, archived?: boolean): Promise<void> {
-    return this.editor.setArchived(id, archived)
-  }
-
-  /** Batch-assign web-board `position` keys (all-or-nothing validation). Refuses main rows. */
-  async reorderTasks(moves: ReadonlyArray<{ readonly taskId: string; readonly position: number }>): Promise<void> {
-    return this.editor.reorderTasks(moves)
-  }
-
-  /** Move a task between status states. Refuses `done` ↔ `error` flip-flops. */
-  async setStatus(id: TaskId | string, status: TaskStatus): Promise<void> {
-    return this.editor.setStatus(id, status)
-  }
-
-  /** Set (or clear, with `null`) a task's PR status — driven by the daemon's collector. */
-  async setPRStatus(id: TaskId | string, prStatus: TaskPRStatus | null): Promise<void> {
-    return this.editor.setPRStatus(id, prStatus)
-  }
-
-  /** Stamp (or clear) the external tracker item this task was started from. */
-  async setLinkedWorkItem(id: TaskId | string, item: NonNullable<Task["linkedWorkItem"]> | null): Promise<void> {
-    return this.editor.setLinkedWorkItem(id, item)
-  }
-  /** Arm (or clear) the rate-limit auto-resume schedule. */
-  async setQuotaResume(id: TaskId | string, state: NonNullable<Task["quotaResume"]> | null): Promise<void> {
-    return this.editor.setQuotaResume(id, state)
-  }
+  setTitle = (id: TaskId | string, title: string): Promise<void> => this.editor.setTitle(id, title)
+  setBranch = (id: TaskId | string, branch: string): Promise<void> => this.editor.setBranch(id, branch)
+  setVendor = (id: TaskId | string, vendor: VendorId): Promise<void> => this.editor.setVendor(id, vendor)
+  setCommand = (id: TaskId | string, command: string, vendor?: VendorId): Promise<void> =>
+    this.editor.setCommand(id, command, vendor)
+  setPinned = (id: TaskId | string, pinned?: boolean): Promise<void> => this.editor.setPinned(id, pinned)
+  moveTask = (id: TaskId | string, delta: -1 | 1): Promise<void> => this.editor.moveTask(id, delta)
+  setArchived = (id: TaskId | string, archived?: boolean): Promise<void> => this.editor.setArchived(id, archived)
+  reorderTasks = (moves: ReadonlyArray<{ readonly taskId: string; readonly position: number }>): Promise<void> =>
+    this.editor.reorderTasks(moves)
+  setStatus = (id: TaskId | string, status: TaskStatus): Promise<void> => this.editor.setStatus(id, status)
+  setPRStatus = (id: TaskId | string, prStatus: TaskPRStatus | null): Promise<void> =>
+    this.editor.setPRStatus(id, prStatus)
+  setLinkedWorkItem = (id: TaskId | string, item: NonNullable<Task["linkedWorkItem"]> | null): Promise<void> =>
+    this.editor.setLinkedWorkItem(id, item)
+  setQuotaResume = (id: TaskId | string, state: NonNullable<Task["quotaResume"]> | null): Promise<void> =>
+    this.editor.setQuotaResume(id, state)
 
   /**
    * Permanently remove a task. Refuses to delete `kind: "main"`

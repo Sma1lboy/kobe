@@ -91,7 +91,7 @@ export async function scheduleQuotaResume(
 async function resumeDueTask(orch: DaemonOrchestrator, runtime: DaemonRuntimeAdapter, task: DaemonTask): Promise<void> {
   await orch.setQuotaResume(task.id, null)
   const delivered = await runtime.deliverPromptToLiveEngine(
-    { id: task.id, vendor: task.vendor, worktreePath: task.worktreePath },
+    { id: task.id, vendor: task.vendor, command: task.command, worktreePath: task.worktreePath },
     QUOTA_RESUME_CONTINUE_PROMPT,
   )
   logDaemonInfo("quota-resume", `resume task=${task.id} delivered=${delivered}`)

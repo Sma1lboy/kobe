@@ -103,7 +103,13 @@ export interface DaemonRuntimeAdapter {
    * spawns). Returns false when no alive engine session exists.
    */
   deliverPromptToLiveEngine(
-    task: { readonly id: string; readonly vendor?: VendorId; readonly worktreePath: string },
+    task: {
+      readonly id: string
+      readonly vendor?: VendorId
+      /** Raw launch command pinned on the task; wins over `vendor` when set. */
+      readonly command?: string
+      readonly worktreePath: string
+    },
     prompt: string,
   ): Promise<boolean>
   settingsSnapshot(): Response

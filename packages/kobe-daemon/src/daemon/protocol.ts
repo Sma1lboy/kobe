@@ -148,6 +148,11 @@ export type DaemonRequestName =
   | "task.rename"
   | "task.setBranch"
   | "task.setVendor"
+  // Set a task's RAW engine launch command (the dispatch face's
+  // `set-command`). The caller resolves the command's protocol — engine
+  // presets live in kobe's state.json, which the daemon cannot read — and
+  // sends both, so the record stays self-consistent.
+  | "task.setCommand"
   | "task.delete"
   // Land a task's branch back into its base repo (merge/squash). The last step
   // of the worktree→engine→branch lifecycle that had no product path; refuses a
@@ -409,6 +414,8 @@ export interface SerializedTask {
   readonly archived: boolean
   readonly pinned: boolean
   readonly vendor?: DaemonTask["vendor"]
+  /** Raw engine launch command as given to `add --command` / `set-command`. */
+  readonly command?: DaemonTask["command"]
   readonly prStatus?: DaemonTask["prStatus"]
   /** Web-board ordering key (sparse fractional; absent until first drop). */
   readonly position?: number
@@ -439,6 +446,7 @@ export function serializeTask(task: DaemonTask): SerializedTask {
     archived: task.archived,
     pinned: task.pinned ?? false,
     vendor: task.vendor,
+    command: task.command,
     prStatus: task.prStatus,
     position: task.position,
     modelEffort: task.modelEffort,

@@ -160,7 +160,7 @@ avoids touching your real `~/.rove` task data or `.kobe` runtime.
 **Many attempts at one prompt.** Press `n` in the TUI, or script it:
 
 ```bash
-rove api fan-out --repo "$PWD" \
+rove api add --repo "$PWD" \
   --agents claude:2,codex:2 \
   --prompt "Try independent approaches to simplify the auth flow."
 ```

@@ -7,6 +7,7 @@
  * command tab.
  */
 
+import { resolveLoginShell } from "@sma1lboy/kobe-daemon/daemon/platform-shell"
 import { F } from "./flags.ts"
 import { daemonOf, simpleRpc } from "./handler-helpers.ts"
 import { resolveActiveTaskId } from "./runtime.ts"
@@ -29,7 +30,7 @@ export const PANE_VERB: VerbSpec = {
       type: "string",
       placeholder: "CMD",
       description:
-        "Shell command the pane runs (via `sh -lc`, so pipes/args work); the pane closes when it exits. Omit for an interactive shell.",
+        "Shell command the pane runs (via the login shell's `-ilc`, so pipes/args and your shell rc's PATH/exports work); the pane closes when it exits. Omit for an interactive shell.",
     },
     {
       name: "direction",
@@ -62,7 +63,11 @@ export const PANE_VERB: VerbSpec = {
       throw new ApiError("no target task: pass --task-id (no $ROVE_TASK_ID, no active task)", "TASK_NOT_FOUND")
     }
     const command = ctx.args.str("command")
-    const argv = command ? ["sh", "-lc", command] : [process.env.SHELL || "sh"]
+    // Same integration path as the engine tab (session-launch.ts): the user's
+    // login shell with the interactive bit, so a pane command reads the same
+    // PATH/exports as one typed into the engine tab's shell (#26).
+    const shell = resolveLoginShell({ fallback: "/bin/sh" })
+    const argv = command ? [shell, "-ilc", command] : [shell, "-il"]
     const title = ctx.args.str("title") ?? (command ? (command.trim().split(/\s+/)[0] ?? "shell") : "shell")
     const tabId = ctx.args.str("tab")
     return simpleRpc(ctx, "tab.open", {

@@ -98,6 +98,7 @@ import {
   setArchivedOp,
   setAutomationEnabledOp,
   setBranchOp,
+  setCommandOp,
   setPinnedOp,
   setStatusOp,
   setTitleOp,
@@ -394,6 +395,8 @@ export class RemoteOrchestrator {
   setTitle = (id: TaskId | string, title: string): Promise<void> => setTitleOp(this.client, id, title)
   setBranch = (id: TaskId | string, branch: string): Promise<void> => setBranchOp(this.client, id, branch)
   setVendor = (id: TaskId | string, vendor: VendorId): Promise<void> => setVendorOp(this.client, id, vendor)
+  setCommand = (id: TaskId | string, command: string, vendor?: VendorId): Promise<void> =>
+    setCommandOp(this.client, id, command, vendor)
   setPinned = (id: TaskId | string, pinned?: boolean): Promise<void> => setPinnedOp(this.client, id, pinned)
   moveTask = (id: TaskId | string, delta: -1 | 1): Promise<void> => moveTaskOp(this.client, id, delta)
   setArchived = (id: TaskId | string, archived?: boolean): Promise<void> => setArchivedOp(this.client, id, archived)

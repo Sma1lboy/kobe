@@ -1,5 +1,48 @@
 # Changelog
 
+## 0.8.111
+
+### Patch Changes
+
+- 998ca4e: `rove api` picks engines by COMMAND, not by a vendor enum.
+
+  `add` and `send --tab new` now take `--command` — an engine id from the new
+  `engine-list` verb, or a full command line Rove runs verbatim
+  (`--command "codex --search"`). The protocol Rove speaks to it (transcript
+  reader, workspace-trust pre-answer, first-message delivery) is derived from
+  the command's `argv[0]` rather than declared beside it, falling back to a
+  generic protocol that still launches and delivers. Nothing validates an
+  engine's flags: probe an unfamiliar CLI with `<cmd> --help` first.
+
+  - **`engine-list`** _(new, offline)_: every engine Rove can launch with the
+    RAW command it runs, its display name, and its resolved protocol. Copy an
+    entry into `--command` verbatim, or edit a flag first.
+  - **`fan-out` is removed** — parallel attempts live on `add --count N` (and
+    `--agents claude:2,codex:1`), same `groupId` / `#i/N` / partial-failure
+    contract as before.
+  - **`set-vendor` is removed**, replaced by **`set-command`**.
+  - Both removed verbs return `UNKNOWN_VERB` with the replacement in
+    `nextCommandArgs` — no silent aliases.
+  - Custom engines are now named PRESETS: Settings → Engines → + Add engine
+    also asks for the protocol (`engineProtocol.<id>`), so a wrapper around a
+    built-in keeps history, trust, and delivery instead of degrading to generic.
+
+  Bundled agent skill bumped to v24 for the new vocabulary.
+
+## 0.8.110
+
+### Patch Changes
+
+- 93e6347: Fix shell env inconsistency (#26): `pane-open --command`, plugin panes, and the automation precheck now spawn through the same `resolveLoginShell()` + `-ilc` integration path engine tabs already use, instead of a bare `sh -lc` / non-interactive `-lc` that skips `.zshrc`/`.bashrc`. Panes and prechecks see the same PATH/exports as the engine they accompany.
+- a278546: Fix the `perf:golden` `park-heap-reclaim` probe's machine-load flake (bimodal 2% vs 52%). The sweep's quiet gate (`PARK_QUIET_MS`) refused to park the just-filled tabs, so nothing ever parked and the old %-of-total-heap formula was really measuring GC laziness — ambient, load-dependent. The probe now fast-forwards the sweep clock so parking actually happens, counts typed-array backing stores (`extraMemorySize`, where xterm cells live) in the heap reading, and reports a self-normalizing ratio — heap freed as a share of the growth the 10 tabs themselves caused — from the median of three settled GC samples.
+- 2f6d7d3: Fix a pty-host blip resurrecting an already-corrected idle tab as a phantom `running` dot. Once observation disproves a stale hook `running` (ESC interrupt, dead engine), the hook slot is now retired instead of left to win the next ungated arbitration — and its lapse watchdog no longer keeps re-arming that claim for the length of a host outage.
+
+## 0.8.109
+
+### Patch Changes
+
+- f1879cf: Keep the Kanban story drawer's engine labels inside their chip borders on terminals whose font descenders extend low in the cell.
+
 ## 0.8.108
 
 ### Patch Changes

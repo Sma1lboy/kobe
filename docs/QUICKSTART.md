@@ -75,7 +75,7 @@ One prompt, N isolated attempts, one command:
 ![One prompt fans out to three tasks, each with its own worktree, engine session, and branch](assets/fan-out.png)
 
 ```bash
-rove api fan-out --repo "$PWD" \
+rove api add --repo "$PWD" \
   --agents claude:2,codex:2 \
   --prompt "Try independent approaches to simplify the auth flow."
 ```

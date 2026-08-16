@@ -71,14 +71,14 @@ describe("create records the dispatcher ($KOBE_TASK_ID/$KOBE_TAB_ID)", () => {
     expect(client.requests[0].payload).toEqual({ repo: "/repo/x" })
   })
 
-  it("fan-out records the same dispatcher on every sibling", async () => {
+  it("a parallel `add --count` round records the same dispatcher on every sibling", async () => {
     process.env.KOBE_TASK_ID = "disp-1"
     process.env.KOBE_TAB_ID = "tab-3"
     const client = new FakeClient({
       "task.create": (_payload, i) => ({ taskId: `t${i}`, task: taskFixture({ id: `t${i}` }) }),
     })
     const { deliver } = recordingDelivery()
-    await invokeVerb("fan-out", ["--repo", "/repo/x", "--count", "2", "--prompt", "go"], {
+    await invokeVerb("add", ["--repo", "/repo/x", "--count", "2", "--prompt", "go"], {
       client,
       runtime: stubRuntime({ deliverPrompt: deliver }),
     })

@@ -23,10 +23,12 @@ Running many agents well is graph engineering, not prompt engineering:
 isolated attempts as nodes, your judgment at the gates. Four moves, one
 verb each.
 
-**Fan out** — one prompt, N isolated attempts, one call:
+**Fan out** — one prompt, N isolated attempts, one call. `add` is the
+create verb whether you want one task or five; `--count N` (or `--agents`
+for a mixed fleet) is what makes it a parallel round:
 
 ```bash
-rove api fan-out --repo "$PWD" \
+rove api add --repo "$PWD" \
   --agents claude:2,codex:2,copilot:1 \
   --prompt "Try independent approaches to simplify the auth flow."
 ```
@@ -64,18 +66,27 @@ rove api land --task-id a              # merge the winning branch
   verbatim) so a caller can self-heal without parsing prose.
 - Exit codes: `0` success · `1` handler/RPC failure · `2` usage errors
   (unknown verb, bad/missing flag, unreachable daemon) · `3` partial
-  fan-out (some tasks created, some failed; the full payload still goes to
-  stdout so created tasks are never lost).
+  parallel round (some tasks created, some failed; the full payload still
+  goes to stdout so created tasks are never lost).
 - `rove api <verb> --help` prints that verb's usage and exits 0.
 
 Flag parsing: `--key value` and `--key=value` both work; boolean flags may
 be given bare (`--force` ⇒ true) or explicitly (`--archived=false`);
 `--task-id` / enum / positive-int values are validated against the verb's
 spec, and unknown flags are rejected (exit 2). `--repo` resolves relative
-paths against `$PWD` (`~` expanded). Engine vendors: `claude`, `codex`,
-`copilot`, `kimi`, plus any user-registered custom engine id — the `schema`
-and `--help` output for `--vendor` lists those too. `spawn-task` is an
-alias of `add`.
+paths against `$PWD` (`~` expanded). `spawn-task` is an alias of `add`.
+
+Engines are chosen by COMMAND, not by a vendor enum: `--command` takes an
+engine id from `engine-list` (`claude`, `codex`, `copilot`, `kimi`, plus any
+engine you registered) **or** a full command line Rove runs verbatim
+(`--command "codex --search"`). Nothing validates an engine's flags — probe
+an unfamiliar one with `<cmd> --help` before dispatching. See
+[ENGINES.md](./ENGINES.md#engine-presets-and-protocols) for how the protocol
+Rove speaks to a command is derived from it.
+
+Two verbs were REMOVED (no aliases): `fan-out` → `add --count N`, and
+`set-vendor` → `set-command`. Calling either returns `UNKNOWN_VERB` with the
+replacement in `nextCommandArgs`.
 
 ## Discovery
 
@@ -83,6 +94,12 @@ alias of `add`.
   (groups + verb summaries, no flags); drill in with `--verb <name>` (full
   flag detail for one verb), `--group <g>`, or `--all` (everything; large).
   Includes an `apiVersion` agents can gate on.
+- `engine-list` *(offline)*: every engine Rove can launch — built-ins and
+  your registered presets — each with the RAW command it runs, its display
+  name, and its `protocol` (the adapter Rove speaks to it: history reads,
+  trust pre-answer, first-message delivery; `generic` = none). What it
+  prints is what a launch runs, so an entry can be copied into `--command`
+  verbatim or edited first. Returns `{ engines }`.
 
 ## read
 
@@ -96,7 +113,9 @@ alias of `add`.
   the persisted snapshot does not list still gets a row, marked
   `unregistered: true` — an alive engine is never invisible here.
   `.task.dispatcher` (`{taskId, tabId}`) = the Rove session that created the
-  task, when one did — the lineage read for a fan-out round's parent.
+  task, when one did — the lineage read for a parallel round's parent.
+  `.task.command` = the raw launch command pinned on the task; `.task.vendor`
+  = the protocol derived from it.
 - `collect [--task-ids a,b,c] [--repo PATH]`: read-only comparison
   snapshot of several tasks: identity, branch, lineage (`.dispatcher`,
   `.groupId`), `.running`, per-tab `.tabs` (the same join as `get-task` —
@@ -132,28 +151,38 @@ alias of `add`.
 
 ## create
 
-- `add --repo PATH [--title T] [--branch B] [--base-branch B] [--vendor V]
-  [--status S] [--pin] [--activate] [--prompt TEXT]`: create a task
-  (appears in the sidebar immediately). With `--prompt` it also
-  materializes the worktree, starts the engine, and delivers the prompt.
-  Does not steal focus unless `--activate`. Alias: `spawn-task`.
-- `fan-out --repo PATH --prompt TEXT (--count N | --agents claude:2,codex:1)
-  [--vendor V] [--title T] [--base-branch B]`: spawn N tasks of one prompt
-  in a single call (parallel attempts). Capped at 10.
+- `add --repo PATH [--title T] [--branch B] [--base-branch B]
+  [--command CMD] [--count N | --agents claude:2,codex:1] [--status S]
+  [--pin] [--activate] [--prompt TEXT]`: create a task (appears in the
+  sidebar immediately). With `--prompt` it also materializes the worktree,
+  starts the engine, and delivers the prompt. Does not steal focus unless
+  `--activate`. Alias: `spawn-task`.
 
-A create issued from inside a Rove engine tab (`add`, `fan-out`) records
+  **Parallel attempts** live here too: `--count N` spawns N sibling tasks of
+  the SAME prompt, each with its own worktree and branch, sharing one
+  `groupId` and `#i/N` titles; `--agents claude:2,codex:1` does the same
+  with a mixed fleet (engine IDS only — a raw command line can't be
+  expressed per-sibling; issue N separate `add --command` calls for that).
+  Capped at 10; prefer 3-4. Both require `--prompt` (a parallel round IS its
+  prompt) and reject `--branch` (siblings cannot share one branch). This was
+  the `fan-out` verb, which no longer exists.
+
+  `--command` picks the engine (an id from `engine-list`, or a full command
+  line). Omitted, the repo's default engine is used.
+
+A create issued from inside a Rove engine tab records
 the caller as the new task's `dispatcher` (`{taskId, tabId}` from
 `$ROVE_TASK_ID`/`$ROVE_TAB_ID`, with Kobe aliases) — the reply address the worker's bare
 `send` routes back to. Creates from a plain shell or the TUI record none.
 
-A new task's FIRST prompt (`add --prompt`, `fan-out`, quick-fork) gets a
+A new task's FIRST prompt (`add --prompt`, a parallel round, quick-fork) gets a
 short coda appended asking the agent to `set-branch` the auto-generated
 placeholder branch to a descriptive name. Prompts into existing sessions
 (`send`, `send --tab new`, `dispatch`) are never modified.
 
 ## drive
 
-- `send [--task-id ID] --prompt TEXT [--tab TAB] [--vendor V] [--plain]`: paste a
+- `send [--task-id ID] --prompt TEXT [--tab TAB] [--command CMD] [--plain]`: paste a
   follow-up into a task's running engine (one full turn). Without
   `--task-id`, a task that has a `dispatcher` on record replies to that
   exact tab — falling back to the dispatcher task's live canonical engine
@@ -164,9 +193,9 @@ placeholder branch to a descriptive name. Prompts into existing sessions
   a tab-precise reply command (`--task-id <sender> --tab <sender's tab>`);
   `--plain` skips that prefix. `--tab new` spawns a fresh engine tab, while
   `--tab tab-N` targets that exact tab (`TAB_NOT_FOUND` if it is dead or
-  absent). `--vendor V` is valid only with `--tab new`: it pins that new tab
-  to the selected engine without changing the task's default vendor. Using it
-  with an existing tab is a `BAD_FLAG` error rather than a silent switch.
+  absent). `--command CMD` is valid only with `--tab new`: it pins that new
+  tab to that engine without changing the task's own. Using it with an
+  existing tab is a `BAD_FLAG` error rather than a silent switch.
   Delivery needs a live engine in that tab: one that exited into the
   keep-alive shell refuses with `ENGINE_NOT_RUNNING` and a `--tab new` hint
   instead of pasting into a shell. Any registered engine passes, so a tab may
@@ -213,8 +242,11 @@ placeholder branch to a descriptive name. Prompts into existing sessions
 - `rename --task-id ID --title T`: set a task's title.
 - `set-branch --task-id ID --branch B`: rename a task's branch
   (`git branch -m` if materialized, else recorded).
-- `set-vendor --task-id ID --vendor V`: change the engine vendor (takes
-  effect on next session rebuild).
+- `set-command --task-id ID --command CMD`: set a task's engine launch
+  command (takes effect on next session rebuild). The protocol Rove speaks
+  to it is derived from the command; the result reports which one, and
+  `generic` when the command names no engine Rove knows. Replaces the
+  removed `set-vendor`.
 - `set-status --task-id ID --status S`: set lifecycle status:
   `backlog`, `in_progress`, `in_review`, `done`, `canceled`, `error`.
 
@@ -308,7 +340,7 @@ to do) from `dispatch_failed` (needs a human).
   disk now (without starting an engine). Returns `{ worktreePath }`.
 - `discover-adoptable --repo PATH`: list existing git worktrees not yet
   tracked as Rove tasks.
-- `adopt --repo PATH --worktree PATH [--branch B] [--vendor V] [--title T]`:
+- `adopt --repo PATH --worktree PATH [--branch B] [--command CMD] [--title T]`:
   import an existing git worktree as a Rove task.
 
 ## feedback + other

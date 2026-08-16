@@ -292,10 +292,11 @@ export class DaemonActivityRegistry {
   /**
    * Fold one OBSERVED per-session fact (issue #11/#16 — the activity
    * observer's PTY output heartbeat + foreground-walk reconciler) into the
-   * per-tab record's OBSERVED slot. The hook slot is never mutated here;
-   * what subscribers see follows {@link recomputeTabActivity}'s priority —
-   * hook claims outrank observation except the one documented correction (a
-   * stale hook `running` vs a fresher observed rest). Sticky attention
+   * per-tab record's OBSERVED slot. What subscribers see follows
+   * {@link recomputeTabActivity}'s priority — hook claims outrank
+   * observation except the one documented correction (a stale hook `running`
+   * vs a fresher observed rest), and a hook slot that loses THAT correction
+   * is retired here (see below) so it cannot come back. Sticky attention
    * states are NEVER touched: they mean "a human is needed" and carry no
    * output by nature.
    *
@@ -316,6 +317,7 @@ export class DaemonActivityRegistry {
       state: claim === "working" ? "running" : "idle",
       at: this.now(),
       vendor: opts.vendor ?? entry?.observed?.vendor ?? entry?.hook?.vendor,
+      session: entry?.observed?.session ?? entry?.hook?.session,
     }
     const effective = recomputeTabActivity(
       { hook: entry?.hook, observed },
@@ -324,15 +326,26 @@ export class DaemonActivityRegistry {
     )
     if (!effective) return "noop" // unreachable — the observed slot was just written
 
+    // A hook `running` that observation just DISPROVED is dead — retire the
+    // slot (and its watchdog) instead of leaving it to win the next
+    // arbitration. Keeping it resurrected the corrected tab as a phantom
+    // `running` on the very next ungated pass (the host-unreachable retire
+    // path passes no correction gate, so the Infinity default re-elects the
+    // stale claim at its original `at`), and its lapse watchdog kept
+    // re-arming that claim for the whole outage — issue #27. A genuinely new
+    // turn arrives as a fresh hook event, which writes the slot again.
+    const hook = effective.source === "observed" ? undefined : entry?.hook
+
     // Same state from the same source ⇒ a quiet refresh of the observed
     // slot's timestamp, no republish churn (a working engine re-asserted
     // every poll must not spam subscribers).
-    if (prev && prev.state === effective.state && prev.source === effective.source) {
-      if (entry) entry.observed = observed
+    if (entry && hook === entry.hook && prev && prev.state === effective.state && prev.source === effective.source) {
+      entry.observed = observed
       return "noop"
     }
+    if (hook === undefined && entry?.hook?.lapse) clearTimeout(entry.hook.lapse)
 
-    tabs.set(tabId, { hook: entry?.hook, observed, effective })
+    tabs.set(tabId, { ...(hook ? { hook } : {}), observed, effective })
     this.tabActivity.set(taskId, tabs)
     this.bus.publish("engine-state", this.payload(taskId, effective, tabId))
 

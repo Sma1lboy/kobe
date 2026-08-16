@@ -36,7 +36,7 @@ const GOLDEN = {
   "daemon-connect-replay-ms": 500, // socket connect + subscribe → snapshot replayed
   "daemon-rpc-p50-ms": 20, // daemon.status round-trip, median of 20
   "mem-per-tab-mb": 18, // hot-tab RSS cost, 10 visited tabs
-  "park-heap-reclaim-pct-min": 40, // JS-heap % released by parking those tabs
+  "park-heap-reclaim-pct-min": 40, // % of the tabs' own heap growth that parking reclaims
   "binary-size-mb": 150, // standalone `bun build --compile` output (skipped by --fast)
   "binary-compile-ms": 240_000, // scripts/compile.ts wall time (skipped by --fast)
 }
@@ -44,12 +44,14 @@ const GOLDEN = {
 setRoveEnv("HOME_DIR", mkdtempSync(join(tmpdir(), "kobe-perf-golden-")))
 setRoveEnv("PTY_IDLE_EXIT_MS", "2000")
 
-const { PtyRegistry } = await import("../src/tui/panes/terminal/registry.ts")
+const { PtyRegistry, PARK_QUIET_MS } = await import("../src/tui/panes/terminal/registry.ts")
 const { XtermTaskPty } = await import("../src/tui/panes/terminal/pty-xterm-base.ts")
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 const rssMb = () => process.memoryUsage().rss / 1048576
-const heapMb = () => (require("bun:jsc") as { heapStats(): { heapSize: number } }).heapStats().heapSize / 1048576
+const heapStats = () =>
+  (require("bun:jsc") as { heapStats(): { heapSize: number; extraMemorySize: number } }).heapStats()
+const heapMb = () => (heapStats().heapSize + heapStats().extraMemorySize) / 1048576
 const median = (xs: number[]) => xs.slice().sort((a, b) => a - b)[Math.floor(xs.length / 2)] ?? 0
 const text = (p: { capture(): readonly (readonly { text: string }[])[] }) =>
   p
@@ -205,6 +207,12 @@ const reg = new PtyRegistry()
 /* 6+7 — per-tab memory and park reclaim (10 visited tabs). */
 {
   const rss1 = rssMb()
+  Bun.gc(true)
+  // Heap baseline before the tabs exist. The reclaim metric below is a
+  // SELF-NORMALIZING ratio — freed / the growth these 10 tabs caused —
+  // because %-of-total-heap made the denominator ambient (daemon server,
+  // earlier probes, load-driven allocation) and bimodal across machines.
+  const heapBase = heapMb()
   let unsubs: (undefined | (() => void))[] = []
   for (let i = 0; i < 10; i++) {
     const pty = reg.acquire(`perf::mem-${i}`, "/tmp", BASH)
@@ -221,12 +229,31 @@ const reg = new PtyRegistry()
     unsubs[i] = undefined
   }
   unsubs = []
-  const heapBefore = heapMb()
-  reg.parkIdle(0)
   Bun.gc(true)
-  await sleep(800)
+  await sleep(300)
   Bun.gc(true)
-  record("park-heap-reclaim-pct-min", ((heapBefore - heapMb()) / heapBefore) * 100, "%")
+  const heapHot = heapMb()
+  // Fast-forward the sweep clock past the quiet gate: the fill finished
+  // seconds ago (the shells really are idle), but parkIdle refuses to park
+  // anything with output inside PARK_QUIET_MS — passing a future `now` is
+  // the test-only clock injection the sweep API already exposes. Without
+  // it NOTHING parks here and the metric degenerates into measuring GC
+  // laziness — the bimodal 2%-vs-52% flake this probe had.
+  reg.parkIdle(0, Date.now() + PARK_QUIET_MS + 1000)
+  // Multi-sample after repeated GC cycles; parked shells release their
+  // rings asynchronously, so take the median of settled readings instead
+  // of one point sample.
+  const parked: number[] = []
+  for (let i = 0; i < 3; i++) {
+    Bun.gc(true)
+    await sleep(600)
+    Bun.gc(true)
+    parked.push(heapMb())
+  }
+  const heapParked = median(parked)
+  const grown = heapHot - heapBase
+  if (grown < 5) throw new Error(`park probe: tab heap growth too small to measure (${grown.toFixed(1)}MB)`)
+  record("park-heap-reclaim-pct-min", ((heapHot - heapParked) / grown) * 100, "%")
 }
 
 /* Teardown pty sandbox before the (long) compile. */

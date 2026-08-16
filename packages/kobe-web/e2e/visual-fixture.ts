@@ -225,7 +225,7 @@ export default async function setupVisualFixture(): Promise<void> {
     VISUAL_REPO,
     "--title",
     "Visual Fixture",
-    "--vendor",
+    "--command",
     "claude",
     "--activate",
   ]) as { taskId?: unknown }

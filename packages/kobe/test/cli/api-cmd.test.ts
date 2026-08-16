@@ -63,7 +63,7 @@ describe("apiUsage", () => {
 })
 
 describe("parseAgentsSpec", () => {
-  it("expands vendor:count pairs into one entry per task", () => {
+  it("expands engine:count pairs into one entry per task", () => {
     expect(parseAgentsSpec("claude:2,codex:1")).toEqual(["claude", "claude", "codex"])
   })
 
@@ -71,22 +71,22 @@ describe("parseAgentsSpec", () => {
     expect(parseAgentsSpec(" claude:1 , , codex:2 ")).toEqual(["claude", "codex", "codex"])
   })
 
-  it("rejects an unknown vendor with the fan-out help recovery step", () => {
+  it("rejects an unknown engine with the add help recovery step", () => {
     try {
       parseAgentsSpec("bogus:2")
       expect.unreachable("should have thrown")
     } catch (err) {
       expect(err).toBeInstanceOf(ApiError)
       expect((err as ApiError).code).toBe("BAD_FLAG")
-      expect((err as ApiError).message).toContain("must be one of")
-      expect((err as ApiError).data?.nextCommandArgs).toEqual(["api", "fan-out", "--help"])
+      expect((err as ApiError).message).toContain("must be a built-in")
+      expect((err as ApiError).data?.nextCommandArgs).toEqual(["api", "add", "--help"])
       expect((err as ApiError).data?.hint).toBeTruthy()
     }
   })
 
   it("rejects a non-positive or malformed count", () => {
     expect(() => parseAgentsSpec("claude:0")).toThrow(/positive integer/)
-    expect(() => parseAgentsSpec("claude")).toThrow(/vendor:count/)
+    expect(() => parseAgentsSpec("claude")).toThrow(/engine:count/)
   })
 
   it("rejects an over-cap count before allocating (no OOM on a huge count)", () => {
@@ -102,7 +102,7 @@ describe("parseAgentsSpec", () => {
 })
 
 describe("buildCountPlan", () => {
-  it("expands --count N into N copies of the vendor", () => {
+  it("expands --count N into N copies of the engine", () => {
     expect(buildCountPlan(3, "codex")).toEqual(["codex", "codex", "codex"])
     expect(buildCountPlan(1, "claude")).toEqual(["claude"])
   })
@@ -111,8 +111,8 @@ describe("buildCountPlan", () => {
     // Mirrors the parseAgentsSpec guard: `--count 1000000000` must fail fast
     // instead of building a billion-element array only to hit the post-build
     // cap check.
-    expect(() => buildCountPlan(1_000_000_000, "claude")).toThrow(/exceeds the cap/)
-    expect(() => buildCountPlan(11, "claude")).toThrow(/exceeds the cap/)
+    expect(() => buildCountPlan(1_000_000_000, "claude")).toThrow(/exceeds the parallel cap/)
+    expect(() => buildCountPlan(11, "claude")).toThrow(/exceeds the parallel cap/)
   })
 })
 
@@ -141,13 +141,13 @@ describe("API surface (full CRUD)", () => {
       "list",
       "get-task",
       "add",
-      "fan-out",
+      "engine-list",
       "send",
       "feedback",
       "collect",
       "rename",
       "set-branch",
-      "set-vendor",
+      "set-command",
       "set-status",
       "archive",
       "pin",
@@ -229,7 +229,7 @@ describe("validateAgainstSpec", () => {
   })
 
   it("accepts a well-formed invocation", () => {
-    const { flags } = parseFlags(["--repo", "/x", "--status", "in_progress", "--vendor", "claude"])
+    const { flags } = parseFlags(["--repo", "/x", "--status", "in_progress", "--command", "claude"])
     expect(() => validateAgainstSpec(add, flags)).not.toThrow()
   })
 })

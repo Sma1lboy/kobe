@@ -304,7 +304,7 @@ export function noteFilingProtocol(taskId: string, api: string = kobeApiInvocati
     // (every session pays for it in context), so the coordination verbs are
     // taught by the Rove agent skill / the active CLI's `api schema`, and this line only
     // says where to look — the herdr SKILL.md layering, applied here.
-    `For delegating or parallelizing WORK from this session, prefer Rove's own verbs (fan-out / add --prompt / send / dispatch) over ad-hoc subprocesses — discover them via \`${api} schema\` or the Rove agent skill.`,
+    `For delegating or parallelizing WORK from this session, prefer Rove's own verbs (add --prompt, add --count N for parallel attempts, send, dispatch) over ad-hoc subprocesses — discover them via \`${api} schema\` or the Rove agent skill.`,
   ].join("\n")
 }
 
