@@ -94,6 +94,31 @@ function childrenIndex(rows: readonly ProcRow[]): Map<number, ProcRow[]> {
 }
 
 /**
+ * Is `ancestorPid` anywhere on `pid`'s parent chain (or `pid` itself)?
+ *
+ * The lineage half of "am I really running inside this tab" (issue #24):
+ * `$KOBE_TASK_ID` is an ordinary env var and inherits down the whole
+ * process tree, so a background daemon forked out of an engine tab keeps
+ * that identity for as long as it lives. A pid chain can't be inherited —
+ * a process that detached (ppid reparented to 1) simply stops reaching the
+ * tab's shell, which is exactly the case we must refuse.
+ *
+ * The walk is bounded by the row count: a `ps` snapshot is a forest, but a
+ * malformed/racy one could still hand us a ppid cycle.
+ */
+export function hasAncestor(rows: readonly ProcRow[], pid: number, ancestorPid: number): boolean {
+  const parents = new Map(rows.map((r) => [r.pid, r.ppid]))
+  let cur = pid
+  for (let hops = 0; hops <= rows.length; hops++) {
+    if (cur === ancestorPid) return true
+    const next = parents.get(cur)
+    if (next === undefined || next <= 1) return false
+    cur = next
+  }
+  return false
+}
+
+/**
  * Breadth-first hunt for an engine among `rootPid`'s descendants —
  * shallowest wins, so a wrapper's engine child is found before that
  * engine's own helper processes (claude spawns `claude bg-pty-host`

@@ -183,6 +183,17 @@ the caller as the new task's `dispatcher` (`{taskId, tabId}` from
 `$ROVE_TASK_ID`/`$ROVE_TAB_ID`, with Kobe aliases) — the reply address the worker's bare
 `send` routes back to. Creates from a plain shell or the TUI record none.
 
+Those env vars are **verified, not trusted**: an environment variable is
+inherited by every descendant process, so an agent's detached background
+process keeps exporting the ids of a tab it no longer runs in, and every
+task it creates would name a stranger's session as its dispatcher. Rove
+believes the pair only when `<taskId>::<tabId>` is a live session AND that
+session's shell is an ancestor of the calling process. When it isn't, the
+dispatcher / `[KOBE PEER]` provenance / spawner coda are all omitted (a
+wrong reply address delivers to someone else; no address at least fails
+visibly), and the verb's JSON result carries an `identityWarning` field
+saying so.
+
 A new task's FIRST prompt (`add --prompt`, a parallel round, quick-fork) gets a
 short coda appended asking the agent to `set-branch` the auto-generated
 placeholder branch to a descriptive name. Prompts into existing sessions

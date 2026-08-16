@@ -9,7 +9,13 @@
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { invokeVerb } from "../../src/cli/api-cmd.ts"
-import { dispatcherEnvPayload } from "../../src/cli/api/dispatcher.ts"
+import {
+  type SelfSessionProbe,
+  dispatcherEnvPayload,
+  resetVerifiedSelfSession,
+  takeIdentityWarning,
+  verifiedSelfSession,
+} from "../../src/cli/api/dispatcher.ts"
 import { normalizeIndex } from "../../src/orchestrator/index/store-codec.ts"
 import { FakeClient, expectApiError, recordingDelivery, stubRuntime, taskFixture } from "./api-handler-fixtures.ts"
 
@@ -22,33 +28,119 @@ function restoreEnv(name: string, saved: string | undefined): void {
   } else process.env[name] = saved
 }
 
+/**
+ * A pty host + process tree where THIS process (pid 500) descends from the
+ * session's shell — the shape a real `kobe api` call inside an engine tab
+ * has: tab shell → engine → its Bash tool → this CLI.
+ */
+function probeFor(
+  key: string,
+  opts: { shellPid?: number; alive?: boolean; detached?: boolean } = {},
+): SelfSessionProbe {
+  const shellPid = opts.shellPid ?? 100
+  return {
+    pid: 500,
+    sessions: async () => [{ key, pid: shellPid, alive: opts.alive ?? true }],
+    ps: async () =>
+      [
+        `  ${shellPid}     1 /bin/zsh -il`,
+        `  200 ${opts.detached ? 1 : shellPid} claude`,
+        "  500   200 bun kobe api add",
+      ].join("\n"),
+  }
+}
+
 beforeEach(() => {
+  resetVerifiedSelfSession()
+  takeIdentityWarning()
   // biome-ignore lint/performance/noDelete: env must fully unset (assigning undefined leaves the string "undefined").
   delete process.env.KOBE_TASK_ID
   // biome-ignore lint/performance/noDelete: env must fully unset (assigning undefined leaves the string "undefined").
   delete process.env.KOBE_TAB_ID
 })
 afterEach(() => {
+  resetVerifiedSelfSession()
   restoreEnv("KOBE_TASK_ID", savedTaskId)
   restoreEnv("KOBE_TAB_ID", savedTabId)
 })
 
-describe("dispatcherEnvPayload", () => {
-  it("carries both ids, floors a missing tab, and stays empty without a task id", () => {
-    expect(dispatcherEnvPayload({ KOBE_TASK_ID: "d1", KOBE_TAB_ID: "tab-4" })).toEqual({
-      dispatcherTaskId: "d1",
-      dispatcherTabId: "tab-4",
+describe("verifiedSelfSession (issue #24: env identity is inheritable, so it must be proven)", () => {
+  it("accepts the env when the named tab is alive AND owns this process", async () => {
+    expect(await verifiedSelfSession({ KOBE_TASK_ID: "d1", KOBE_TAB_ID: "tab-4" }, probeFor("d1::tab-4"))).toEqual({
+      taskId: "d1",
+      tabId: "tab-4",
     })
-    expect(dispatcherEnvPayload({ KOBE_TASK_ID: "d1" })).toEqual({ dispatcherTaskId: "d1", dispatcherTabId: "tab-1" })
-    expect(dispatcherEnvPayload({ KOBE_TAB_ID: "tab-4" })).toEqual({})
-    expect(dispatcherEnvPayload({})).toEqual({})
+  })
+
+  it("floors a missing tab id to the canonical tab-1 and verifies THAT", async () => {
+    expect(await verifiedSelfSession({ KOBE_TASK_ID: "d1" }, probeFor("d1::tab-1"))).toEqual({
+      taskId: "d1",
+      tabId: "tab-1",
+    })
+  })
+
+  it("REFUSES an inherited env: a detached background process no longer descends from the tab", async () => {
+    // The incident shape: a Claude Code background daemon forked out of
+    // boccha's tab-1, reparented to init, and kept exporting boccha's ids.
+    // The session is still perfectly alive — only the lineage is broken.
+    expect(
+      await verifiedSelfSession(
+        { KOBE_TASK_ID: "boccha", KOBE_TAB_ID: "tab-1" },
+        probeFor("boccha::tab-1", { detached: true }),
+      ),
+    ).toBeNull()
+    // The degrade is never silent — it rides the verb's JSON result.
+    expect(takeIdentityWarning()).toContain("not running inside that tab")
+  })
+
+  it("REFUSES when the named session is dead, absent, or the host is gone", async () => {
+    const env = { KOBE_TASK_ID: "d1", KOBE_TAB_ID: "tab-1" }
+    expect(await verifiedSelfSession(env, probeFor("d1::tab-1", { alive: false }))).toBeNull()
+    expect(await verifiedSelfSession(env, probeFor("other::tab-1"))).toBeNull()
+    expect(await verifiedSelfSession(env, { ...probeFor("d1::tab-1"), sessions: async () => [] })).toBeNull()
+  })
+
+  it("REFUSES when the process tree is unreadable — unverifiable is never trusted", async () => {
+    const probe: SelfSessionProbe = {
+      ...probeFor("d1::tab-1"),
+      ps: async () => {
+        throw new Error("ps failed")
+      },
+    }
+    expect(await verifiedSelfSession({ KOBE_TASK_ID: "d1" }, probe)).toBeNull()
+  })
+
+  it("stays silent (no warning) for a plain shell with no env at all", async () => {
+    expect(await verifiedSelfSession({}, probeFor("d1::tab-1"))).toBeNull()
+    expect(takeIdentityWarning()).toBeNull()
   })
 })
 
+describe("dispatcherEnvPayload", () => {
+  it("carries the verified pair, and stays empty when the env can't be proven", async () => {
+    expect(await dispatcherEnvPayload({ KOBE_TASK_ID: "d1", KOBE_TAB_ID: "tab-4" }, probeFor("d1::tab-4"))).toEqual({
+      dispatcherTaskId: "d1",
+      dispatcherTabId: "tab-4",
+    })
+    expect(await dispatcherEnvPayload({ KOBE_TASK_ID: "d1" }, probeFor("d1::tab-1"))).toEqual({
+      dispatcherTaskId: "d1",
+      dispatcherTabId: "tab-1",
+    })
+    expect(await dispatcherEnvPayload({ KOBE_TAB_ID: "tab-4" }, probeFor("d1::tab-1"))).toEqual({})
+    expect(await dispatcherEnvPayload({}, probeFor("d1::tab-1"))).toEqual({})
+    // The pollution case: real ids, real live tab, wrong process.
+    expect(await dispatcherEnvPayload({ KOBE_TASK_ID: "d1" }, probeFor("d1::tab-1", { detached: true }))).toEqual({})
+  })
+})
+
+/** Prime the verified-identity memo so `invokeVerb` runs no real pty/ps IO. */
+async function asSession(taskId: string, tabId: string, opts?: { detached?: boolean }): Promise<void> {
+  await verifiedSelfSession({ KOBE_TASK_ID: taskId, KOBE_TAB_ID: tabId }, probeFor(`${taskId}::${tabId}`, opts))
+}
+
 describe("create records the dispatcher ($KOBE_TASK_ID/$KOBE_TAB_ID)", () => {
   it("add sends the caller's task + tab to task.create", async () => {
-    process.env.KOBE_TASK_ID = "disp-1"
-    process.env.KOBE_TAB_ID = "tab-2"
+    await asSession("disp-1", "tab-2")
     const client = new FakeClient({ "task.create": () => ({ taskId: "t1", task: taskFixture() }) })
     await invokeVerb("add", ["--repo", "/repo/x"], { client, runtime: stubRuntime() })
     expect(client.requests[0].payload).toEqual({
@@ -59,7 +151,7 @@ describe("create records the dispatcher ($KOBE_TASK_ID/$KOBE_TAB_ID)", () => {
   })
 
   it("add without $KOBE_TAB_ID floors the tab to the canonical tab-1", async () => {
-    process.env.KOBE_TASK_ID = "disp-1"
+    await verifiedSelfSession({ KOBE_TASK_ID: "disp-1" }, probeFor("disp-1::tab-1"))
     const client = new FakeClient({ "task.create": () => ({ taskId: "t1", task: taskFixture() }) })
     await invokeVerb("add", ["--repo", "/repo/x"], { client, runtime: stubRuntime() })
     expect(client.requests[0].payload).toMatchObject({ dispatcherTaskId: "disp-1", dispatcherTabId: "tab-1" })
@@ -71,9 +163,34 @@ describe("create records the dispatcher ($KOBE_TASK_ID/$KOBE_TAB_ID)", () => {
     expect(client.requests[0].payload).toEqual({ repo: "/repo/x" })
   })
 
+  it("add with an INHERITED env records no dispatcher at all (issue #24)", async () => {
+    // Every field is real — boccha's task exists, its tab-1 is alive — but
+    // this process was forked out of it days ago and detached. Recording
+    // {boccha, tab-1} here is what sent finished workers' reports to a
+    // stranger; the honest record is NO record.
+    await asSession("boccha", "tab-1", { detached: true })
+    const client = new FakeClient({ "task.create": () => ({ taskId: "t1", task: taskFixture() }) })
+    await invokeVerb("add", ["--repo", "/repo/x"], { client, runtime: stubRuntime() })
+    expect(client.requests[0].payload).toEqual({ repo: "/repo/x" })
+  })
+
+  it("a parallel `add --count` round with an inherited env records no dispatcher on any sibling", async () => {
+    await asSession("boccha", "tab-1", { detached: true })
+    const client = new FakeClient({
+      "task.create": (_payload, i) => ({ taskId: `t${i}`, task: taskFixture({ id: `t${i}` }) }),
+    })
+    const { deliver } = recordingDelivery()
+    await invokeVerb("add", ["--repo", "/repo/x", "--count", "2", "--prompt", "go"], {
+      client,
+      runtime: stubRuntime({ deliverPrompt: deliver }),
+    })
+    for (const create of client.requests.filter((r) => r.name === "task.create")) {
+      expect(create.payload).not.toHaveProperty("dispatcherTaskId")
+    }
+  })
+
   it("a parallel `add --count` round records the same dispatcher on every sibling", async () => {
-    process.env.KOBE_TASK_ID = "disp-1"
-    process.env.KOBE_TAB_ID = "tab-3"
+    await asSession("disp-1", "tab-3")
     const client = new FakeClient({
       "task.create": (_payload, i) => ({ taskId: `t${i}`, task: taskFixture({ id: `t${i}` }) }),
     })
@@ -101,9 +218,8 @@ describe("bare send replies to the dispatcher", () => {
     })
   }
 
-  beforeEach(() => {
-    process.env.KOBE_TASK_ID = "worker-1"
-    process.env.KOBE_TAB_ID = "tab-9"
+  beforeEach(async () => {
+    await asSession("worker-1", "tab-9")
   })
 
   it("lands on the dispatcher's exact tab when it is alive", async () => {
@@ -201,6 +317,28 @@ describe("bare send replies to the dispatcher", () => {
     await invokeVerb("send", ["--prompt", "hi"], { client, runtime: stubRuntime({ deliverPrompt: deliver }) })
     expect(client.subscribeCount).toBe(1)
     expect(calls[0].target.id).toBe("active-1")
+  })
+
+  it("an INHERITED env falls back to the active task instead of the stranger's dispatcher", async () => {
+    await asSession("worker-1", "tab-9", { detached: true })
+    const client = workerClient({ taskId: "disp-1", tabId: "tab-2" })
+    client.replay.push({ channel: "active-task", payload: { taskId: "active-1" } })
+    const { calls, deliver } = recordingDelivery()
+    await invokeVerb("send", ["--prompt", "hi"], { client, runtime: stubRuntime({ deliverPrompt: deliver }) })
+    // worker-1's own dispatcher is never even looked up — this process has
+    // no proven identity, so it has no reply address to inherit.
+    expect(calls[0].target.id).toBe("active-1")
+  })
+
+  it("an INHERITED env sends no [KOBE PEER] prefix — impersonation is worse than anonymity", async () => {
+    await asSession("worker-1", "tab-9", { detached: true })
+    const client = workerClient({ taskId: "disp-1", tabId: "tab-2" })
+    const { calls, deliver } = recordingDelivery()
+    await invokeVerb("send", ["--task-id", "disp-1", "--prompt", "hi"], {
+      client,
+      runtime: stubRuntime({ deliverPrompt: deliver }),
+    })
+    expect(calls[0].prompt).toBe("hi")
   })
 
   it("the [KOBE PEER] reply command is tab-precise (sender's $KOBE_TAB_ID)", async () => {

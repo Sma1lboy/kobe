@@ -63,7 +63,7 @@ async function addOne(ctx: VerbContext, repo: string): Promise<unknown> {
   // Record who dispatched this create (issue #21) — the reply address a
   // sub-task's bare `send` routes its outcome back to.
   const choice = await engineChoice(ctx, repo)
-  const payload: Record<string, string> = { repo, ...dispatcherEnvPayload(), ...enginePayload(choice) }
+  const payload: Record<string, string> = { repo, ...(await dispatcherEnvPayload()), ...enginePayload(choice) }
   const title = args.str("title")
   if (title) payload.title = title
   const branch = args.str("branch")
@@ -208,7 +208,7 @@ async function addParallel(
   let createFailure: { vendor: VendorId; error: { message: string; code: string } } | null = null
   // Every sibling records the same dispatcher (issue #21) — the reply
   // address each worker's bare `send` routes its outcome back to.
-  const dispatcher = dispatcherEnvPayload()
+  const dispatcher = await dispatcherEnvPayload()
   for (const [i, vendor] of plan.entries()) {
     // `--agents` picks each sibling's engine BY ID, so its command is that
     // id; a `--count` round reuses the caller's own `--command` verbatim.
