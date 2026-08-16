@@ -89,6 +89,21 @@ export function useTreeState(opts: TreeStateOpts): TreeState {
   // Live pty-host inventory, for tasks the snapshot can't answer for.
   const hostSessions = useHostSessions()
 
+  // Feed the host inventory's pids into the live-engine probe (issue #33):
+  // the local PTY registry only knows tabs THIS process attached, but the
+  // tree renders every task's hosted tabs — without the aux pids a `claude`
+  // typed into another task's shell tab never lit up until you visited it.
+  useEffect(() => {
+    const pids = new Map<string, number>()
+    for (const session of hostSessions) {
+      if (session.alive !== false && typeof session.pid === "number" && session.pid > 0) {
+        pids.set(session.key, session.pid)
+      }
+    }
+    liveEngines.setAuxPids(pids)
+    return () => liveEngines.setAuxPids(new Map())
+  }, [hostSessions, liveEngines])
+
   // ptyKey → the host's LIVE OSC title. The host scans every session's
   // output whether or not anyone attached, so this answers for tabs whose
   // `TerminalTabs` is not mounted — the ones whose recorded `lastTitle`
@@ -149,6 +164,10 @@ export function useTreeState(opts: TreeStateOpts): TreeState {
             // re-mounts, and demoting the row to a plain dot for that gap
             // reads as a lie.
             engine: tab.kind === "engine" || (live ?? null) !== null,
+            // Engine badge for SHELL tabs only (issue #33): a shell whose
+            // foreground is a confirmed engine wears that engine's badge;
+            // engine-born tabs already name their engine in the label.
+            ...(tab.kind !== "engine" && live ? { liveVendor: live } : {}),
           }
         }),
       )

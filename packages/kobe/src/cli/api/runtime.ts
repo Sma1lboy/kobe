@@ -170,7 +170,7 @@ export const defaultApiRuntime: ApiRuntime = {
   taskTabs: async (taskId) => {
     // No host = no sessions, an honest "nothing alive"; the persisted tabs
     // still return so a stopped task's layout stays inspectable.
-    let sessions: readonly TaskSessionRow[] = []
+    let sessions: readonly (TaskSessionRow & { pid?: number | null })[] = []
     const host = await openPtyHost()
     if (host) {
       try {
@@ -178,6 +178,21 @@ export const defaultApiRuntime: ApiRuntime = {
       } finally {
         host.close()
       }
+    }
+    // Live foreground-walk verdicts per session (issue #33): ONE ps snapshot,
+    // the same shallowest-engine walk inspect/live-engine run — so get-task's
+    // `liveVendor` reflects what runs NOW, not what a mounted TUI last
+    // recorded. Best-effort: a failed ps just keeps the recorded values.
+    let liveVendors: Map<string, string | null> | undefined
+    try {
+      const { foregroundEngineIn, parsePsSnapshot, psSnapshot } = await import("../../engine/foreground.ts")
+      const walkable = sessions.filter((s) => s.alive && typeof s.pid === "number" && s.pid > 0)
+      if (walkable.length > 0) {
+        const rows = parsePsSnapshot(await psSnapshot())
+        liveVendors = new Map(walkable.map((s) => [s.key, foregroundEngineIn(rows, s.pid as number)?.vendor ?? null]))
+      }
+    } catch {
+      /* recorded liveVendor stays */
     }
     // Durable death records outlive the host's idle-exit — a crashed tab
     // still reports its cause here. Best-effort: unreadable = none.
@@ -189,7 +204,7 @@ export const defaultApiRuntime: ApiRuntime = {
     }
     const snapshot = readTabsSnapshot(taskId)
     return {
-      tabs: joinTaskTabs(snapshot, taskId, sessions, exits),
+      tabs: joinTaskTabs(snapshot, taskId, sessions, exits, liveVendors),
       running: hasLiveEngineTab(snapshot, taskId, sessions),
     }
   },
