@@ -28,6 +28,9 @@ vi.mock("../../src/cli/daemon-session.ts", () => ({
 }))
 
 const { runApiSubcommand } = await import("../../src/cli/api-cmd.ts")
+const { resetVerifiedSelfSession, takeIdentityWarning, verifiedSelfSession } = await import(
+  "../../src/cli/api/dispatcher.ts"
+)
 
 let stdoutSpy: MockInstance
 let stderrSpy: MockInstance
@@ -55,6 +58,8 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks()
+  resetVerifiedSelfSession()
+  takeIdentityWarning()
 })
 
 describe("runApiSubcommand", () => {
@@ -134,6 +139,24 @@ describe("runApiSubcommand", () => {
     expect(fake.request).toHaveBeenCalledWith("task.list")
     expect(fake.closed).toBe(1)
     expect(JSON.parse(stdoutText())).toHaveProperty("tasks")
+  })
+
+  test("an unverified session identity rides the verb's own JSON result (issue #24)", async () => {
+    // The degrade must be VISIBLE: stderr carries one JSON error envelope by
+    // contract, so a plain-text warning there would corrupt it — the notice
+    // goes on stdout, attached to the successful result.
+    fake.request.mockResolvedValue({ tasks: [] })
+    await verifiedSelfSession(
+      { KOBE_TASK_ID: "boccha", KOBE_TAB_ID: "tab-1" },
+      {
+        pid: 500,
+        sessions: async () => [{ key: "boccha::tab-1", pid: 100, alive: true }],
+        ps: async () => "  100     1 /bin/zsh -il\n  500     1 bun kobe api list",
+      },
+    )
+    await runApiSubcommand(["list"])
+    expect(stderrSpy).not.toHaveBeenCalled()
+    expect(JSON.parse(stdoutText()).identityWarning).toContain("not running inside that tab")
   })
 
   test("a handler RPC failure is a JSON error with exit 1 — and the session still closes", async () => {

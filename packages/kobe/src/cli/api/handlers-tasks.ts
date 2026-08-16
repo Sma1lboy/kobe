@@ -10,7 +10,7 @@ import { resolveCommandProtocol } from "../../engine/engine-presets.ts"
 import { kobeApiInvocation } from "../../engine/interactive-command.ts"
 import type { VendorId } from "../../types/vendor.ts"
 import type { DaemonRpc } from "../daemon-session.ts"
-import { readOwnDispatcher, resolveDispatcherTab } from "./dispatcher.ts"
+import { readOwnDispatcher, resolveDispatcherTab, verifiedSelfSession } from "./dispatcher.ts"
 import { F } from "./flags.ts"
 import { daemonOf, simpleRpc } from "./handler-helpers.ts"
 import { resolveActiveTaskId } from "./runtime.ts"
@@ -22,11 +22,14 @@ import { ApiError, type VerbContext, type VerbSpec, helpStep } from "./types.ts"
  * carries — who is talking and how to answer. Same convention as field
  * notes (`[KOBE FIELD NOTE] from "<label>" (task <id>)`), plus the reply
  * command so a peer conversation is symmetric without any coordinator.
- * Sender identity comes from $KOBE_TASK_ID (exported into every engine
- * tab); a send from a plain shell (no env) or to yourself stays untouched.
+ * Sender identity is the VERIFIED $KOBE_TASK_ID/$KOBE_TAB_ID pair, not the
+ * raw env: an unverified one names a stranger's session as the sender and
+ * bakes their tab into the reply command (issue #24). A send from a plain
+ * shell, an unverified process, or to yourself stays untouched.
  */
 async function withPeerProvenance(daemon: DaemonRpc, targetTaskId: string, prompt: string): Promise<string> {
-  const senderId = process.env.KOBE_TASK_ID
+  const self = await verifiedSelfSession()
+  const senderId = self?.taskId
   if (!senderId || senderId === targetTaskId) return prompt
   let label = senderId
   try {
@@ -41,8 +44,7 @@ async function withPeerProvenance(daemon: DaemonRpc, targetTaskId: string, promp
   // which is exactly the link that breaks (#19) — tab-precise addressing is
   // the loop's durable route home. $KOBE_TAB_ID is exported into every
   // engine tab alongside $KOBE_TASK_ID (session-launch.ts).
-  const senderTab = process.env.KOBE_TAB_ID
-  const replyTarget = `--task-id ${senderId}${senderTab ? ` --tab ${senderTab}` : ""}`
+  const replyTarget = `--task-id ${senderId} --tab ${self.tabId}`
   // The trailing pointer closes the loop for a receiver that has never seen
   // kobe: reply command baked in, and where to learn the rest (the herdr
   // "--skill first" trick) — a pointer, not a curriculum, since every peer

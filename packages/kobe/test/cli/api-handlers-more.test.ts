@@ -142,6 +142,7 @@ describe("schema drill-ins", () => {
       "get-task",
       "collect",
       "digest",
+      "agent-turns",
       "pty-list",
       "read-output",
       "inspect",

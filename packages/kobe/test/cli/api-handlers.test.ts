@@ -3,6 +3,7 @@
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest"
 import { ApiError, type ApiRuntime, invokeVerb } from "../../src/cli/api-cmd.ts"
+import { resetVerifiedSelfSession, verifiedSelfSession } from "../../src/cli/api/dispatcher.ts"
 import { FakeClient, expectApiError, recordingDelivery, stubRuntime, taskFixture } from "./api-handler-fixtures.ts"
 
 // Peer provenance AND dispatcher provenance both key off the caller's own
@@ -242,10 +243,22 @@ describe("send handler", () => {
 
   describe("peer provenance ($KOBE_TASK_ID)", () => {
     const saved = process.env.KOBE_TASK_ID
-    beforeEach(() => {
+    beforeEach(async () => {
       process.env.KOBE_TASK_ID = "sender-1"
+      // Identity is the VERIFIED env pair (issue #24) — prime the memo with a
+      // process tree where this process really does descend from the tab's
+      // shell, so no real pty-host/ps read happens here.
+      await verifiedSelfSession(
+        { KOBE_TASK_ID: "sender-1", KOBE_TAB_ID: "tab-1" },
+        {
+          pid: 500,
+          sessions: async () => [{ key: "sender-1::tab-1", pid: 100, alive: true }],
+          ps: async () => "  100     1 /bin/zsh -il\n  500   100 bun kobe api send",
+        },
+      )
     })
     afterEach(() => {
+      resetVerifiedSelfSession()
       if (saved === undefined) {
         // biome-ignore lint/performance/noDelete: env must fully unset (assigning undefined leaves the string "undefined").
         delete process.env.KOBE_TASK_ID
@@ -310,6 +323,7 @@ describe("send handler", () => {
     })
 
     it("a send from outside any kobe task stays untouched", async () => {
+      resetVerifiedSelfSession()
       // biome-ignore lint/performance/noDelete: env must fully unset (assigning undefined leaves the string "undefined").
       delete process.env.KOBE_TASK_ID
       const { calls, deliver } = recordingDelivery()
