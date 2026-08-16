@@ -108,6 +108,9 @@ export interface TerminalTabsProps {
   scratch?: boolean
   /** The scratch task's last shell exited — the host deletes the task row. */
   onScratchExit?: () => void
+  /** ctrl+e's trailing "scratch shell" choice — open a Scratch temp shell
+   *  task (issue #33; the entry point, chord rejected 2026-08-16). */
+  onOpenScratch?: () => void
   command: readonly string[]
   /** Task's current engine + effort — used to build a per-tab command when
    *  a tab pins its own vendor via `chooseEngine`. */
@@ -364,6 +367,7 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
     activeLeafSize,
     onChooseEngine: props.onChooseEngine,
     onQuickFork: props.onQuickFork,
+    onOpenScratch: props.onOpenScratch,
     notifyError: (title) => notif.notify({ kind: "error", taskId: props.taskId, tabId: active.id, title }),
   })
 

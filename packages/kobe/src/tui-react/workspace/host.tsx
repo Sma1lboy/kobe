@@ -267,7 +267,6 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
       setSelectedId(String(target))
       setMoveMode(true)
     },
-    openScratchShell: scratch.openScratchShell,
   })
 
   // Keybinding focus is suppressed while a dialog overlay is up: pane focus
@@ -432,6 +431,7 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
               initialPrompt={quickFork.initialPromptFor(selectedTask?.id)}
               onTabVisited={inbox.resolveVisited}
               onScratchExit={scratch.onScratchExit}
+              onOpenScratch={scratch.openScratchShell}
             />
           )}
         </box>

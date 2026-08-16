@@ -1,10 +1,11 @@
 /**
  * Scratch temp shell tasks (issue #33) — the host-side lifecycle wiring:
  *
- *   - `openScratchShell` (PROPOSED prefix+t): create a scratch dir task
- *     rooted at $HOME and enter it. The task's tab-1 spawns as a bare shell
- *     (TerminalTabs' scratch mode); the row lives in the sidebar's Scratch
- *     section.
+ *   - `openScratchShell` (ctrl+e dialog's trailing "scratch shell" choice —
+ *     the prefix+t chord was rejected, owner 2026-08-16): create a scratch
+ *     dir task rooted at $HOME and enter it. The task's tab-1 spawns as a
+ *     bare shell (TerminalTabs' scratch mode); the row lives in the
+ *     sidebar's Scratch section.
  *   - `onScratchExit`: the last shell exited — delete the row outright,
  *     zero ceremony (no archive, no confirm; a scratch task owns no
  *     worktree/branch, deletion only drops the index entry).

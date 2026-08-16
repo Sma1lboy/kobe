@@ -24,8 +24,9 @@ the same directory. Only managed tasks get Rove-created branch/worktree
 isolation; project-main and directory tasks deliberately reuse directories you
 already own.
 
-**Scratch shells** are directory Tasks with an unsettled home: a temp shell
-opened from the TUI (PROPOSED `ctrl+a` `t`) starts as a bare shell in `$HOME`,
+**Scratch shells** are directory Tasks with an unsettled home: the "scratch
+shell" choice at the tail of the `ctrl+e` new-conversation dialog opens one
+as a bare shell in `$HOME`. It
 lives in the sidebar's Scratch section above every project, and follows a
 zero-ceremony lifecycle — the shell exiting removes the row (no archive, no
 confirm; nothing on disk is touched). A scratch row earns a permanent place

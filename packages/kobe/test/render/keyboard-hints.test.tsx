@@ -75,7 +75,6 @@ function WorkspaceDriver(props: { children?: React.ReactNode; onToggleZen?: () =
     jumpToNextAttention: NOOP,
     openInbox: NOOP,
     enterMoveMode: NOOP,
-    openScratchShell: NOOP,
     createPR: NOOP,
   })
   return <>{props.children}</>
