@@ -27,13 +27,24 @@ import { DEFAULT_TASK_VENDOR, type VendorId } from "@/types/task"
 
 const MAX_SESSIONS_SCANNED = 8
 
-/** First user message's text, truncated to a title, or `""` if none yet. */
-function titleFromMessages(messages: Message[]): string {
+/** Attachment wrapper text is useful in history but must never name a task. */
+function isAttachmentMetadataText(text: string): boolean {
+  const trimmed = text.trim()
+  return (
+    /^<image name=\[Image #\d+\] path="[^"]+">$/.test(trimmed) ||
+    trimmed === "</image>" ||
+    /^\[codex: (?:input_)?image\]$/.test(trimmed)
+  )
+}
+
+/** First user message's visible text, truncated to a title, or `""`. */
+export function deriveTitleFromMessages(messages: Message[]): string {
   const firstUser = messages.find((m) => m.role === "user")
   if (!firstUser) return ""
   const text = firstUser.blocks
     .filter((b): b is { type: "text"; text: string } => b.type === "text")
     .map((b) => b.text)
+    .filter((block) => !isAttachmentMetadataText(block))
     .join(" ")
   const title = deriveTitleFromPrompt(text)
   // Force-copy before the title escapes into long-lived state (the task
@@ -65,7 +76,7 @@ export async function deriveTitleFromSession(
   // give an empty title. Capped so a busy worktree doesn't read dozens
   // of transcripts.
   for (const sessionId of ids.slice(0, MAX_SESSIONS_SCANNED)) {
-    const title = titleFromMessages(await history.readHistory(sessionId))
+    const title = deriveTitleFromMessages(await history.readHistory(sessionId))
     if (title) return title
   }
   return ""
@@ -81,7 +92,7 @@ export async function deriveTitleFromSession(
 export async function deriveTitleFromSessionId(vendor: VendorId, sessionId: string): Promise<string> {
   if (!sessionId) return ""
   try {
-    return titleFromMessages(await engineEntry(vendor).history.readHistory(sessionId))
+    return deriveTitleFromMessages(await engineEntry(vendor).history.readHistory(sessionId))
   } catch {
     return ""
   }

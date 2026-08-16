@@ -14,14 +14,15 @@
  */
 
 import { describe, expect, it } from "vitest"
-import { stripEngineStatusPrefix } from "../../src/engine/registry"
-import { demoteExitedEngine } from "../../src/tui/workspace/terminal-tab-identity"
+import { engineSessionIdFromTitle, stripEngineStatusPrefix } from "../../src/engine/registry"
+import { deriveTitleFromMessages } from "../../src/monitor/auto-title"
+import { recordLiveTabTitle } from "../../src/tui/workspace/terminal-tab-recording"
 import {
   type TabsState,
   type TerminalTab,
   initialTabs,
+  setTabAutoTitle,
   setTabLastTitle,
-  setTabLiveVendor,
   tabTitle,
   tabTitleStable,
 } from "../../src/tui/workspace/terminal-tabs-core"
@@ -34,13 +35,7 @@ const SHELL = ["/bin/zsh"]
  *  on the persisted tab, demoting first when the engine exited. */
 function recordTitle(state: TabsState, tabId: string, raw: string, live: VendorId | null): TabsState {
   const projected = stripEngineStatusPrefix(raw, live ?? undefined)
-  const tab = state.tabs.find((t) => t.id === tabId)
-  if (!tab) return state
-  const demoted = demoteExitedEngine(tab, tab.liveVendor, live, SHELL)
-  if (demoted !== tab) return { ...state, tabs: state.tabs.map((t) => (t.id === tabId ? demoted : t)) }
-  let next = setTabLastTitle(state, tabId, projected)
-  next = setTabLiveVendor(next, tabId, live)
-  return next
+  return recordLiveTabTitle(state, tabId, projected, live, SHELL)
 }
 
 const tabOf = (state: TabsState, id: string): TerminalTab => {
@@ -50,6 +45,44 @@ const tabOf = (state: TabsState, id: string): TerminalTab => {
 }
 
 describe("golden: title stream → recording → display", () => {
+  it("uses Codex's unnamed-thread UUID as identity and shows the first-prompt title", () => {
+    const id = "01a00808-9b77-7083-8f32-1f21b99e5eb3"
+    expect(engineSessionIdFromTitle("codex", id)).toBe(id)
+    expect(engineSessionIdFromTitle("claude", id)).toBeNull()
+
+    let state = recordTitle(initialTabs(), "tab-1", `⠹ ${id}`, "codex")
+    expect(tabOf(state, "tab-1")).toMatchObject({ sessionId: id, liveVendor: "codex" })
+    expect(tabOf(state, "tab-1").lastTitle).toBeUndefined()
+    expect(tabTitle(tabOf(state, "tab-1"), "codex", id)).toBe("codex 1")
+
+    state = setTabAutoTitle(state, "tab-1", "显示可读的 Codex 标签标题")
+    expect(tabTitle(tabOf(state, "tab-1"), "codex", id)).toBe("显示可读的 Codex 标签标题")
+    expect(tabTitleStable(tabOf(state, "tab-1"), "codex", "codex", id)).toBe("显示可读的 Codex 标签标题")
+
+    // Existing snapshots that already recorded the UUID heal on display.
+    const old = { ...tabOf(state, "tab-1"), lastTitle: id } as TerminalTab
+    expect(tabTitle(old, "codex")).toBe("显示可读的 Codex 标签标题")
+    expect(tabTitleStable(old, "codex", "codex")).toBe("显示可读的 Codex 标签标题")
+  })
+
+  it("ignores image attachment metadata when deriving the readable title", () => {
+    expect(
+      deriveTitleFromMessages([
+        {
+          role: "user",
+          sessionId: "codex-session",
+          timestamp: "2026-08-16T00:00:00.000Z",
+          blocks: [
+            { type: "text", text: '<image name=[Image #1] path="/tmp/sidebar.png">' },
+            { type: "text", text: "[codex: input_image]" },
+            { type: "text", text: "</image>" },
+            { type: "text", text: "让 Codex tab 显示可读标题" },
+          ],
+        },
+      ]),
+    ).toBe("让 Codex tab 显示可读标题")
+  })
+
   it("an engine's status stream records the NAME; the tree shows it beside kobe's own glyph", () => {
     let state = initialTabs()
     state = recordTitle(state, "tab-1", "✳ 修复构建失败", "claude")

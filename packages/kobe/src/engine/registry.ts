@@ -145,6 +145,9 @@ export interface EngineRegistryEntry {
   readonly terminalTitle?: {
     readonly ownsStatus: boolean
     readonly launchArgs?: readonly string[]
+    /** Recover a vendor session id when an unnamed session emits identity
+     *  instead of a display name. The adapter owns that wire format. */
+    readonly sessionIdFromTitle?: (title: string) => string | null
     /**
      * Leading STATUS decoration the engine writes into its own OSC title,
      * stripped before kobe renders the name. Engine-owned by construction:
@@ -262,6 +265,10 @@ const BUILTIN_ENGINES: Record<"claude" | "codex" | "copilot" | "kimi", EngineReg
     terminalTitle: {
       ownsStatus: true,
       launchArgs: ["-c", 'tui.terminal_title=["activity","thread-title"]'],
+      // An unnamed Codex thread renders its UUID for `thread-title`. Keep
+      // that as session identity so history can provide the readable name.
+      sessionIdFromTitle: (title) =>
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(title) ? title : null,
       // The `activity` segment is a braille spinner frame joined to the next
       // segment by a space (codex `TERMINAL_TITLE_SPINNER_FRAMES` +
       // `separator_from_previous`). It only appears while a turn runs, so a
@@ -408,6 +415,11 @@ export function stripEngineStatusPrefix(title: string, vendor: VendorId | null |
     return rest
   }
   return title
+}
+
+/** Session identity encoded in an engine's already-undecorated OSC title. */
+export function engineSessionIdFromTitle(vendor: VendorId, title: string): string | null {
+  return engineEntry(vendor).terminalTitle?.sessionIdFromTitle?.(title.trim()) ?? null
 }
 
 /**

@@ -12,7 +12,12 @@
  */
 
 import type { VendorId } from "@/types/vendor"
-import { engineEntry, engineStatusPrefixes, stripEngineStatusPrefix } from "../../engine/registry"
+import {
+  engineEntry,
+  engineSessionIdFromTitle,
+  engineStatusPrefixes,
+  stripEngineStatusPrefix,
+} from "../../engine/registry"
 import { t } from "../i18n"
 import { pathLeaf } from "../lib/path-helpers"
 import { type SplitState, leaves } from "./split-core"
@@ -167,6 +172,7 @@ function stableRecordedTitle(raw: string | null | undefined, vendor: VendorId): 
   const recorded = raw?.trim()
   if (!recorded) return null
   const cleaned = stripEngineStatusPrefix(recorded, vendor)
+  if (engineSessionIdFromTitle(vendor, cleaned)) return null
   // Unchanged AND made only of this engine's glyphs = decoration, not a name.
   if (cleaned === recorded && isEngineDecoration(recorded, vendor)) return null
   return cleaned || null
@@ -287,13 +293,22 @@ export function tabTitle(tab: TerminalTab, taskVendor: VendorId, liveName?: stri
   // only the pre-title fallback. Deriving from the task's CURRENT vendor
   // relabelled every inherit-mode tab the moment a new tab switched the
   // task engine, while their PTYs kept running the old one.
-  if (liveName) return `${liveName} ${tab.ordinal}`
+  const titleVendor =
+    tab.liveVendor === null
+      ? undefined
+      : (tab.liveVendor ?? (tab.kind === "engine" ? (tab.vendor ?? taskVendor) : undefined))
+  const isSessionIdentity = (value: string): boolean => {
+    if (!titleVendor) return false
+    const cleaned = stripEngineStatusPrefix(value.trim(), titleVendor)
+    return engineSessionIdFromTitle(titleVendor, cleaned) !== null
+  }
+  if (liveName && !isSessionIdentity(liveName)) return `${liveName} ${tab.ordinal}`
   // No LIVE title here (a surface rendering a tab it doesn't host — the
   // Inbox), so fall back to the last live title this tab recorded. Without
   // it those surfaces drop straight to `autoTitle`, the FIRST prompt's
   // summary, and a tab that has long moved on still reads as its opening
   // question.
-  if (tab.lastTitle) return `${tab.lastTitle} ${tab.ordinal}`
+  if (tab.lastTitle && !isSessionIdentity(tab.lastTitle)) return `${tab.lastTitle} ${tab.ordinal}`
   const auto = meaningfulAutoTitle(tab.autoTitle)
   if (auto) return auto
   const name =
