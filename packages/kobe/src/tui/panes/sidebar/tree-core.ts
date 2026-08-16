@@ -21,6 +21,7 @@
  */
 
 import type { Task } from "@/types/task"
+import type { VendorId } from "@/types/vendor"
 import { fuzzyMatch } from "./fuzzy"
 import { repoBasename, sidebarProjectKey } from "./groups"
 
@@ -41,6 +42,11 @@ export interface TreeTab {
   /** A coding-agent tab. Shell/command/content tabs are outside the state
    *  vocabulary entirely — they always wear the plain dot. */
   readonly engine?: boolean
+  /** CONFIRMED live engine identity of a SHELL tab (issue #33): the process
+   *  walk found this vendor running in the tab right now. Drives the row's
+   *  engine badge; engine-born tabs never set it — their label already names
+   *  the engine, a badge would repeat it. */
+  readonly liveVendor?: VendorId
 }
 
 export type TreeRow =
