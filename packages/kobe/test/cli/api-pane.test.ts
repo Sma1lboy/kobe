@@ -1,5 +1,6 @@
 /** Request-traffic tests for the `pane-open` verb. */
 
+import { resolveLoginShell } from "@sma1lboy/kobe-daemon/daemon/platform-shell"
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import { invokeVerb } from "../../src/cli/api-cmd.ts"
 import { FakeClient, expectApiError, stubRuntime } from "./api-handler-fixtures.ts"
@@ -12,20 +13,20 @@ describe("pane-open handler", () => {
     vi.unstubAllEnvs()
   })
 
-  it("wraps --command in sh -lc, defaults split/right, titles from the command word", async () => {
+  it("wraps --command in the login shell's -ilc, defaults split/right, titles from the command word", async () => {
     const client = new FakeClient({ "tab.open": () => ({ ok: true }) })
     await invokeVerb("pane-open", ["--command", "btop --utf-force"], { client, runtime: stubRuntime() })
     expect(client.requestNames).toEqual(["tab.open"])
     expect(client.requests[0].payload).toEqual({
       taskId: "env-task",
-      argv: ["sh", "-lc", "btop --utf-force"],
+      argv: [resolveLoginShell({ fallback: "/bin/sh" }), "-ilc", "btop --utf-force"],
       title: "btop",
       placement: "split",
       direction: "right",
     })
   })
 
-  it("no --command opens an interactive shell; explicit flags pass through", async () => {
+  it("no --command opens an interactive login shell; explicit flags pass through", async () => {
     const client = new FakeClient({ "tab.open": () => ({ ok: true }) })
     await invokeVerb("pane-open", ["--task-id", "t9", "--direction", "down", "--placement", "tab", "--title", "logs"], {
       client,
@@ -33,7 +34,7 @@ describe("pane-open handler", () => {
     })
     const payload = client.requests[0].payload as { taskId: string; argv: string[]; title: string }
     expect(payload.taskId).toBe("t9")
-    expect(payload.argv).toHaveLength(1) // the shell itself, no -lc wrap
+    expect(payload.argv).toEqual([resolveLoginShell({ fallback: "/bin/sh" }), "-il"])
     expect(payload.title).toBe("logs")
     expect(client.requests[0].payload).toMatchObject({ placement: "tab", direction: "down" })
   })
