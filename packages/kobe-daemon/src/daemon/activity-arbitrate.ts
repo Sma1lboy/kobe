@@ -53,6 +53,10 @@ export interface ObservedSlot {
   readonly state: "running" | "idle"
   readonly at: number
   readonly vendor?: string
+  /** Lineage carried over from the hook slot this observation corrected —
+   *  the hook slot is retired once disproved, so the id has to live on
+   *  somewhere for late subscribers and the liveness probe. */
+  readonly session?: EngineSessionInfo
 }
 
 /** One tab's activity record: one slot per source. */
@@ -90,7 +94,7 @@ function fromObserved(observed: ObservedSlot, hook?: HookSlot): EffectiveActivit
     // Lineage falls back to the hook slot it just corrected: the liveness
     // probe and late subscribers still need to know WHICH engine this was.
     ...((observed.vendor ?? hook?.vendor) ? { vendor: observed.vendor ?? hook?.vendor } : {}),
-    ...(hook?.session ? { session: hook.session } : {}),
+    ...((observed.session ?? hook?.session) ? { session: observed.session ?? hook?.session } : {}),
   }
 }
 
