@@ -11,9 +11,18 @@ const read = (path: string) => readFileSync(join(ROOT, path), "utf8")
 // Report: .gstack/qa-reports/qa-report-rove-sma1lboy-me-2026-08-15.md
 describe("landing supervision workflow", () => {
   test("documents dispatcher replies without removed completion commands", () => {
-    const source = [read("packages/kobe-landing/index.html"), read("packages/kobe-landing/index.js")].join("\n")
+    const source = [
+      read("packages/kobe-landing/index.html"),
+      read("packages/kobe-landing/index.js"),
+      read("packages/kobe-landing/README.md"),
+    ].join("\n")
 
+    expect(source).toContain("rove api add --prompt")
+    expect(source).toContain("--command")
+    expect(source).toContain("--count 3")
     expect(source).toContain("rove api send --prompt")
+    expect(source).not.toContain("rove api fan-out")
+    expect(source).not.toContain("--vendor")
     expect(source).not.toContain("rove api report")
     expect(source).not.toContain("rove api await")
     expect(source).not.toContain("explicit reports")

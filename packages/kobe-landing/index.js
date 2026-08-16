@@ -139,7 +139,7 @@ var KOBE_I18N = (function () {
     .catch(function () { if (el.textContent === '–') el.textContent = '☆'; });
 })();
 
-// engine selector → updates the stage-1 fan-out (vendor flag + spawned worktree lanes)
+// engine selector → updates the stage-1 add round (command + spawned worktree lanes)
 (function () {
   var branchMap = {
     'claude': 'claude', 'codex': 'codex', 'copilot': 'copilot',

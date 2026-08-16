@@ -31,9 +31,9 @@ rove daemon restart
 rove api --help
 ```
 
-Prompted API calls can run headlessly. `send`, prompted `add`, and `fan-out`
-ensure the task Worktree and canonical `<taskId>::tab-1` hosted engine session
-without requiring an open TUI.
+Prompted API calls can run headlessly. `send` and prompted `add` calls (including
+parallel `add --count` rounds) ensure the task Worktree and canonical
+`<taskId>::tab-1` hosted engine session without requiring an open TUI.
 
 ```bash
 rove api add --repo . --prompt "implement the feature" --pretty

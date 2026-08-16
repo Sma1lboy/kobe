@@ -4,8 +4,8 @@ Marketing landing page for **Rove** — served at **https://rove.sma1lboy.me**.
 
 A single self-contained static `index.html` (no build step, no framework). The
 design started life as a Pretext `.dc.html` mockup; the dynamic bits (copy-to-clipboard
-install button, engine selector that drives the `rove api fan-out` snippet) were ported
-to a few lines of inline vanilla JS so the page deploys as plain static files.
+install button, engine selector that drives the `rove api add --count` snippet) were
+ported to a few lines of inline vanilla JS so the page deploys as plain static files.
 
 ## Local preview
 
