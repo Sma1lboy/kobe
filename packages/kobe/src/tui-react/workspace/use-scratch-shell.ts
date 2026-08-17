@@ -21,6 +21,11 @@ import { finishDeletedTaskFlow } from "../../tui/lib/task-actions"
 import type { Task } from "../../types/task"
 import { useScratchAdopt } from "./use-scratch-adopt"
 
+/** Task ids whose scratch teardown already started — module-level so the
+ *  guard survives the hook being rebuilt every render. Never cleared: a
+ *  torn-down scratch task's id is retired with it. */
+const scratchTeardowns = new Set<string>()
+
 export function useScratchShell(deps: {
   readonly orchestrator: RemoteOrchestrator
   readonly tasks: readonly Task[]
@@ -48,6 +53,11 @@ export function useScratchShell(deps: {
   }
 
   const onScratchExit = (taskId: string): void => {
+    // Idempotence: ctrl+w on the last tab (issue #42) kills the live PTY,
+    // whose exit event re-enters this teardown before the delete lands —
+    // the second call would surface a spurious "task not found" toast.
+    if (scratchTeardowns.has(taskId)) return
+    scratchTeardowns.add(taskId)
     void (async () => {
       try {
         await orchestrator.deleteTask(taskId, { force: true })

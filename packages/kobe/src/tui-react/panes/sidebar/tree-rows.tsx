@@ -17,7 +17,7 @@ import { type BoxRenderable, MouseButton } from "@opentui/core"
 import { type ReactNode, useEffect } from "react"
 import { currentBranch, pollCurrentBranch } from "../../../tui/panes/sidebar/git-head"
 import { NO_STATE_GLYPH, buildSidebarRowView, prCheckChip, withSpinnerFrame } from "../../../tui/panes/sidebar/row-view"
-import { type TreeTab, tabRowActivity } from "../../../tui/panes/sidebar/tree-core"
+import { type TreeTab, tabRowActivity, worktreeRowLabel } from "../../../tui/panes/sidebar/tree-core"
 import { toneColor, truncateBranchLabel } from "../../../tui/panes/sidebar/view-core"
 import type { WorktreeChanges } from "../../../tui/panes/sidebar/worktree-changes"
 import { useTheme } from "../../context/theme"
@@ -136,18 +136,19 @@ export function WorktreeTreeRow(props: {
   const isCursor = shared.cursorIndex === props.flatIndex
   const changes = useChanges(shared, task)
   const chip = prCheckChip(task)
-  // A worktree row is named by its BRANCH. A `main` row stores no branch
-  // (its checkout moves freely), so it polls the repo HEAD — falling back
-  // to the title repeated the project header's name right under it (owner
-  // 2026-08-02), which read as a duplicate row instead of "the main
-  // checkout, currently on <branch>".
+  // A worktree row is named by its BRANCH; branchless rows fall back to
+  // their tail-truncated path (the one derivation rule — `worktreeRowLabel`,
+  // issue #42). A `main` row stores no branch (its checkout moves freely),
+  // so it polls the repo HEAD — falling back to the title repeated the
+  // project header's name right under it (owner 2026-08-02), which read as
+  // a duplicate row instead of "the main checkout, currently on <branch>".
   const isMain = task.kind === "main"
   useEffect(() => {
     // Dependency-only invalidation key: re-poll on the sidebar's ~2s tick.
     void shared.branchTick
     if (isMain) pollCurrentBranch(task.repo)
   }, [isMain, task.repo, shared.branchTick])
-  const label = (isMain ? currentBranch(task.repo) : task.branch) || task.branch || task.title
+  const label = worktreeRowLabel(task, isMain ? { liveBranch: currentBranch(task.repo) } : {})
   return (
     <RowShell rowId={props.rowId} flatIndex={props.flatIndex} depth={1} shared={shared}>
       <box flexDirection="row" flexGrow={1} paddingRight={1} gap={1}>

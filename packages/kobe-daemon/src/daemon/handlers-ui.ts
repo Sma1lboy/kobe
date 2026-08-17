@@ -11,6 +11,7 @@
 import { randomUUID } from "node:crypto"
 import { optionalString, requireString } from "./handler-validators.ts"
 import type { DaemonRequestHandler } from "./handlers.ts"
+import { displayTaskTitle } from "./protocol.ts"
 
 /** `ui.prompt` timeout bounds — a plugin must not hang the CLI forever. */
 const PROMPT_DEFAULT_TIMEOUT_MS = 120_000
@@ -184,7 +185,7 @@ export const UI_HANDLERS: readonly DaemonRequestHandler[] = [
       const text = requireString(payload, "text")
       const author = ctx.orch.getTask(taskId)
       if (!author) throw new Error(`task not found: ${taskId}`)
-      const label = author.title || author.branch || taskId
+      const label = displayTaskTitle(author) || taskId
       // Persist BEFORE routing: relaying is best-effort and needs a live
       // dispatcher seat, but the durable record is the point — a note filed
       // with no dispatcher running must still reach the NEXT session

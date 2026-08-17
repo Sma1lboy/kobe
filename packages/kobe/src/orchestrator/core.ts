@@ -244,9 +244,12 @@ export class Orchestrator {
   }): Promise<Task> {
     if (!input.dir) throw new Error("openDirectoryTask: dir is required")
     const dir = canonPath(input.dir)
+    // A scratch shell's home is unsettled by definition, so it mints NO
+    // auto-name (issue #42): title stays empty until the user names it or
+    // adoption derives one; every display surface falls back to path/branch.
     return this.store.create({
       repo: dir,
-      title: `${titleFromRepo(dir)}-${randomDirTaskSuffix()}`,
+      title: input.scratch ? "" : `${titleFromRepo(dir)}-${randomDirTaskSuffix()}`,
       branch: "",
       worktreePath: dir,
       status: "backlog",

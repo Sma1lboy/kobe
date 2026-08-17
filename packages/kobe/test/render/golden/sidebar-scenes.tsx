@@ -256,6 +256,24 @@ export const SCENES: readonly Scene[] = [
     }),
   },
   {
+    name: "scratch-path-label",
+    about: "a scratch row with unknown tabs is named by its tail-truncated path, never a stored auto-name (issue #42)",
+    setup: () => seedTabs([{ taskId: "alpha", tabs: [{ id: "tab-1", title: "build" }] }]),
+    element: tree({
+      tasks: [
+        task("scratchy", {
+          kind: "dir",
+          scratch: true,
+          title: "jacksonc-ab3x",
+          repo: "/Users/me/deep/nested/project-dir",
+          worktreePath: "/Users/me/deep/nested/project-dir",
+          branch: "",
+        } as Partial<Task>),
+        ALPHA,
+      ],
+    }),
+  },
+  {
     name: "empty",
     about: "no tasks at all — the rail still renders its chrome rather than collapsing",
     setup: () => tabsByTask.clear(),
