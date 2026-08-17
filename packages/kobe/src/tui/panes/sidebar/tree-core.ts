@@ -183,7 +183,23 @@ export function buildTreeRows(input: TreeInput): TreeRow[] {
   // can be — see SCRATCH_SECTION_ID); the renderer translates its label.
   if (scratchTasks.length > 0) {
     rows.push({ kind: "project", id: SCRATCH_SECTION_ID, repo: "", label: "Scratch", depth: 0 })
-    for (const task of scratchTasks) pushWorktree(rows, task, tabsByTask)
+    // A scratch task renders NO worktree row of its own (issue #41): its
+    // auto-generated name is noise, and the shell IS the whole session — so
+    // its tab rows hang directly under the section header. The task remains a
+    // real task in the data layer (#472's migration machinery is untouched);
+    // only the render skips its middle row. When its tabs are unknown (never
+    // mounted since restart) the worktree row stays as the only reachable
+    // handle — a task with zero rows would be invisible AND unnavigable.
+    for (const task of scratchTasks) {
+      const tabs = tabsByTask.get(task.id) ?? []
+      if (tabs.length === 0) {
+        rows.push({ kind: "worktree", id: task.id, task, depth: 1 })
+        continue
+      }
+      for (const tab of tabs) {
+        rows.push({ kind: "tab", id: tabRowId(task.id, tab.id), task, tab, depth: 2 })
+      }
+    }
   }
   for (const key of orderedKeys) {
     const entry = byProject.get(key)

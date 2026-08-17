@@ -244,6 +244,18 @@ export const SCENES: readonly Scene[] = [
     element: tree({ zenActive: true }),
   },
   {
+    name: "scratch-flat",
+    about: "a scratch task renders no middle worktree row — its shell tab hangs directly under SCRATCH (issue #41)",
+    setup: () =>
+      seedTabs([
+        { taskId: "scratchy", tabs: [{ id: "tab-1", title: "shell 1", kind: "command" }] },
+        { taskId: "alpha", tabs: [{ id: "tab-1", title: "build" }] },
+      ]),
+    element: tree({
+      tasks: [task("scratchy", { kind: "dir", scratch: true, repo: "/Users/me", branch: "" } as Partial<Task>), ALPHA],
+    }),
+  },
+  {
     name: "empty",
     about: "no tasks at all — the rail still renders its chrome rather than collapsing",
     setup: () => tabsByTask.clear(),

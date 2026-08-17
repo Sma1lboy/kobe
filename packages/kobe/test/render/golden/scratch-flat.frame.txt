@@ -1,5 +1,5 @@
-# sidebar frame: tab-turn-complete
-# unread completion lamp on the tab that finished
+# sidebar frame: scratch-flat
+# a scratch task renders no middle worktree row — its shell tab hangs directly under SCRATCH (issue #41)
 # 30x22
 # GENERATED — do not hand-edit. Regenerate: KOBE_UPDATE_GOLDEN=1 bun run test:render
 |                              |
@@ -10,12 +10,12 @@
 | Kanban                       |
 | Routines                     |
 |                              |
+| SCRATCH ──────────────────── |
+|  · shell 1                   |
+|                              |
 | kobe ─────────────────────── |
 |  feat/alpha                  |
-|  ● build                     |
-|  · review                    |
-|  feat/bravo                  |
-|▌ · tests                     |
+|▌ · build                     |
 |                              |
 |                              |
 |                              |
