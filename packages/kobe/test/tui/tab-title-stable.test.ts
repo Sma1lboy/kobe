@@ -132,4 +132,23 @@ describe("tabTitleStable", () => {
     const tab = engineTab({ vendor: "codex", lastTitle: "⠹" })
     expect(tabTitleStable(tab, "codex")).toBe("codex 1")
   })
+
+  // Owner report 2026-08-17: every codex tab read as a UUID. Codex's
+  // `thread-title` segment falls back to the thread id for a session with no
+  // user-assigned name — which is all of them — so the id is what the OSC
+  // stream carries and what older snapshots recorded. It is an identifier,
+  // not a name: reject it on DISPLAY (so those snapshots heal without a
+  // migration) and let the next rung answer.
+  it("rejects codex's thread id and falls through to the first-prompt title", () => {
+    const id = "01a00ea6-79cb-7413-bf83-b897ac2da2ff"
+    const tab = engineTab({ vendor: "codex", lastTitle: id, autoTitle: "add the ruler", liveVendor: "codex" })
+    expect(tabTitleStable(tab, "codex", "codex")).toBe("add the ruler")
+    expect(tabTitle(tab, "codex")).toBe("add the ruler")
+    // The LIVE stream carries it with a spinner frame while a turn runs.
+    expect(tabTitleStable(tab, "codex", "codex", `⠴ ${id}`)).toBe("add the ruler")
+    // With nothing else to say, the numbered vendor default — still not an id.
+    const bare = engineTab({ vendor: "codex", lastTitle: id, liveVendor: "codex" })
+    expect(tabTitleStable(bare, "codex", "codex")).toBe("codex 1")
+    expect(tabTitle(bare, "codex")).toBe("codex 1")
+  })
 })

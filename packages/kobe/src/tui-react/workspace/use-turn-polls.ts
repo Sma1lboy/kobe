@@ -33,7 +33,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react"
 import type { TranscriptActivity } from "../../client/remote-orchestrator"
-import { engineEntry, stripEngineStatusPrefix } from "../../engine/registry"
+import { engineDisplayTitle, engineEntry } from "../../engine/registry"
 import type { ChatTabTurnState } from "../../engine/turn-detector"
 import { startTurnStatusPoll } from "../../tui/ops/activity-monitor"
 import { getDefaultPtyRegistry } from "../../tui/panes/terminal/registry"
@@ -131,13 +131,15 @@ export function useTurnPolls(deps: {
       for (const [key, tabId] of soloKeys) {
         const title = titleStore.get(key)
         if (title === undefined) continue
-        // Strip the engine's own status decoration HERE, at the one place the
-        // raw OSC title enters the app: every consumer (the tab strip, the
+        // Project the raw OSC title to a NAME here, at the one place it
+        // enters the app: the engine's status decoration comes off, and a
+        // title the engine declared to be an identifier placeholder (codex's
+        // thread UUID) collapses to `""`. Every consumer (the tab strip, the
         // tree, and the recorder that persists it as `lastTitle`) then works
         // with the name alone, and kobe's glyph column is the single place
         // that draws turn state. Engine-declared vocabulary — see
-        // `stripEngineStatusPrefix`.
-        next.set(tabId, stripEngineStatusPrefix(title, liveEngines.resolve(key)))
+        // `engineDisplayTitle`.
+        next.set(tabId, engineDisplayTitle(title, liveEngines.resolve(key)))
       }
       if (next.size === prev.size && [...next].every(([id, v]) => prev.get(id) === v)) return prev
       return next

@@ -29,13 +29,15 @@
  * detector to attach) still comes from the process tree; display no longer
  * does.
  *
- * What the RENDER projections below (and use-turn-polls' twin) do strip is
- * the engine's leading STATUS decoration — claude's `✳`/`⠂`/`⠐`, codex's
- * spinner frame — because kobe draws that state in its own glyph column and
- * showing both says it twice (owner 2026-08-10). That is a display concern,
+ * What the RENDER projections below (and use-turn-polls' twin) do drop is
+ * the parts of the OSC title that are not a name: the engine's leading
+ * STATUS decoration — claude's `✳`/`⠂`/`⠐`, codex's spinner frame — because
+ * kobe draws that state in its own glyph column and showing both says it
+ * twice (owner 2026-08-10), and a title the engine declared to be an
+ * identifier placeholder (codex's thread UUID). That is a display concern,
  * so it lives in the projection, not in the store, and the vocabulary is
- * declared per engine (`terminalTitle.statusPrefixes`). The name itself is
- * still never rewritten.
+ * declared per engine (`terminalTitle`). The name itself is still never
+ * rewritten.
  *
  * No React, no Solid, no @opentui — plain closures over Maps, unit-testable
  * under vitest. Callers own the tick that drives `reconcile()` (a PTY spawns
@@ -43,7 +45,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react"
-import { stripEngineStatusPrefix } from "../../engine/registry"
+import { engineDisplayTitle } from "../../engine/registry"
 import type { TaskPtyLike } from "../../tui/panes/terminal/pty-types"
 import { getDefaultPtyRegistry } from "../../tui/panes/terminal/registry"
 import { getDefaultLiveEngines } from "../../tui/workspace/live-engine"
@@ -174,9 +176,10 @@ export function useTitleSubscriptions(ptyKeys: ReadonlyMap<string, string>): Rea
         const title = store.get(key)
         if (title === undefined) continue
         // Same rule as use-turn-polls' projection: the engine's own status
-        // decoration is stripped before anything renders it, so kobe's glyph
-        // column stays the one place turn state is drawn.
-        next.set(id, stripEngineStatusPrefix(title, liveEngines.resolve(key)))
+        // decoration is stripped before anything renders it (so kobe's glyph
+        // column stays the one place turn state is drawn), and an engine that
+        // wrote an identifier instead of a name projects to `""`.
+        next.set(id, engineDisplayTitle(title, liveEngines.resolve(key)))
       }
       if (next.size === prev.size && [...next].every(([id, v]) => prev.get(id) === v)) return prev
       return next

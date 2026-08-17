@@ -194,12 +194,48 @@ needs-input**; every other engine tops out at working/done.
 Claude and Codex own their OSC title while visible
 (`terminalTitle.ownsStatus`), so neutral tab chrome doesn't prefix a
 duplicate turn glyph. Codex additionally launches with
-`-c tui.terminal_title=["activity","thread-title"]` so tabs show its thread
-title instead of the repo name. Everywhere a live engine title is displayed
-(tab labels, split corner tags) it collapses to the launch binary
-(`✳ Claude Code` renders as `claude`), so all Rove surfaces speak one
-vocabulary for a process. Vendor identity comes from the process tree, never
-from matching the title string.
+`-c tui.terminal_title=["activity","thread-title"]` — its default is
+activity + project name, which in Rove is the worktree's animal slug and says
+nothing about the conversation. Vendor identity comes from the process tree,
+never from matching the title string.
+
+Everything an engine writes into that title goes through one projection
+(`engineDisplayTitle`) before any surface renders it, and the vocabulary it
+judges by is declared per engine in `terminalTitle` — no neutral layer names
+a vendor:
+
+| Field | What it declares | Effect |
+|---|---|---|
+| `statusPrefixes` | the turn decoration the engine writes (claude's `✳`/`⠂`, codex's braille spinner) | stripped — Rove draws that state in its own glyph column |
+| `workingPrefixes` | the subset written only mid-turn | feeds the interrupt hint (`engineTitleTurnHint`), which reads the RAW title |
+| `placeholderTitles` | anchored patterns for titles that are an INTERNAL IDENTIFIER, not a name | collapses to "no title" so Rove falls through to its own rungs |
+
+Codex is why `placeholderTitles` exists: its `thread-title` segment resolves
+to the thread's *user-assigned name* and falls back to the thread UUID, and no
+Rove-launched session has a name — so every codex tab read
+`01a00ea6-79cb-7413-bf83-b897ac2da2ff 1` (verified against codex-cli 0.147 on
+both a fresh and a resumed session). An unresolved vendor — the live-engine
+probe is a ~2s `ps` walk — falls back to the union of every built-in's
+vocabulary, for both prefixes and placeholders.
+
+### Tab naming
+
+A tab's label resolves in this order: manual rename → live OSC name →
+recorded name (`lastTitle`) → first-prompt summary (`autoTitle`) → numbered
+vendor default. The first-prompt summary is derived by the naming pass
+(`useTabNaming`), and how it finds the conversation depends on the engine:
+
+- **By session id**, when Rove pinned one at launch. Only claude accepts
+  `--session-id`, so this is claude's path; finding a transcript for that id
+  also proves the tab spawned.
+- **By worktree**, for every other engine. Codex/copilot/kimi tabs carry no
+  pinned id, so the engine's history reader resolves the worktree's sessions
+  by the cwd recorded in the transcript — the same read the daemon's *task*
+  auto-title does, so the tab and the sidebar row agree by construction. It
+  is scoped to the task's **first** engine tab: the worktree's origin
+  conversation is that tab's by construction, while a later tab's session
+  can't be told apart from one the user started by hand in the same
+  directory.
 
 ## Transcript readers
 

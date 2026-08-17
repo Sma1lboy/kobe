@@ -12,7 +12,7 @@
  */
 
 import type { VendorId } from "@/types/vendor"
-import { engineEntry, engineStatusPrefixes, stripEngineStatusPrefix } from "../../engine/registry"
+import { engineDisplayTitle, engineEntry, engineStatusPrefixes, isEnginePlaceholderTitle } from "../../engine/registry"
 import { t } from "../i18n"
 import { pathLeaf } from "../lib/path-helpers"
 import { type SplitState, leaves } from "./split-core"
@@ -156,17 +156,19 @@ export function meaningfulAutoTitle(autoTitle: string | null | undefined): strin
 /**
  * The recorded title as a stable NAME, or null when it is not one.
  *
- * Strips the engine's status decoration (idempotent — a title recorded after
- * the entry-point fix passes through, an older snapshot heals on display),
- * then rejects a recording that was ONLY decoration. `stripEngineStatusPrefix`
- * keeps such a title on purpose — a session genuinely named "✳" owns that
- * name — but in the tree a lone glyph is not a label, so the caller falls
- * through to the first-prompt summary or the vendor default instead.
+ * Projects through {@link engineDisplayTitle} (idempotent — a title recorded
+ * after the entry-point fix passes through, an older snapshot heals on
+ * display): the engine's status decoration comes off, and an identifier
+ * placeholder (codex's thread UUID) collapses to `""` → null. Then it rejects
+ * a recording that was ONLY decoration. `stripEngineStatusPrefix` keeps such
+ * a title on purpose — a session genuinely named "✳" owns that name — but in
+ * the tree a lone glyph is not a label, so the caller falls through to the
+ * first-prompt summary or the vendor default instead.
  */
 function stableRecordedTitle(raw: string | null | undefined, vendor: VendorId): string | null {
   const recorded = raw?.trim()
   if (!recorded) return null
-  const cleaned = stripEngineStatusPrefix(recorded, vendor)
+  const cleaned = engineDisplayTitle(recorded, vendor)
   // Unchanged AND made only of this engine's glyphs = decoration, not a name.
   if (cleaned === recorded && isEngineDecoration(recorded, vendor)) return null
   return cleaned || null
@@ -292,8 +294,20 @@ export function tabTitle(tab: TerminalTab, taskVendor: VendorId, liveName?: stri
   // Inbox), so fall back to the last live title this tab recorded. Without
   // it those surfaces drop straight to `autoTitle`, the FIRST prompt's
   // summary, and a tab that has long moved on still reads as its opening
-  // question.
-  if (tab.lastTitle) return `${tab.lastTitle} ${tab.ordinal}`
+  // question. What IS rejected here is an identifier the engine wrote in
+  // place of a name (codex's thread UUID): a snapshot taken before the engine
+  // declared its placeholder vocabulary still holds one, and `setTabLastTitle`
+  // refuses `""` so nothing ever overwrites it — rejecting on DISPLAY is what
+  // retires it without a state migration, the same rule `meaningfulAutoTitle`
+  // follows. Status decoration is deliberately NOT stripped here; that is
+  // `tabTitleStable`'s job, for the surfaces that draw their own state glyph.
+  // `liveVendor` is the tab's own recorded process identity and outranks the
+  // creation pin; a command tab with neither resolves to null, which is the
+  // union-vocabulary case the check is built for.
+  const recordedVendor = tab.liveVendor ?? (tab.kind === "engine" ? (tab.vendor ?? taskVendor) : null)
+  if (tab.lastTitle && !isEnginePlaceholderTitle(tab.lastTitle, recordedVendor)) {
+    return `${tab.lastTitle} ${tab.ordinal}`
+  }
   const auto = meaningfulAutoTitle(tab.autoTitle)
   if (auto) return auto
   const name =
