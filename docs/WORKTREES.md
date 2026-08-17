@@ -8,6 +8,18 @@ For the difference between a Task, Worktree, Terminal Tab and Split, start
 with [Concepts](CONCEPTS.md). To create or adopt a task, see
 [The TUI](TUI.md#creating-a-task).
 
+## Branch naming
+
+A managed task created without an explicit branch derives its branch name
+from the task title, following the repository's own naming convention: Rove
+scans the repo's existing branches (local + `origin`) and matches the
+dominant style — a type prefix like `feat/`/`fix/`/`chore/` when that's what
+the repo uses, or a bare kebab slug otherwise (also the fallback for an
+empty repo). Name collisions get a short `-2`/`-3` suffix. Generated names
+never contain Rove branding. An explicit `--branch` on creation and
+`set-branch` afterwards override this entirely; existing branches are never
+renamed retroactively.
+
 ## Open and navigate the page
 
 1. Focus the task sidebar with `ctrl+q`.

@@ -1,6 +1,6 @@
 /**
  * Branch-follows-title (KOB). When a task's branch is still the
- * placeholder-derived default (`rove/new-task-<id>`, or legacy `kobe/`), renaming the title
+ * placeholder-derived default (`new-task`, or a legacy `rove/`/`kobe/` spelling), renaming the title
  * — including the auto-name from the first prompt — renames the real git
  * branch in lockstep. A manually-set branch, or a branch derived from a
  * non-placeholder title, is never clobbered. Real git + real store on
@@ -14,7 +14,6 @@ import path from "node:path"
 import { afterEach, beforeEach, describe, expect, test } from "vitest"
 import { Orchestrator } from "../../src/orchestrator/core.ts"
 import { TaskIndexStore } from "../../src/orchestrator/index/store.ts"
-import { autoBranch } from "../../src/orchestrator/title.ts"
 import { GitWorktreeManager } from "../../src/orchestrator/worktree/manager.ts"
 
 const REPO_INIT = path.resolve(__dirname, "./fixtures/repo-init.sh")
@@ -60,13 +59,13 @@ describe("branch follows title", () => {
     const task = await orch.createTask({ repo })
     await orch.ensureWorktree(task.id)
 
-    const placeholderBranch = autoBranch("(new task)", task.id)
+    const placeholderBranch = "new-task"
     expect(orch.getTask(task.id)?.branch).toBe(placeholderBranch)
     expect(gitBranches()).toContain(placeholderBranch)
 
     await orch.setTitle(task.id, "Fix login flow")
 
-    const expected = autoBranch("Fix login flow", task.id)
+    const expected = "fix-login-flow"
     expect(expected).not.toBe(placeholderBranch)
     expect(orch.getTask(task.id)?.branch).toBe(expected)
     // The real git branch moved, not just the recorded name.
@@ -82,7 +81,7 @@ describe("branch follows title", () => {
 
     await orch.setTitle(task.id, "Fix migrated task")
 
-    const expected = autoBranch("Fix migrated task", task.id)
+    const expected = "fix-migrated-task"
     expect(orch.getTask(task.id)?.branch).toBe(expected)
     expect(gitBranches()).toContain(expected)
     expect(gitBranches()).not.toContain(legacyPlaceholder)
@@ -106,7 +105,7 @@ describe("branch follows title", () => {
     await orch.ensureWorktree(task.id)
 
     await orch.setTitle(task.id, "First name")
-    const afterFirst = autoBranch("First name", task.id)
+    const afterFirst = "first-name"
     expect(orch.getTask(task.id)?.branch).toBe(afterFirst)
 
     await orch.setTitle(task.id, "Second name")
@@ -119,7 +118,7 @@ describe("branch follows title", () => {
   test("does not rename a placeholder branch that has an upstream", async () => {
     const task = await orch.createTask({ repo })
     await orch.ensureWorktree(task.id)
-    const placeholderBranch = autoBranch("(new task)", task.id)
+    const placeholderBranch = "new-task"
 
     // Publish the placeholder branch: bare remote + push -u.
     const remote = path.join(tmpRoot, "remote.git")
@@ -143,7 +142,7 @@ describe("branch follows title", () => {
   test("resolves a collision with an existing branch to a -2 suffix", async () => {
     const task = await orch.createTask({ repo })
     await orch.ensureWorktree(task.id)
-    const wanted = autoBranch("Fix login flow", task.id)
+    const wanted = "fix-login-flow"
 
     // Occupy the exact name the follow would pick.
     const r = spawnSync("git", ["-C", repo, "branch", wanted], { encoding: "utf8" })
@@ -160,7 +159,7 @@ describe("branch follows title", () => {
   test("keeps the old name when the upstream probe fails (ambiguity)", async () => {
     const task = await orch.createTask({ repo })
     await orch.ensureWorktree(task.id)
-    const placeholderBranch = autoBranch("(new task)", task.id)
+    const placeholderBranch = "new-task"
 
     // Force the probe to throw: an unreadable probe must not be read as
     // "no upstream". Reaching into the orchestrator's manager is deliberate —
@@ -182,6 +181,6 @@ describe("branch follows title", () => {
     expect(orch.getTask(task.id)?.branch).toBe("")
 
     await orch.ensureWorktree(task.id)
-    expect(orch.getTask(task.id)?.branch).toBe(autoBranch("Pre-materialise name", task.id))
+    expect(orch.getTask(task.id)?.branch).toBe("pre-materialise-name")
   })
 })

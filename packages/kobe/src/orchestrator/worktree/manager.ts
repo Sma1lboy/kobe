@@ -31,7 +31,7 @@ import type { ExecHost } from "../../exec/exec-host.ts"
 import type { AdoptableWorktree, WorktreeInfo, WorktreeManager } from "../../types/worktree.ts"
 import { type ExecCtx, type WorktreeExecDeps, defaultExecDeps } from "./exec-deps.ts"
 import { GitCommandError, type GitRunOpts, type GitRunResult } from "./git.ts"
-import { type ListDeps, adoptablePaths, listAllAdoptable, listManaged } from "./manager-list.ts"
+import { type ListDeps, adoptablePaths, listAllAdoptable, listBranchNames, listManaged } from "./manager-list.ts"
 import { canonicalize, remoteWorktreePathFor, requireAbsolute, worktreePathFor } from "./paths.ts"
 import { parseWorktreeListPorcelain } from "./worktree-list.ts"
 
@@ -300,6 +300,12 @@ export class GitWorktreeManager implements WorktreeManager {
     return adoptablePaths(this.listDeps(), this.ctxFor(repo))
   }
 
+  /** Branch names of `repo` (local + origin, prefix-stripped) — the input
+   *  to repo-convention branch naming. Body in `manager-list.ts`. */
+  listBranchNames(repo: string): Promise<readonly string[]> {
+    return listBranchNames(this.listDeps(), repo)
+  }
+
   /** Whether `worktreePath` still exists on disk (local fs / remote `test -e`). */
   async pathExists(worktreePath: string): Promise<boolean> {
     requireAbsolute("path", worktreePath)
@@ -405,10 +411,8 @@ export class GitWorktreeManager implements WorktreeManager {
   }
 
   /**
-   * Rename a branch in-place. Used by the orchestrator's lazy
-   * branch-naming flow: a fresh worktree is allocated on a temp
-   * `rove/tmp-<ulid>` branch, the engine is asked to suggest a slug, and
-   * we rename once the suggestion lands.
+   * Rename a branch in-place. Used by `setBranch` and the follow-branch-to-
+   * title flow when a placeholder-named task gets its first real title.
    *
    * git's `branch -m <old> <new>` updates HEAD on every worktree that
    * was checked out on `<old>` — the engine's session keeps streaming

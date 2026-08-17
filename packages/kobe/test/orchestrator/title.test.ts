@@ -1,52 +1,26 @@
 import { describe, expect, it } from "vitest"
-import {
-  TITLE_CHAR_CAP,
-  autoBranch,
-  deriveTitleFromPrompt,
-  isPlaceholderDerivedBranch,
-} from "../../src/orchestrator/title.ts"
+import { TITLE_CHAR_CAP, deriveTitleFromPrompt, isPlaceholderDerivedBranch } from "../../src/orchestrator/title.ts"
 
-describe("autoBranch", () => {
-  it("builds rove/<slug>-<id6> from title + task id", () => {
-    expect(autoBranch("(new task)", "01HXABCDEF")).toBe("rove/new-task-abcdef")
+describe("isPlaceholderDerivedBranch", () => {
+  it("recognizes the convention-era placeholder shapes", () => {
+    const id = "01HXABCDEF"
+    expect(isPlaceholderDerivedBranch("new-task", id)).toBe(true)
+    expect(isPlaceholderDerivedBranch("feat/new-task", id)).toBe(true)
+    expect(isPlaceholderDerivedBranch("new-task-2", id)).toBe(true)
+    expect(isPlaceholderDerivedBranch("fix/new-task-3", id)).toBe(true)
   })
 
-  it("gives placeholder-titled tasks DISTINCT branches via the id suffix", () => {
-    // The bug (KOB-244): every new task derived the same branch and the 2nd
-    // `git worktree add -b` collided. Distinct ids → distinct branches.
-    const a = autoBranch("(new task)", "01HXAAAAAA")
-    const b = autoBranch("(new task)", "01HXBBBBBB")
-    expect(a).not.toBe(b)
-    expect(a).toBe("rove/new-task-aaaaaa")
-    expect(b).toBe("rove/new-task-bbbbbb")
-  })
-
-  it("falls back to 'task' when the title has no slug-able chars", () => {
-    expect(autoBranch("!!!", "01HXZZZZZZ")).toBe("rove/task-zzzzzz")
-    expect(autoBranch("", "01HXZZZZZZ")).toBe("rove/task-zzzzzz")
-  })
-
-  it("lowercases + dash-collapses + caps the slug at 32 chars", () => {
-    const branch = autoBranch("Fix The Very Long Feature Name That Exceeds The Cap!!", "01HXQQQQQQ")
-    const slug = branch.slice("rove/".length, -"-qqqqqq".length)
-    expect(slug.length).toBeLessThanOrEqual(32)
-    expect(slug).toBe("fix-the-very-long-feature-name-t")
-  })
-
-  it("never emits a double hyphen when the 32-char cap lands on a word boundary", () => {
-    // The trailing-hyphen trim runs BEFORE the .slice(0, 32) cap, so a slice
-    // that ends on a `-` used to survive into the template as `rove/<slug>--<id>`.
-    // Reachable whenever char 33 is a word boundary: 31 slug chars + a space + a word.
-    const branch = autoBranch(`${"a".repeat(31)} bar`, "01HXQQQQQQ")
-    expect(branch).toBe(`rove/${"a".repeat(31)}-qqqqqq`)
-    expect(branch).not.toContain("--")
-  })
-
-  it("recognizes canonical and pre-Rove placeholder branches only", () => {
+  it("recognizes the legacy rove/ and kobe/ id-suffixed placeholders", () => {
     const id = "01HXABCDEF"
     expect(isPlaceholderDerivedBranch("rove/new-task-abcdef", id)).toBe(true)
     expect(isPlaceholderDerivedBranch("kobe/new-task-abcdef", id)).toBe(true)
+  })
+
+  it("rejects real branch names", () => {
+    const id = "01HXABCDEF"
     expect(isPlaceholderDerivedBranch("kobe/real-work-abcdef", id)).toBe(false)
+    expect(isPlaceholderDerivedBranch("feat/login-flow", id)).toBe(false)
+    expect(isPlaceholderDerivedBranch("rove/new-task-zzzzzz", id)).toBe(false)
   })
 })
 

@@ -39,7 +39,7 @@ back to the dispatching engine tab: creation records the dispatcher
 stored report, no blocking wait. Silence is a checkpoint, never a verdict:
 
 ```bash
-rove api send --prompt "succeeded: auth flow simplified (branch rove/auth-flow)"
+rove api send --prompt "succeeded: auth flow simplified (branch fix/auth-flow)"
 ```
 
 **Observe** — read the engine's own structured session, never scrape a TUI
@@ -168,7 +168,11 @@ replacement in `nextCommandArgs`.
   [--pin] [--activate] [--prompt TEXT]`: create a task (appears in the
   sidebar immediately). With `--prompt` it also materializes the worktree,
   starts the engine, and delivers the prompt. Does not steal focus unless
-  `--activate`. Alias: `spawn-task`.
+  `--activate`. Alias: `spawn-task`. Without `--branch`, the branch name is
+  auto-derived from the title following the repo's own branch-naming
+  convention (inferred from its existing local + origin branches — e.g.
+  `feat/login-flow` in a type-prefixed repo, `login-flow` in a bare-slug or
+  empty repo; name collisions get a short `-2`/`-3` suffix).
 
   **Parallel attempts** live here too: `--count N` spawns N sibling tasks of
   the SAME prompt, each with its own worktree and branch, sharing one
@@ -298,8 +302,8 @@ GitHub's, and nothing is copied into Rove's own issue store. Mechanics:
 - `workitem-start --repo PATH --number N [--vendor V] [--base-branch B]`:
   create a task for issue N and start its engine with the issue title, body,
   and URL as the first message. The task keeps a `linkedWorkItem` pointing
-  back, and its branch derives from the issue title
-  (`rove/307-memory-ce2e8j`).
+  back, and its branch derives from the issue title following the repo's
+  branch-naming convention.
 
 Requires `gh` installed and authenticated; failures name which of those is
 missing (`gh-missing` / `auth` / `no-remote`) rather than a generic error.

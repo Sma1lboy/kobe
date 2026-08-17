@@ -26,8 +26,9 @@ import { basename } from "node:path"
 import type { Task, TaskId, VendorId } from "../types/task.ts"
 import { DEFAULT_TASK_VENDOR } from "../types/task.ts"
 import type { AdoptableWorktree, WorktreeInfo } from "../types/worktree.ts"
+import { deriveConventionBranch, inferBranchStyle, uniqueBranchName } from "./branch-style.ts"
 import type { TaskIndexStore } from "./index/store.ts"
-import { PLACEHOLDER_TASK_TITLE, autoBranch } from "./title.ts"
+import { PLACEHOLDER_TASK_TITLE } from "./title.ts"
 import type { GitWorktreeManager } from "./worktree/manager.ts"
 import { SlugAllocator } from "./worktree/slug-allocator.ts"
 
@@ -69,6 +70,15 @@ export class WorktreeCoordinator {
   private readonly worktreeLocks = new Map<TaskId, Promise<string>>()
   /** In-flight `adopt` per canonical worktree path — dedupes concurrent adopts. */
   private readonly adoptLocks = new Map<string, Promise<Task>>()
+  /**
+   * Auto branch names currently being materialised. Convention names carry no
+   * random suffix, so two same-titled siblings materialising concurrently (a
+   * parallel round) would both derive the same name and the second
+   * `git worktree add -b` would fail — the git-side taken-set can't see a
+   * branch that doesn't exist yet. Reserved before the git call, released
+   * after (success or failure: on success the branch itself is the guard).
+   */
+  private readonly reservedBranches = new Set<string>()
   /** Optional base-ref per task — consumed once by `ensure`. */
   private readonly pendingBaseRefs = new Map<TaskId, string>()
 
@@ -142,7 +152,7 @@ export class WorktreeCoordinator {
    */
   private async createWorktree(task: Task): Promise<string> {
     const slug = await this.slugs.allocate(task.repo)
-    const branch = task.branch || autoBranch(task.title, task.id)
+    const branch = task.branch || (await this.deriveAutoBranch(task))
     const baseRef = this.pendingBaseRefs.get(task.id)
     let info: WorktreeInfo
     try {
@@ -151,6 +161,10 @@ export class WorktreeCoordinator {
       // Nothing persisted yet — just free the slug for the next attempt.
       this.slugs.cancel(task.repo, slug)
       throw err
+    } finally {
+      // Release the name either way: on success the branch itself now exists
+      // in git (the durable guard); on failure the next attempt re-derives.
+      this.reservedBranches.delete(branch)
     }
     // The worktree now exists on disk. Persist its path BEFORE committing the
     // slug; if the write fails (or the task was deleted concurrently, so the
@@ -166,6 +180,24 @@ export class WorktreeCoordinator {
     this.slugs.commit(task.repo, slug)
     this.pendingBaseRefs.delete(task.id)
     return info.path
+  }
+
+  /**
+   * Derive the auto branch name for a task with no explicit branch: infer
+   * the repo's naming convention from its existing branch names (local +
+   * origin), apply it to the title's slug, and de-collide with a short
+   * `-2` / `-3` suffix against both existing branches and names other
+   * in-flight materialisations just reserved (issue #39). Never contains
+   * a rove/kobe brand token; an unreadable/empty repo falls back to a bare
+   * kebab slug.
+   */
+  private async deriveAutoBranch(task: Task): Promise<string> {
+    const names = await this.worktrees.listBranchNames(task.repo)
+    const base = deriveConventionBranch(task.title, inferBranchStyle(names))
+    const taken = new Set([...names, ...this.reservedBranches])
+    const branch = uniqueBranchName(base, taken, task.id)
+    this.reservedBranches.add(branch)
+    return branch
   }
 
   /**

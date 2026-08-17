@@ -163,7 +163,7 @@ describe("resolveEngineLaunchInit", () => {
   test("new-task without a threaded task id falls back to the $ROVE_TASK_ID env", () => {
     const wt = makeWorktree()
     const msg = resolveEngineLaunchInit(wt, wt, { kind: "new-task", prompt: "fix the bug" }).firstMessage
-    expect(msg?.text).toContain('set-branch --task-id "$ROVE_TASK_ID" --branch rove/')
+    expect(msg?.text).toContain('set-branch --task-id "$ROVE_TASK_ID" --branch')
   })
 
   // Why: outcomes travel as chat back to the spawner, not stored reports —

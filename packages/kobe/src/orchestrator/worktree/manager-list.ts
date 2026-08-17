@@ -29,6 +29,35 @@ export interface ListDeps {
   lastActivityMs(ctx: ExecCtx, worktreePath: string): Promise<number>
 }
 
+/**
+ * Branch names of `repo` — local plus `origin`, with the `origin/` prefix
+ * stripped and `HEAD` dropped. The raw material for repo-convention branch
+ * naming (`branch-style.ts`): both the style inference and the taken-set
+ * for uniqueness. Best-effort — an unborn/broken repo yields `[]`, which
+ * the naming layer reads as "no convention".
+ */
+export async function listBranchNames(deps: ListDeps, repo: string): Promise<readonly string[]> {
+  const ctx = deps.ctxFor(repo)
+  requireAbsolute("repo", ctx.dir)
+  let stdout: string
+  try {
+    stdout = await deps.runGitStdout(ctx, [
+      "for-each-ref",
+      "--format=%(refname:short)",
+      "refs/heads",
+      "refs/remotes/origin",
+    ])
+  } catch {
+    return []
+  }
+  const names = new Set<string>()
+  for (const line of stdout.split("\n")) {
+    const name = line.trim().replace(/^origin\//, "")
+    if (name && name !== "HEAD") names.add(name)
+  }
+  return [...names]
+}
+
 /** kobe-managed worktrees under `repo` — see `GitWorktreeManager.list`. */
 export async function listManaged(deps: ListDeps, repo: string): Promise<readonly WorktreeInfo[]> {
   const ctx = deps.ctxFor(repo)
