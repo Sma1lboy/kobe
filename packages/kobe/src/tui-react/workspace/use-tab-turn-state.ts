@@ -136,6 +136,7 @@ export function useTabTurnState(deps: {
   const stateRef = useLatest(deps.state)
   const notifRef = useLatest(deps.notif)
   const vendorRef = useLatest(deps.vendor)
+  const worktreeRef = useLatest(deps.worktree)
   const taskIdRef = useLatest(deps.taskId)
   const taskTitleRef = useLatest(deps.taskTitle)
   useEffect(() => {
@@ -152,7 +153,7 @@ export function useTabTurnState(deps: {
         tabId,
         // Toast identity mirrors the Inbox card: tab label leads, task
         // title is the context body line.
-        title: tabTitle(tab, vendorRef.current),
+        title: tabTitle(tab, vendorRef.current, undefined, { worktree: worktreeRef.current }),
         body: taskTitleRef.current,
       })
     }

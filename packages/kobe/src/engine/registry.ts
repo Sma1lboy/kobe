@@ -49,6 +49,7 @@ import { readClaudeTurns } from "./claude-code-local/turns.ts"
 import { codexCapabilities, codexIdentity } from "./codex-local/capabilities.ts"
 import { CodexHookAdapter } from "./codex-local/hook-adapter.ts"
 import { fetchCodexQuotaUsage } from "./codex-local/quota.ts"
+import { codexTerminalTitle } from "./codex-local/terminal-title.ts"
 import { trustCodexWorktree } from "./codex-local/trust.ts"
 import {
   EMPTY_HISTORY,
@@ -95,6 +96,15 @@ export interface EngineHistoryReader {
 
 /** Any built-in engine's account shape (each union already has a `none` arm). */
 export type EngineAccount = ClaudeAccount | CodexAccount | CopilotAccount | KimiAccount
+
+/**
+ * Context for engine-owned title judgements (`terminalTitle.isPlaceholderTitle`).
+ */
+export interface EngineTitleContext {
+  /** The task's worktree (the engine's cwd) — lets an adapter recognize its
+   *  vendor's own DEFAULT label, e.g. codex's project-name title. */
+  readonly worktree?: string
+}
 
 export interface EngineRegistryEntry {
   readonly vendor: VendorId
@@ -170,6 +180,19 @@ export interface EngineRegistryEntry {
      * indistinguishable from its working one.
      */
     readonly workingPrefixes?: readonly string[]
+    /**
+     * Engine-owned "this OSC title is not a NAME" judgement (codex titles
+     * an UNNAMED thread with its session UUID; a codex kobe didn't launch
+     * names itself after the project directory). A placeholder wins no
+     * naming rung: kobe falls through to the first-prompt summary or the
+     * vendor default. Omit when every title the engine writes is a name.
+     */
+    readonly isPlaceholderTitle?: (title: string, ctx: EngineTitleContext) => boolean
+    /** The running session's id, when the engine writes it into its OSC
+     *  title (codex's unnamed thread-title IS the thread UUID) — lets the
+     *  naming pass follow a session switch without a launch-time pin.
+     *  Naming-only: never a spawn pin (codex can't take `--session-id`). */
+    readonly sessionIdFromTitle?: (title: string) => string | null
   }
   /**
    * Subscription-quota probe: snapshot of the account's usage windows, or
@@ -267,20 +290,7 @@ const BUILTIN_ENGINES: Record<"claude" | "codex" | "copilot" | "kimi", EngineReg
     capabilities: codexCapabilities,
     identity: codexIdentity,
     trustWorktree: trustCodexWorktree,
-    // Codex's default is activity + project-name, which makes every tab in
-    // one repo say "kobe". Keep its native activity state, but ask Codex to
-    // pair it with the thread title it already owns in its local store.
-    terminalTitle: {
-      ownsStatus: true,
-      launchArgs: ["-c", 'tui.terminal_title=["activity","thread-title"]'],
-      // The `activity` segment is a braille spinner frame joined to the next
-      // segment by a space (codex `TERMINAL_TITLE_SPINNER_FRAMES` +
-      // `separator_from_previous`). It only appears while a turn runs, so a
-      // resting title has no prefix to strip — every status prefix is a
-      // working prefix.
-      statusPrefixes: ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"],
-      workingPrefixes: ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"],
-    },
+    terminalTitle: codexTerminalTitle,
     quotaUsage: () => fetchCodexQuotaUsage(),
   },
   copilot: {

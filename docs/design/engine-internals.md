@@ -195,7 +195,19 @@ Claude and Codex own their OSC title while visible
 (`terminalTitle.ownsStatus`), so neutral tab chrome doesn't prefix a
 duplicate turn glyph. Codex additionally launches with
 `-c tui.terminal_title=["activity","thread-title"]` so tabs show its thread
-title instead of the repo name. Everywhere a live engine title is displayed
+title instead of the repo name. Two codex title shapes are labels, not names:
+an UNNAMED thread's title is its own session UUID, and a codex Rove didn't
+launch (the user re-ran bare `codex` in the tab's shell) gets no title-config
+override, so codex's default config names it after the project directory. The
+engine-owned `terminalTitle.isPlaceholderTitle` judgement (given the task
+worktree as context) treats both as "no title": they win no naming rung, so
+the tab falls through to the first-prompt auto-title (resolved from the
+engine's transcript store when no session id was pinned at launch). The UUID
+title doubles as session identity: `terminalTitle.sessionIdFromTitle` parses
+it back out, so a tab whose codex session SWITCHED (resume picker, re-run)
+re-derives its auto-title from the new thread instead of wearing the old
+thread's name — naming-only, never a spawn pin (codex can't take
+`--session-id`). Everywhere a live engine title is displayed
 (tab labels, split corner tags) it collapses to the launch binary
 (`✳ Claude Code` renders as `claude`), so all Rove surfaces speak one
 vocabulary for a process. Vendor identity comes from the process tree, never

@@ -73,7 +73,7 @@ function itemStateKey(state: AttentionInboxItem["state"]): string {
  */
 function taskTabLabel(taskId: string, tabId: string | null, task: Task | undefined, kv: KVContext): string {
   const tab = tabId ? knownTaskTab(kv, taskId, tabId) : undefined
-  return tab ? tabTitleStable(tab, task?.vendor ?? DEFAULT_TASK_VENDOR) : ""
+  return tab ? tabTitleStable(tab, task?.vendor ?? DEFAULT_TASK_VENDOR, undefined, undefined, task?.worktreePath) : ""
 }
 
 function tabLabel(

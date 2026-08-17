@@ -85,12 +85,16 @@ export function useTabDialogs(deps: {
 
   const requestRename = (): void => {
     if (!active) return
-    void RenameTaskDialog.show(dialog, tabTitle(active, deps.vendor, deps.liveTitles.get(active.id)), {
-      dialogTitle: t("terminal.tab.renameTitle"),
-      fieldLabel: t("terminal.tab.renameField"),
-      submitLabel: t("terminal.tab.renameSubmit"),
-      allowEmpty: true,
-    }).then((title) => {
+    void RenameTaskDialog.show(
+      dialog,
+      tabTitle(active, deps.vendor, deps.liveTitles.get(active.id), { worktree: deps.worktree }),
+      {
+        dialogTitle: t("terminal.tab.renameTitle"),
+        fieldLabel: t("terminal.tab.renameField"),
+        submitLabel: t("terminal.tab.renameSubmit"),
+        allowEmpty: true,
+      },
+    ).then((title) => {
       if (title === undefined) return
       update(renameActiveTab(state, title))
     })

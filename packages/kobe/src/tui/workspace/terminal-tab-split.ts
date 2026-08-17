@@ -212,6 +212,7 @@ export function tabTitleStable(
   taskVendor: VendorId,
   liveVendor?: VendorId | null,
   liveTitle?: string | null,
+  worktree?: string,
 ): string {
   // `liveVendor` is tri-state: a vendor = that engine runs in the tab NOW;
   // null = the probe CONFIRMED no engine (a ctrl+C'd tab sitting at its
@@ -219,7 +220,7 @@ export function tabTitleStable(
   // A confirmed-dead engine tab is a shell: neither its frozen status line
   // nor its creation pin ("codex N") may keep naming it.
   if (liveVendor === null && tab.kind === "engine") {
-    return tabTitle({ ...tab, kind: "command", lastTitle: null } as TerminalTab, taskVendor)
+    return tabTitle({ ...tab, kind: "command", lastTitle: null } as TerminalTab, taskVendor, undefined, { worktree })
   }
   // Resolution order for "whose title is this": the live probe, then the
   // tab's own RECORDED identity, then an engine tab's creation pin. The
@@ -244,7 +245,7 @@ export function tabTitleStable(
   const source = liveTitle?.trim() || tab.lastTitle
   const named = vendor ? stableRecordedTitle(source, vendor) : (source ?? null)
   if (!vendor || engineEntry(vendor).terminalTitle?.ownsStatus !== true) {
-    return tabTitle({ ...tab, lastTitle: named } as TerminalTab, taskVendor)
+    return tabTitle({ ...tab, lastTitle: named } as TerminalTab, taskVendor, undefined, { vendor, worktree })
   }
   // Re-run the normal precedence with the recorded title CLEANED rather than
   // dropped: `stripEngineStatusPrefix` is idempotent, so a title recorded
@@ -267,10 +268,35 @@ export function tabTitleStable(
   // In the tree that is not a name at all, so drop it and let the next rung
   // answer: `meaningfulAutoTitle` already applies the same "this is not a
   // label" judgement to first-prompt summaries.
-  return tabTitle({ ...tab, kind: "engine", vendor, lastTitle: named } as TerminalTab, taskVendor)
+  return tabTitle({ ...tab, kind: "engine", vendor, lastTitle: named } as TerminalTab, taskVendor, undefined, {
+    vendor,
+    worktree,
+  })
 }
 
-export function tabTitle(tab: TerminalTab, taskVendor: VendorId, liveName?: string | null): string {
+/**
+ * Display context for the engine-owned placeholder judgement
+ * (`terminalTitle.isPlaceholderTitle`).
+ */
+export interface TabTitleContext {
+  /**
+   * The resolved LIVE process vendor, when the caller knows it (the tab
+   * strip's `turnVendors` probe) — a shell tab the user typed `codex`
+   * into is then judged by CODEX's placeholder shapes, not by the tab's
+   * creation pin. Null = confirmed no engine (a plain shell: its cwd
+   * title is a shell name, never a placeholder).
+   */
+  readonly vendor?: VendorId | null
+  /** The task's worktree — forwarded to the engine's predicate. */
+  readonly worktree?: string
+}
+
+export function tabTitle(
+  tab: TerminalTab,
+  taskVendor: VendorId,
+  liveName?: string | null,
+  ctx: TabTitleContext = {},
+): string {
   // Manual rename always wins; a conversation's first-prompt title beats
   // the numbered default; a multi-leaf SPLIT tab is a "group N" (its
   // leaves carry the individual names — see splitLeafNames).
@@ -287,13 +313,28 @@ export function tabTitle(tab: TerminalTab, taskVendor: VendorId, liveName?: stri
   // only the pre-title fallback. Deriving from the task's CURRENT vendor
   // relabelled every inherit-mode tab the moment a new tab switched the
   // task engine, while their PTYs kept running the old one.
-  if (liveName) return `${liveName} ${tab.ordinal}`
+  //
+  // Exception: an engine-owned PLACEHOLDER title (`terminalTitle.
+  // isPlaceholderTitle` — codex titles an unnamed thread with its session
+  // UUID, and a bare `codex` the user re-ran in the tab's shell names
+  // itself after the worktree directory) is a label, not a name, so it
+  // wins no rung and falls through to the first-prompt summary or the
+  // vendor default. Judged against the caller-resolved LIVE vendor, else
+  // the tab's PINNED vendor (the engine kobe launched here); only the
+  // adapter knows what its vendor's placeholder looks like.
+  const pinnedVendor = tab.kind === "engine" ? (tab.vendor ?? taskVendor) : undefined
+  const placeholderVendor = ctx.vendor === null ? undefined : (ctx.vendor ?? pinnedVendor)
+  const isPlaceholder = (name: string | null | undefined): boolean =>
+    !!name &&
+    !!placeholderVendor &&
+    engineEntry(placeholderVendor).terminalTitle?.isPlaceholderTitle?.(name, { worktree: ctx.worktree }) === true
+  if (liveName && !isPlaceholder(liveName)) return `${liveName} ${tab.ordinal}`
   // No LIVE title here (a surface rendering a tab it doesn't host — the
   // Inbox), so fall back to the last live title this tab recorded. Without
   // it those surfaces drop straight to `autoTitle`, the FIRST prompt's
   // summary, and a tab that has long moved on still reads as its opening
   // question.
-  if (tab.lastTitle) return `${tab.lastTitle} ${tab.ordinal}`
+  if (tab.lastTitle && !isPlaceholder(tab.lastTitle)) return `${tab.lastTitle} ${tab.ordinal}`
   const auto = meaningfulAutoTitle(tab.autoTitle)
   if (auto) return auto
   const name =
@@ -317,8 +358,9 @@ export function visibleNativeStatus(
   taskVendor: VendorId,
   vendor: VendorId | undefined,
   liveName?: string | null,
+  ctx: TabTitleContext = {},
 ): boolean {
   if (!vendor || !liveName) return false
   if (engineEntry(vendor).terminalTitle?.ownsStatus !== true) return false
-  return tabTitle(tab, taskVendor, liveName) === `${liveName} ${tab.ordinal}`
+  return tabTitle(tab, taskVendor, liveName, ctx) === `${liveName} ${tab.ordinal}`
 }

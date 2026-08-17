@@ -61,6 +61,8 @@ export function TabStrip(props: {
   liveTitles: ReadonlyMap<string, string>
   /** tabId → resolved live engine identity (see `useTurnPolls().turnVendors`). */
   turnVendors: ReadonlyMap<string, VendorId>
+  /** Task worktree — context for the engine-owned placeholder-title judgement. */
+  worktree: string
 }) {
   const themeCtx = useTheme()
   const { theme } = themeCtx
@@ -124,9 +126,11 @@ export function TabStrip(props: {
   const entries = props.tabs.map((tab) => {
     const turn = props.turnStates.get(tab.id) ?? "idle"
     const liveTitle = props.liveTitles.get(tab.id)
-    const nativeStatusVisible = visibleNativeStatus(tab, props.vendor, props.turnVendors.get(tab.id), liveTitle)
+    const liveVendor = props.turnVendors.get(tab.id)
+    const titleCtx = { vendor: liveVendor, worktree: props.worktree }
+    const nativeStatusVisible = visibleNativeStatus(tab, props.vendor, liveVendor, liveTitle, titleCtx)
     const chipShown = !nativeStatusVisible && turn !== "unknown" && props.turnStates.has(tab.id)
-    const title = tabTitle(tab, props.vendor, liveTitle)
+    const title = tabTitle(tab, props.vendor, liveTitle, titleCtx)
     // Active tab renders as a padded accent chip (+2 cells, herdr-style
     // highlight 2026-07-27) — the scroll math must see the same width.
     const active = tab.id === props.activeId

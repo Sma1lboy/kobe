@@ -255,8 +255,26 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
    *  see the `resetToken` doc on `Terminal.tsx`. */
   const [resetToken, setResetToken] = useState(0)
 
+  /* --------- per-tab turn state (hook-first, poll-fallback) --------- */
+  const { turnStates, liveTitles, turnVendors } = useTabTurnState({
+    taskId: props.taskId,
+    worktree: props.worktree,
+    vendor: props.vendor,
+    state,
+    sharedActivity: props.sharedActivity,
+    hookTabStates: props.hookTabStates,
+    taskTitle: props.taskTitle,
+    notif,
+    update,
+    onEngineInterrupt: props.onEngineInterrupt,
+  })
+  // Latest-render mirror for the mount-once naming poll (the
+  // propsRef/stateRef convention, file header) — the poll reads the live
+  // OSC titles to follow an engine's session identity.
+  const liveTitlesRef = useLatest(liveTitles)
+
   /* --------- restart resume verification (issue #22) — mount-only ------- */
-  const hydrating = useTabHydration(rehydratedRef.current, { stateRef, propsRef, update })
+  const hydrating = useTabHydration(rehydratedRef.current, { stateRef, propsRef, liveTitlesRef, update })
 
   // Parent handoffs — mount-once effects, extracted to use-tab-handoffs.ts
   // (file-size cap split). The quick-fork initial prompt needs no delivery
@@ -280,21 +298,7 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
   const active = state.tabs.find((tab) => tab.id === state.activeId) ?? state.tabs[0]
 
   /* --------- auto-naming + existence tracking (tmux naming pass), mount-only --- */
-  useTabNaming({ stateRef, propsRef, update })
-
-  /* --------- per-tab turn state (hook-first, poll-fallback) --------- */
-  const { turnStates, liveTitles, turnVendors } = useTabTurnState({
-    taskId: props.taskId,
-    worktree: props.worktree,
-    vendor: props.vendor,
-    state,
-    sharedActivity: props.sharedActivity,
-    hookTabStates: props.hookTabStates,
-    taskTitle: props.taskTitle,
-    notif,
-    update,
-    onEngineInterrupt: props.onEngineInterrupt,
-  })
+  useTabNaming({ stateRef, propsRef, liveTitlesRef, update })
 
   // Visiting a tab clears its unread mark (toast already auto-dismisses)
   // and reports the visit upstream — the host resolves any pending Inbox
@@ -429,6 +433,7 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
         turnStates={turnStates}
         onSelect={(tabId) => update(selectTab(state, tabId))}
         vendor={props.vendor}
+        worktree={props.worktree}
         liveTitles={liveTitles}
         turnVendors={turnVendors}
       />

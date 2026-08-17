@@ -90,8 +90,9 @@ export interface EngineTab extends TabBase {
    * `--session-id` mapping the tmux chattab stashed as
    * `@kobe_session_id`), so the tab is auto-named from ITS OWN first
    * prompt and can later be resumed. Null for vendors that can't take a
-   * caller-set id (codex/custom — their origin tab is named from the
-   * worktree instead, matching the tmux fallback).
+   * caller-set id (codex/custom) — the naming pass then resolves the
+   * newest session the engine recorded for the worktree instead (see
+   * `useTabNaming`).
    */
   readonly sessionId?: string | null
   /**

@@ -131,7 +131,9 @@ export function useAttention(args: {
       // known, so two tabs of one task finishing don't read identically.
       const project = task ? sidebarProjectLabel(task.repo, repos) : ""
       const tab = target.tabId ? knownTaskTab(kv, target.taskId, target.tabId) : undefined
-      const tabLabel = tab ? tabTitleStable(tab, task?.vendor ?? DEFAULT_TASK_VENDOR) : ""
+      const tabLabel = tab
+        ? tabTitleStable(tab, task?.vendor ?? DEFAULT_TASK_VENDOR, undefined, undefined, task?.worktreePath)
+        : ""
       notif.notify({
         kind,
         taskId: target.taskId,

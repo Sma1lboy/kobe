@@ -34,6 +34,7 @@ function strip(activeId: string) {
       vendor="claude"
       liveTitles={new Map()}
       turnVendors={new Map()}
+      worktree="/tmp/wt"
     />
   )
 }

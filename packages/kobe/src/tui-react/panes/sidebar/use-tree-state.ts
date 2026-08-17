@@ -152,7 +152,7 @@ export function useTreeState(opts: TreeStateOpts): TreeState {
             // glyph right next to it, which kobe derives from daemon activity.
             // The host's live title rides in as an argument (not painted
             // directly) so it goes through that same strip.
-            label: tabTitleStable(tab, vendor, live, liveTitles.get(ptyKey)),
+            label: tabTitleStable(tab, vendor, live, liveTitles.get(ptyKey), task.worktreePath),
             // The active tab carries the task's state glyph (activity is
             // task-scoped; the active tab is the session it describes).
             active: tab.id === known.activeId,

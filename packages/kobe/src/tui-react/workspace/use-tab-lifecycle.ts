@@ -19,7 +19,9 @@ const NAMING_POLL_MS = 5000
 
 export interface TabLifecycleIO {
   readonly stateRef: { readonly current: TabsState }
-  readonly propsRef: { readonly current: { readonly vendor: VendorId } }
+  readonly propsRef: { readonly current: { readonly vendor: VendorId; readonly worktree: string } }
+  /** tabId → live (status-stripped) OSC title, from `useTurnPolls`. */
+  readonly liveTitlesRef: { readonly current: ReadonlyMap<string, string> }
   readonly update: (next: TabsState) => void
 }
 
@@ -68,23 +70,60 @@ export function useTabNaming(io: TabLifecycleIO): void {
   // biome-ignore lint/correctness/useExhaustiveDependencies: mount-once interval; reads propsRef/stateRef for freshness.
   useEffect(() => {
     let namingBusy = false
+    // tabId → the session id the tab's current autoTitle was derived FROM.
+    // A codex tab's session can CHANGE under it (the resume picker, a
+    // re-run): the engine reports the running session's id in its OSC
+    // title (`terminalTitle.sessionIdFromTitle`), so a mismatch re-derives
+    // the title from the NEW session instead of wearing the old session's
+    // name forever. Per-mount on purpose — a TUI restart just re-derives
+    // the same title once.
+    const derivedFrom = new Map<string, string>()
     const timer = setInterval(() => {
       if (namingBusy) return
-      const candidates = io.stateRef.current.tabs.filter(
-        (tab): tab is EngineTab =>
-          tab.kind === "engine" && !!tab.sessionId && (!tab.spawned || (!tab.title && !tab.autoTitle)),
-      )
+      // A manual rename owns the tab forever — never re-derive those.
+      const candidates = io.stateRef.current.tabs.filter((tab): tab is EngineTab => tab.kind === "engine" && !tab.title)
       if (candidates.length === 0) return
       namingBusy = true
       void (async () => {
         try {
           for (const tab of candidates) {
-            if (!tab.sessionId) continue
-            const title = await deriveTitleFromSessionId(tab.vendor ?? io.propsRef.current.vendor, tab.sessionId)
+            const vendor = tab.vendor ?? io.propsRef.current.vendor
+            const worktree = io.propsRef.current.worktree
+            const policy = engineEntry(vendor).terminalTitle
+            const liveTitle = io.liveTitlesRef.current.get(tab.id)?.trim() || undefined
+            const learned = liveTitle ? policy?.sessionIdFromTitle?.(liveTitle) : undefined
+            // An engine whose title stream carries session identity owns the
+            // follow-through: a REAL (non-placeholder) live title is a named
+            // thread, which already names the tab — nothing to derive.
+            if (
+              policy?.sessionIdFromTitle &&
+              liveTitle &&
+              !learned &&
+              !policy.isPlaceholderTitle?.(liveTitle, { worktree })
+            )
+              continue
+            // Naming-session resolution order: the launch-time pin (claude);
+            // the id the engine reports in its live title (codex — exact,
+            // follows session switches); then the newest session the engine
+            // recorded for this worktree (bootstrap before the first title
+            // arrives, or a bare `codex` whose default title carries no id —
+            // the same heuristic `forkSourceSessionId` uses). Engines with no
+            // transcript reader (custom) resolve EMPTY_HISTORY → no id →
+            // skipped. Heuristic caveat: two UNPINNED tabs in one worktree
+            // both resolve the newest session until each reports its own id
+            // (F2 corrects).
+            let sessionId = tab.sessionId ?? learned ?? null
+            if (sessionId && derivedFrom.get(tab.id) === sessionId) continue
+            if (!sessionId) {
+              sessionId = (await engineEntry(vendor).history.listSessionIdsForWorktree(worktree)).at(-1) ?? null
+              if (!sessionId || derivedFrom.get(tab.id) === sessionId) continue
+            }
+            const title = await deriveTitleFromSessionId(vendor, sessionId)
             if (!title) continue
             let next = setTabSpawned(io.stateRef.current, tab.id, true)
-            if (!tab.title && !tab.autoTitle) next = setTabAutoTitle(next, tab.id, title)
+            next = setTabAutoTitle(next, tab.id, title)
             io.update(next)
+            derivedFrom.set(tab.id, sessionId)
           }
         } finally {
           namingBusy = false
