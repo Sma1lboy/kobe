@@ -212,6 +212,35 @@ describe("PtyHost", () => {
     expect(host.list()).toMatchObject([{ key: "live-task::tab1", alive: true }])
   })
 
+  // Why: issue #40 — folding a scratch shell into the task that owns its cwd
+  // re-keys the RUNNING session instead of respawning it, so the engine
+  // inside survives the move and the sweep now judges it by its new owner.
+  test("rename re-keys a running session; sweep and reattach see the new owner", async () => {
+    const host = makeHost()
+    const a = collector()
+    host.open("scratch::tab-1", SPEC, {}, a.sink)
+    host.write("scratch::tab-1", "before-move\n")
+    await until(() => dataText(a.frames).includes("before-move"))
+
+    expect(host.rename("scratch::tab-1", "owner::tab-3")).toBe(true)
+    expect(host.list()).toMatchObject([{ key: "owner::tab-3", alive: true }])
+    // The old key is gone: killing it is a no-op, the session lives on.
+    await host.kill("scratch::tab-1")
+    host.sweepTasks(new Set(["owner"]))
+    expect(host.list()).toMatchObject([{ key: "owner::tab-3", alive: true }])
+
+    // Reattach under the new key replays the pre-move scrollback.
+    const b = collector()
+    const res = host.open("owner::tab-3", SPEC, {}, b.sink)
+    expect(res.alive).toBe(true)
+    expect(Buffer.from(res.replay, "base64").toString("utf8")).toContain("before-move")
+
+    // Refusals: unknown source, and an occupied target.
+    expect(host.rename("nope::tab-1", "owner::tab-9")).toBe(false)
+    host.open("owner::tab-4", SPEC, {}, collector().sink)
+    expect(host.rename("owner::tab-4", "owner::tab-3")).toBe(false)
+  })
+
   test("live sessions count toward liveCount, exited ones don't", async () => {
     const host = makeHost()
     const { frames, sink } = collector()

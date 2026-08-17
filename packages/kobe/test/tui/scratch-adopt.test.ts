@@ -1,37 +1,139 @@
 /**
- * Scratch adoption decision + the cwd read behind it (issue #33). The
+ * Scratch adoption decision + the cwd read behind it (issues #33/#40). The
  * decision is the confidence gate: a repo alone (browsing) or a harness
- * alone (working in a non-repo) must both stay in Scratch.
+ * alone (working in a non-repo) must both stay in Scratch. Once confident,
+ * the fold check (#40) de-dupes against existing tasks so migrating a shell
+ * parked in an already-tracked directory never mints a duplicate row.
  */
 
 import { describe, expect, it } from "vitest"
 import { parseLsofCwd, processCwd } from "../../src/engine/process-cwd"
-import { decideScratchAdopt } from "../../src/tui/workspace/scratch-adopt"
+import { type ScratchOwnerTask, decideScratchAdopt } from "../../src/tui/workspace/scratch-adopt"
 
 describe("decideScratchAdopt", () => {
   const known = new Set(["/repos/kobe"])
+  const none: ScratchOwnerTask[] = []
 
-  it("repo + live harness → adopt, flagged known/unfamiliar", () => {
-    expect(decideScratchAdopt({ repoRoot: "/repos/kobe", harnessLive: true, knownRepos: known })).toEqual({
-      kind: "adopt",
-      repo: "/repos/kobe",
-      known: true,
-    })
-    expect(decideScratchAdopt({ repoRoot: "/repos/other", harnessLive: true, knownRepos: known })).toEqual({
-      kind: "adopt",
-      repo: "/repos/other",
-      known: false,
-    })
+  it("repo + live harness, no owner → adopt, flagged known/unfamiliar", () => {
+    expect(
+      decideScratchAdopt({
+        cwd: "/repos/kobe/src",
+        repoRoot: "/repos/kobe",
+        harnessLive: true,
+        knownRepos: known,
+        ownerTasks: none,
+      }),
+    ).toEqual({ kind: "adopt", repo: "/repos/kobe", known: true })
+    expect(
+      decideScratchAdopt({
+        cwd: "/repos/other",
+        repoRoot: "/repos/other",
+        harnessLive: true,
+        knownRepos: known,
+        ownerTasks: none,
+      }),
+    ).toEqual({ kind: "adopt", repo: "/repos/other", known: false })
   })
 
   it("repo without a harness stays — a cd is browsing, not working", () => {
-    expect(decideScratchAdopt({ repoRoot: "/repos/kobe", harnessLive: false, knownRepos: known })).toEqual({
-      kind: "stay",
-    })
+    expect(
+      decideScratchAdopt({
+        cwd: "/repos/kobe",
+        repoRoot: "/repos/kobe",
+        harnessLive: false,
+        knownRepos: known,
+        ownerTasks: none,
+      }),
+    ).toEqual({ kind: "stay" })
   })
 
   it("harness without repo semantics stays in Scratch", () => {
-    expect(decideScratchAdopt({ repoRoot: null, harnessLive: true, knownRepos: known })).toEqual({ kind: "stay" })
+    expect(
+      decideScratchAdopt({ cwd: "/home/me", repoRoot: null, harnessLive: true, knownRepos: known, ownerTasks: none }),
+    ).toEqual({ kind: "stay" })
+  })
+
+  // --- issue #40: fold instead of minting a duplicate row -----------------
+
+  const mainTask: ScratchOwnerTask = { id: "T-main", kind: "main", dir: "/repos/kobe" }
+  const managed: ScratchOwnerTask = { id: "T-wt", kind: "task", dir: "/wt/kobe/feature-x" }
+  const dirTask: ScratchOwnerTask = { id: "T-dir", kind: "dir", dir: "/repos/kobe" }
+
+  it("cwd exactly a main task's directory → fold into it", () => {
+    expect(
+      decideScratchAdopt({
+        cwd: "/repos/kobe",
+        repoRoot: "/repos/kobe",
+        harnessLive: true,
+        knownRepos: known,
+        ownerTasks: [mainTask],
+      }),
+    ).toEqual({ kind: "fold", taskId: "T-main" })
+  })
+
+  it("cwd inside a managed task's worktree → fold into that task, not the main row", () => {
+    // resolveMainRepoRoot maps a linked worktree back to the MAIN checkout,
+    // so the managed subtree check must win over the repo-root match.
+    expect(
+      decideScratchAdopt({
+        cwd: "/wt/kobe/feature-x/src",
+        repoRoot: "/repos/kobe",
+        harnessLive: true,
+        knownRepos: known,
+        ownerTasks: [mainTask, managed],
+      }),
+    ).toEqual({ kind: "fold", taskId: "T-wt" })
+  })
+
+  it("cwd in a SUBDIR of the main checkout still folds — the adopt would pin the same root", () => {
+    expect(
+      decideScratchAdopt({
+        cwd: "/repos/kobe/packages/kobe",
+        repoRoot: "/repos/kobe",
+        harnessLive: true,
+        knownRepos: known,
+        ownerTasks: [mainTask],
+      }),
+    ).toEqual({ kind: "fold", taskId: "T-main" })
+  })
+
+  it("main row wins over a dir row for the same directory", () => {
+    expect(
+      decideScratchAdopt({
+        cwd: "/repos/kobe",
+        repoRoot: "/repos/kobe",
+        harnessLive: true,
+        knownRepos: known,
+        ownerTasks: [dirTask, mainTask],
+      }),
+    ).toEqual({ kind: "fold", taskId: "T-main" })
+  })
+
+  it("cwd with no owning task → the existing adopt path (no fold)", () => {
+    expect(
+      decideScratchAdopt({
+        cwd: "/repos/other",
+        repoRoot: "/repos/other",
+        harnessLive: true,
+        knownRepos: known,
+        ownerTasks: [mainTask, managed, dirTask],
+      }),
+    ).toEqual({ kind: "adopt", repo: "/repos/other", known: false })
+  })
+
+  it("a dir task elsewhere in the repo does not capture a shell at the root", () => {
+    // dir tasks own exactly their directory; only the exact-dir or
+    // pinned-root match folds.
+    const sub: ScratchOwnerTask = { id: "T-sub", kind: "dir", dir: "/repos/kobe/packages/kobe" }
+    expect(
+      decideScratchAdopt({
+        cwd: "/repos/kobe/docs",
+        repoRoot: "/repos/kobe",
+        harnessLive: true,
+        knownRepos: known,
+        ownerTasks: [sub],
+      }),
+    ).toEqual({ kind: "adopt", repo: "/repos/kobe", known: true })
   })
 })
 

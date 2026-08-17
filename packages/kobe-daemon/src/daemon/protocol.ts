@@ -272,6 +272,13 @@ export type DaemonRequestName =
   | "pty.detach"
   | "pty.list"
   | "pty.sweep"
+  // Re-key a running session (`{from, to}` → `{renamed: boolean}`) — the
+  // scratch-fold move (issue #40): the child keeps running, only its
+  // ownership label changes so sweeps and future attaches see it under the
+  // adopting task's tab key. Older hosts reject the verb; callers treat
+  // that as "fold the tab record only, session stays under the old key
+  // until the scratch task's teardown" — hence they must check `renamed`.
+  | "pty.rename"
   // Read-only ring-buffer peek for one session key: no attach, no spawn,
   // no resize — the observation primitive `kobe api read-output` uses for
   // its bounded terminal fallback. Older hosts reject the verb; callers

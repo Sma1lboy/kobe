@@ -239,6 +239,10 @@ export async function startPtyHostServer(options: PtyHostServerOptions = {}): Pr
       case "pty.kill":
         ptys.kill(requireString(objectPayload(req.payload), "key"))
         return {}
+      case "pty.rename": {
+        const payload = objectPayload(req.payload)
+        return { renamed: ptys.rename(requireString(payload, "from"), requireString(payload, "to")) }
+      }
       case "pty.detach":
         {
           const payload = objectPayload(req.payload)

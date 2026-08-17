@@ -175,6 +175,9 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   const scratch = useScratchShell({
     orchestrator: orch,
     tasks,
+    kv,
+    selectedId: () => selectedId,
+    selectTask: setSelectedId,
     enterTask: (id) => void activateTask(id),
     forgetTaskTabs: (id) => forgetTaskTabs(kv, id),
     notifyError,

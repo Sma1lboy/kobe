@@ -1,7 +1,7 @@
 /** PtyHost's public contract types — split from `pty-host.ts` for the
  *  file-size cap; behavior and ownership stay with the host. */
 
-import type { StringDecoder } from "node:string_decoder"
+import { StringDecoder } from "node:string_decoder"
 import type { DaemonFrame, PtySessionExit } from "./protocol.ts"
 import type { PtyChild, PtyDriver } from "./pty-driver.ts"
 import type { PtyFreezeSink } from "./pty-freeze-store.ts"
@@ -105,4 +105,30 @@ export interface PtyHostOptions {
   /** How children spawn. Default Bun's; the Windows host injects node-pty's. */
   readonly driver?: PtyDriver
   readonly log?: (event: string, message: string) => void
+}
+
+/** A fresh session's initial state — extracted from `PtyHost.spawn` (file-size
+ *  cap); the host starts the child and owns every mutation after this. */
+export function freshSessionState(key: string, spec: PtySpawnSpec, argv: readonly string[]): PtySessionState {
+  return {
+    key,
+    cwd: spec.cwd,
+    proc: null,
+    alive: true,
+    chunks: [],
+    bytes: 0,
+    totalBytes: 0,
+    cols: spec.cols ?? 80,
+    rows: spec.rows ?? 24,
+    command: argv,
+    title: "",
+    titleCarry: "",
+    titleDecoder: new StringDecoder("utf8"),
+    sinks: new Map(),
+    parked: false,
+    parkedScreenBytes: 0,
+    exit: null,
+    restored: false,
+    lastFreezeAtMs: 0,
+  }
 }
