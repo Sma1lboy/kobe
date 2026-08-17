@@ -107,6 +107,14 @@ describe("scratch tasks (issue #33)", () => {
     expect(plain.scratch).toBeUndefined()
   })
 
+  it("a scratch task mints NO auto-name — title stays empty until named or adopted (issue #42)", async () => {
+    const scratch = await orch.openDirectoryTask({ dir, scratch: true })
+    expect(scratch.title).toBe("")
+    // Adoption derives the title from the repo it lands in (rule ①).
+    await orch.adoptScratchRepo(scratch.id, home)
+    expect(orch.getTask(scratch.id)?.title).not.toBe("")
+  })
+
   it("adoptScratchRepo repoints the task at the repo and clears the flag", async () => {
     const scratch = await orch.openDirectoryTask({ dir, scratch: true })
     await orch.adoptScratchRepo(scratch.id, home) // any existing dir works as "the repo"

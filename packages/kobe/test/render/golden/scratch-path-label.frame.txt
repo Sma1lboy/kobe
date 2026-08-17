@@ -1,0 +1,26 @@
+# sidebar frame: scratch-path-label
+# a scratch row with unknown tabs is named by its tail-truncated path, never a stored auto-name (issue #42)
+# 30x22
+# GENERATED — do not hand-edit. Regenerate: KOBE_UPDATE_GOLDEN=1 bun run test:render
+|                              |
+| ROVE                         |
+|                              |
+|  + New task               n  |
+|                              |
+| Kanban                       |
+| Routines                     |
+|                              |
+| SCRATCH ──────────────────── |
+|  …deep/nested/project-dir    |
+|                              |
+| kobe ─────────────────────── |
+|  feat/alpha                  |
+|▌ · build                     |
+|                              |
+|                              |
+|                              |
+|                              |
+|                              |
+|                              |
+|                              |
+|                              |

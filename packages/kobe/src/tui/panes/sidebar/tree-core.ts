@@ -20,7 +20,9 @@
  * never disagree about what identifies a tab.
  */
 
+import { homedir } from "node:os"
 import type { Task } from "@/types/task"
+import { truncateStart } from "../../lib/truncate"
 import { fuzzyMatch } from "./fuzzy"
 import { repoBasename, sidebarProjectKey } from "./groups"
 
@@ -98,6 +100,43 @@ export function parseRowId(rowId: string): { taskId: string; tabId: string | nul
   const at = rowId.indexOf(TAB_ROW_SEPARATOR)
   if (at < 0) return { taskId: rowId, tabId: null }
   return { taskId: rowId.slice(0, at), tabId: rowId.slice(at + TAB_ROW_SEPARATOR.length) }
+}
+
+/** Widest path label a worktree row renders before tail-truncation — the
+ *  default rail width minus row chrome. The row's flex still end-clips on
+ *  narrower rails; pre-truncating from the START keeps the leaf visible at
+ *  the default width, which is the half that disambiguates a path. */
+export const PATH_LABEL_MAX = 24
+
+/**
+ * What a worktree row is CALLED — the one derivation rule (issue #42):
+ * a task with a branch is named by it; a branchless `dir` task (plain
+ * `rove .` opens and scratch shells alike) by its tail-truncated
+ * directory — the stored title is deliberately ignored there, because
+ * dir-task titles are auto-generated noise (`jacksonc-xxxx`) and legacy
+ * rows render by the new rule with no data migration. A regular task
+ * before its worktree materialises (no branch yet, path not its own)
+ * keeps its title, else the label falls back to the path and finally
+ * "scratch" so a row is never blank.
+ *
+ * `liveBranch` is the caller-resolved HEAD for `main` rows (their stored
+ * branch is always "" — see `git-head.ts`); `home` is injectable so the
+ * tildification unit-tests without the real $HOME.
+ */
+export function worktreeRowLabel(
+  task: Task,
+  opts: { readonly liveBranch?: string; readonly home?: string } = {},
+): string {
+  const branch = (opts.liveBranch ?? task.branch) || task.branch
+  if (branch) return branch
+  if (task.kind !== "dir" && task.title) return task.title
+  const path = task.worktreePath || task.repo
+  if (path) {
+    const home = opts.home ?? homedir()
+    const tildified = home && (path === home || path.startsWith(`${home}/`)) ? `~${path.slice(home.length)}` : path
+    return truncateStart(tildified, PATH_LABEL_MAX)
+  }
+  return task.title || "scratch"
 }
 
 export interface TreeInput {

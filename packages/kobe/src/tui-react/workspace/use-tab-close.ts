@@ -6,7 +6,9 @@
  *
  * The four exits a tab has, and why they differ:
  *
- *   - `closeActive`   — ctrl+w. Refuses the last tab with a toast.
+ *   - `closeActive`   — ctrl+w. Refuses the last tab with a toast — except
+ *     on a scratch task, where closing the last tab tears the task down
+ *     (issue #42; same zero-ceremony path as the shell exiting).
  *   - `closeById`     — a close named from OUTSIDE the component (the sidebar
  *     tree's menu). Same semantics as ctrl+w minus the toast: the menu omits
  *     the entry when it would be refused.
@@ -47,9 +49,9 @@ export interface TabCloseDeps {
   readonly resumeTriedRef: { readonly current: Set<string> }
   /** Surface ctrl+w's refusal to close a task's only tab. */
   readonly notifyCannotCloseLast: (tabId: string) => void
-  /** Scratch task (issue #33): the LAST tab's shell exiting ends the task
-   *  itself (the host deletes the row) instead of recycling a fresh engine
-   *  tab in place. Absent on ordinary tasks. */
+  /** Scratch task (issue #33): the LAST tab going away — its shell exiting
+   *  OR ctrl+w on it (issue #42) — ends the task itself (the host deletes
+   *  the row) instead of recycling/refusing. Absent on ordinary tasks. */
   readonly onScratchExit?: () => void
 }
 
@@ -97,6 +99,14 @@ export function useTabClose(deps: TabCloseDeps): TabClose {
     const closing = current.tabs.find((tab) => tab.id === current.activeId)
     const { state: next, closedId } = closeActiveTab(current)
     if (!closedId) {
+      // Scratch task (issue #42): ctrl+w on its only tab tears down the
+      // whole task — same zero-ceremony semantics (and same path) as the
+      // shell exiting on its own. Ordinary tasks keep the refusal toast.
+      if (deps.onScratchExit) {
+        if (closing) releaseClosedTabPtys(taskId(), closing, closing.id)
+        deps.onScratchExit()
+        return
+      }
       deps.notifyCannotCloseLast(current.activeId)
       return
     }

@@ -441,10 +441,23 @@ export interface SerializedTask {
   readonly updatedAt: string
 }
 
+/**
+ * Display fallback for an empty task title (issue #42): a scratch task mints
+ * no auto-name, so the wire fills branch → directory → "scratch" HERE — one
+ * spot upstream of every consumer (TUI task channel, web board/kanban,
+ * `api list`/`get-task`, notification copy), so none can render a blank row.
+ * The STORED title stays empty; only the serialized view is filled. No
+ * truncation: consumers clip visually, and agents reading the JSON want the
+ * full path.
+ */
+export function displayTaskTitle(task: Pick<DaemonTask, "title" | "branch" | "worktreePath" | "repo">): string {
+  return task.title || task.branch || task.worktreePath || task.repo || "scratch"
+}
+
 export function serializeTask(task: DaemonTask): SerializedTask {
   return {
     id: task.id,
-    title: task.title,
+    title: displayTaskTitle(task),
     repo: task.repo,
     branch: task.branch,
     worktreePath: task.worktreePath,
