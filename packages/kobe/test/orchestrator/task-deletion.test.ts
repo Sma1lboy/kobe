@@ -64,6 +64,30 @@ describe("durable background task deletion", () => {
     expect(worktrees.remove).toHaveBeenCalledWith("/wt/opt-in", { force: false, deleteBranch: true })
   })
 
+  it("keeps the deleteBranch opt-in across a store reload", async () => {
+    // Deletion is a durable, daemon-owned state machine: `prepare` persists
+    // the opt-in, and a daemon restart in the queued/running window reloads
+    // it from disk. If the load coercion drops `deleteBranch`, `finish` runs
+    // with `deleteBranch:false` and silently keeps the branch the user asked
+    // to delete. Reload through a fresh store + orchestrator and assert the
+    // opt-in survives the round-trip.
+    const task = await makeTask("/wt/reloaded")
+    await orch.prepareTaskDeletion(task.id, { deleteBranch: true })
+
+    const reloaded = new TaskIndexStore({ homeDir: home })
+    await reloaded.load()
+    expect(reloaded.get(task.id)?.deletion?.deleteBranch).toBe(true)
+
+    const reloadedOrch = new Orchestrator({ store: reloaded, worktrees: worktrees as unknown as GitWorktreeManager })
+    try {
+      await reloadedOrch.beginTaskDeletion(task.id)
+      await reloadedOrch.finishTaskDeletion(task.id)
+      expect(worktrees.remove).toHaveBeenCalledWith("/wt/reloaded", { force: false, deleteBranch: true })
+    } finally {
+      reloadedOrch.dispose()
+    }
+  })
+
   it("force does not escalate into branch deletion", async () => {
     const task = await makeTask("/wt/forced")
     worktrees.isDirty.mockResolvedValue(true)
