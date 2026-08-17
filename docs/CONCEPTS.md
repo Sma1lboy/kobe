@@ -33,7 +33,10 @@ confirm; nothing on disk is touched). A scratch row earns a permanent place
 two ways: rename it (naming is the keep gesture), or start a coding harness
 inside a git repository — Rove detects the live harness plus the shell's
 settled directory and quietly migrates the row into that repository's project
-group.
+group. If the settled directory already belongs to a Task — the project's
+main checkout, a directory Task's directory, or inside a managed Task's
+worktree — the shell (running session and all) folds into that Task as a new
+terminal tab instead of becoming a duplicate row.
 
 Each Task has a `status` you set yourself — `backlog`, `in_progress`,
 `in_review`, `done`, `canceled`, `error` — and a separate `archived` flag.

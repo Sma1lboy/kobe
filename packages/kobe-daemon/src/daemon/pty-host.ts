@@ -32,13 +32,19 @@
  * store) forgets a session for good.
  */
 
-import { StringDecoder } from "node:string_decoder"
 import { resolveLoginShell } from "./platform-shell.js"
 import type { DaemonFrame, PtyPeekResult, PtySessionExit } from "./protocol.ts"
 import { type PtyExit, bunTerminalDriver } from "./pty-driver.ts"
 import { embeddedTerminalEnv } from "./pty-env.js"
 import { type FrozenPtySession, freezeSession, thawSession } from "./pty-freeze-store.ts"
-import type { PtyAttachResult, PtyHostOptions, PtySessionState, PtySink, PtySpawnSpec } from "./pty-host-types.ts"
+import {
+  type PtyAttachResult,
+  type PtyHostOptions,
+  type PtySessionState,
+  type PtySink,
+  type PtySpawnSpec,
+  freshSessionState,
+} from "./pty-host-types.ts"
 import {
   type PtyHostStats,
   type PtySessionInfo,
@@ -207,6 +213,27 @@ export class PtyHost {
     return this.endChild(session)
   }
 
+  /**
+   * Re-key a running session (`pty.rename`) — the scratch-fold move (issue
+   * #40): the shell keeps running untouched, only its ownership label
+   * changes, so the task-archive sweep and every future attach see it under
+   * the adopting task. No-ops (false) when the source is missing or the
+   * target key is taken — the caller must pick a free tab id first. The
+   * old key's freeze record moves with it; attached sinks keep streaming
+   * (frames carry `session.key`, which is now the new one).
+   */
+  rename(from: string, to: string): boolean {
+    const session = this.sessions.get(from)
+    if (!session || from === to || this.sessions.has(to)) return false
+    this.sessions.delete(from)
+    session.key = to
+    this.sessions.set(to, session)
+    this.opts.freeze?.drop(from)
+    this.maybeFreeze(session, true)
+    this.opts.log?.("pty", `renamed session ${from} → ${to}`)
+    return true
+  }
+
   /** Detach one connection from one session; the child keeps running. */
   detach(key: string, token: object, parked = false, parkedScreenBytes = 0): void {
     const session = this.sessions.get(key)
@@ -359,27 +386,7 @@ export class PtyHost {
    *  open (its adoption fires the callback instead). */
   private spawn(key: string, spec: PtySpawnSpec, spare = false): PtySessionState {
     const argv = spec.command && spec.command.length > 0 ? [...spec.command] : [spec.shell ?? resolveLoginShell()]
-    const session: PtySessionState = {
-      key,
-      cwd: spec.cwd,
-      proc: null,
-      alive: true,
-      chunks: [],
-      bytes: 0,
-      totalBytes: 0,
-      cols: spec.cols ?? 80,
-      rows: spec.rows ?? 24,
-      command: argv,
-      title: "",
-      titleCarry: "",
-      titleDecoder: new StringDecoder("utf8"),
-      sinks: new Map(),
-      parked: false,
-      parkedScreenBytes: 0,
-      exit: null,
-      restored: false,
-      lastFreezeAtMs: 0,
-    }
+    const session = freshSessionState(key, spec, argv)
     this.startChild(session)
     if (session.alive) {
       this.opts.log?.("pty", `spawned ${argv[0]} for ${key} (pid ${session.proc?.pid})`)
