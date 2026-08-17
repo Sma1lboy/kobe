@@ -307,7 +307,7 @@ export async function deleteTaskFlow(ctx: TaskActionContext, taskId: string): Pr
 
 /**
  * Rename a task's title via `task.rename` (same RPC from both hosts). The
- * branch follows the title for not-yet-materialised tasks (autoBranch
+ * branch follows the title for not-yet-materialised tasks (the auto branch
  * derives from it); a worktree that already exists keeps its git branch.
  */
 export async function renameTaskFlow(ctx: TaskActionContext, taskId: string): Promise<void> {

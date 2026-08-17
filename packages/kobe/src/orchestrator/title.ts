@@ -1,11 +1,12 @@
 /**
- * Title and branch derivation (v0.6).
+ * Title derivation + placeholder-branch recognition.
  *
- * Used by the orchestrator's `createTask` when the user gives a title
- * but no explicit branch — we derive a `rove/<slug>-<id>` name.
- * `deriveTitleFromPrompt` is kept for the rare case where we still
- * accept a free-form prompt as a title source (e.g. external callers
- * via the daemon RPC); v0.6 itself doesn't surface that path.
+ * Branch NAMES are no longer derived here — `branch-style.ts` owns the
+ * repo-convention naming (issue #39). This module keeps the title helpers
+ * and the placeholder-branch discriminator that the first-rename
+ * branch-follow flow depends on. `deriveTitleFromPrompt` is kept for the
+ * rare case where we still accept a free-form prompt as a title source
+ * (e.g. external callers via the daemon RPC).
  */
 
 /** Title cap. Kept generous for branch slugs; the compact sidebar truncates visually. */
@@ -38,36 +39,15 @@ export function deriveTitleFromPrompt(prompt: string): string {
 }
 
 /**
- * Build `rove/<slug>-<ulid-suffix-6>` from a user-supplied title and a
- * freshly-minted ulid. The 6-char suffix comes from the ulid's random
- * tail, so two tasks created from the same placeholder title still get
- * distinct branches (branch collisions failed `git worktree
- * add -b`). MUST be passed the real task id, never a fixed placeholder.
- */
-export function autoBranch(title: string, taskId: string): string {
-  const slug = title
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 32)
-    // Re-trim after the cap: the 32-char slice can land on a `-` and
-    // re-introduce a trailing hyphen that the template below would then
-    // double into `rove/<slug>--<suffix>`. Only trailing can reappear —
-    // the slice keeps the already-leading-trimmed prefix.
-    .replace(/-+$/, "")
-  const suffix = taskId.slice(-6).toLowerCase()
-  const base = slug || "task"
-  return `rove/${base}-${suffix}`
-}
-
-/**
- * Whether `branch` is still the untouched placeholder-derived default for
- * `taskId`, including the pre-Rove `kobe/` spelling. This is the discriminator
- * `TaskEditor.followBranchToTitle` uses to fire the first-rename branch
- * follow at most once; keeping both accepted spellings beside
- * {@link autoBranch} and {@link PLACEHOLDER_TASK_TITLE} prevents drift.
+ * Whether `branch` is still an untouched placeholder-derived default for
+ * `taskId` — the discriminator `TaskEditor.followBranchToTitle` uses to fire
+ * the first-rename branch follow at most once. Three accepted shapes:
+ * the convention-era `new-task` slug (optionally type-prefixed and/or
+ * `-N`-suffixed, from `branch-style.ts`), and the legacy `rove/` / `kobe/`
+ * `new-task-<id6>` spellings older tasks still carry.
  */
 export function isPlaceholderDerivedBranch(branch: string, taskId: string): boolean {
-  const canonical = autoBranch(PLACEHOLDER_TASK_TITLE, taskId)
-  return branch === canonical || branch === canonical.replace(/^rove\//, "kobe/")
+  const id6 = taskId.slice(-6).toLowerCase()
+  if (branch === `rove/new-task-${id6}` || branch === `kobe/new-task-${id6}`) return true
+  return /^(?:[^/]+\/)?new-task(?:-\d+)?$/.test(branch)
 }

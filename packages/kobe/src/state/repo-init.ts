@@ -75,12 +75,12 @@ export type PromptDeliveryIntent =
  * invocation; tests pass a literal.
  */
 export function newTaskBranchCoda(taskId: string, api: string = kobeApiInvocation(), spawnerTaskId?: string): string {
-  const rename = `PS: this task's git branch name is an auto-generated placeholder. Once you understand the work, rename it to a short descriptive name (keep the rove/ prefix): \`${api} set-branch --task-id ${taskId} --branch rove/<descriptive-slug>\``
+  const rename = `PS: this task's git branch name is an auto-generated placeholder. Once you understand the work, rename it to a short descriptive name following this repo's branch-naming convention: \`${api} set-branch --task-id ${taskId} --branch <descriptive-slug>\``
   if (!spawnerTaskId || spawnerTaskId === taskId) return rename
   // Send-back, not `report`: a stored report only surfaces if the spawner
   // explicitly awaits, which in practice it never does — outcomes silently
   // vanished. `send` lands a full turn in the spawner's chat tab.
-  return `${rename}\n\nYou were spawned by Rove task ${spawnerTaskId}. When the work is finished, send your outcome back to it — include the final branch name: \`${api} send --task-id ${spawnerTaskId} --prompt "<succeeded|failed>: <one-line summary> (branch rove/<slug>)"\``
+  return `${rename}\n\nYou were spawned by Rove task ${spawnerTaskId}. When the work is finished, send your outcome back to it — include the final branch name: \`${api} send --task-id ${spawnerTaskId} --prompt "<succeeded|failed>: <one-line summary> (branch <final-branch>)"\``
 }
 
 const INIT_SCRIPT_RELS = [join(".rove", "init.sh"), join(".kobe", "init.sh")] as const

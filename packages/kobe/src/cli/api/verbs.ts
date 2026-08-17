@@ -152,7 +152,8 @@ export const VERBS: readonly VerbSpec[] = [
         name: "branch",
         type: "string",
         placeholder: "B",
-        description: "Explicit branch name (else auto rove/<slug>-<id>). Single task only.",
+        description:
+          "Explicit branch name (else auto-derived from the title, following the repo's own branch-naming convention). Single task only.",
       },
       { name: "base-branch", type: "string", placeholder: "B", description: "Base ref the worktree branches from." },
       F.command(),

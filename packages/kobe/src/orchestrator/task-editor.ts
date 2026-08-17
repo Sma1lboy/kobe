@@ -20,9 +20,10 @@ import type {
   TaskStatus,
   VendorId,
 } from "../types/task.ts"
+import { deriveConventionBranch, inferBranchStyle, uniqueBranchName } from "./branch-style.ts"
 import { IllegalTransitionError, TaskNotFoundError } from "./errors.ts"
 import type { TaskIndexStore } from "./index/store.ts"
-import { autoBranch, isPlaceholderDerivedBranch } from "./title.ts"
+import { isPlaceholderDerivedBranch } from "./title.ts"
 import type { GitWorktreeManager } from "./worktree/manager.ts"
 
 /**
@@ -57,9 +58,9 @@ export class TaskEditor {
 
   /**
    * Keep a materialised task's branch in lockstep with its title WHILE the
-   * branch is still the placeholder-derived default (`rove/new-task-<id>`).
-   * This is what lets a task auto-named from its first prompt also pick up a
-   * meaningful branch instead of staying `rove/new-task-…`. It fires at most
+   * branch is still the placeholder-derived default (`new-task`, or a legacy
+   * `rove/`/`kobe/` spelling). This is what lets a task auto-named from its
+   * first prompt also pick up a meaningful branch. It fires at most
    * once: after the first rename the branch no longer matches the placeholder
    * derivation, so a later title change (or a manual `setBranch`) is never
    * clobbered. Skipped for `main` (no branch) and for not-yet-materialised
@@ -78,30 +79,19 @@ export class TaskEditor {
   private async followBranchToTitle(taskBefore: Task, newTitle: string): Promise<void> {
     if (taskBefore.kind === "main" || !taskBefore.worktreePath) return
     if (!isPlaceholderDerivedBranch(taskBefore.branch, taskBefore.id)) return
-    const base = autoBranch(newTitle, taskBefore.id)
-    if (base === taskBefore.branch) return
     try {
+      const names = await this.worktrees.listBranchNames(taskBefore.repo)
+      const base = deriveConventionBranch(newTitle, inferBranchStyle(names))
+      if (base === taskBefore.branch) return
       if (await this.worktrees.branchHasUpstream(taskBefore.worktreePath, taskBefore.branch)) return
-      const nextBranch = await this.uniqueFollowBranch(taskBefore, base)
-      if (!nextBranch) return
+      // Exclude the branch we're renaming FROM so a placeholder like
+      // `new-task` can never block its own successor's `-2` scan.
+      const taken = new Set(names.filter((n) => n !== taskBefore.branch))
+      const nextBranch = uniqueBranchName(base, taken, taskBefore.id)
       await this.setBranch(taskBefore.id, nextBranch)
     } catch (err) {
       console.error(`[rove] follow-branch-to-title failed for ${taskBefore.id}:`, err)
     }
-  }
-
-  /**
-   * `base` if it's free, else the first free `base-2` … `base-9`, else null
-   * (keep the placeholder). The `-<id6>` suffix in {@link autoBranch} makes a
-   * collision near-impossible, so a short bounded scan is plenty.
-   */
-  private async uniqueFollowBranch(task: Task, base: string): Promise<string | null> {
-    if (!(await this.worktrees.hasLocalBranch(task.worktreePath, base))) return base
-    for (let n = 2; n <= 9; n += 1) {
-      const candidate = `${base}-${n}`
-      if (!(await this.worktrees.hasLocalBranch(task.worktreePath, candidate))) return candidate
-    }
-    return null
   }
 
   /**
