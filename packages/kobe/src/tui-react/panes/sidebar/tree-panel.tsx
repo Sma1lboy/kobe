@@ -1,11 +1,11 @@
 /** @jsxImportSource @opentui/react */
 /**
- * The sidebar tree's body — one scrollbox of ONE-CELL rows with progressive
- * per-level indent (owner call 2026-08-01, round 3). The chrome around it
- * (brand header / nav rail / view tabs / section-header grammar for project
- * groups) stays the flat sidebar's own components; inside the tree, density
- * wins: worktree rows compress the two-line card to one line, tabs indent
- * one level further.
+ * The sidebar tree's body — one scrollbox of ONE-CELL rows (owner call
+ * 2026-08-01, round 3). The chrome around it (brand header / nav rail / view
+ * tabs / section-header grammar for project groups) stays the flat sidebar's
+ * own components; inside the tree, density wins: worktree rows compress the
+ * two-line card to one line, and tab rows start at the same column with the
+ * state glyph carrying the hierarchy (issue #41).
  *
  * No fold anywhere (owner round 5): every project and worktree always shows
  * everything under it, so there are no twisties and no collapse state.

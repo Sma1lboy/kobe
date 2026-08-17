@@ -1,8 +1,10 @@
 /** @jsxImportSource @opentui/react */
 /**
  * One-line tree rows (owner call 2026-08-01, round 3): every row inside the
- * tree is ONE cell tall, with progressive per-level indent — project header,
- * worktrees two cells in, tabs two more. The two-line cards remain the FLAT
+ * tree is ONE cell tall — project header flush, worktrees one cell in, and
+ * tab rows at the SAME column as their worktree (issue #41: the state-circle
+ * glyph carries the hierarchy; extra indent wasted the narrow rail's width).
+ * The two-line cards remain the FLAT
  * sidebar's grammar; the tree's density is its point (a dozen worktrees ×
  * tabs must fit the rail), so a worktree row compresses the card to
  * `twisty · state glyph · title` plus the card's own right-edge cluster
@@ -249,8 +251,11 @@ export function TabTreeRow(props: {
   // is missing from common terminal fonts, so it fell back oversized and ran
   // into the label. See NO_STATE_GLYPH.
   const glyph = isAgent && carriesState ? rowView.stateGlyph : NO_STATE_GLYPH
+  // depth 1, not 2 (issue #41): a tab row starts at the same column as its
+  // worktree row — the circle status glyph carries the hierarchy, and the
+  // extra indent cell wasted width the narrow rail doesn't have.
   return (
-    <RowShell rowId={props.rowId} flatIndex={props.flatIndex} depth={2} shared={props.shared}>
+    <RowShell rowId={props.rowId} flatIndex={props.flatIndex} depth={1} shared={props.shared}>
       <text
         fg={carriesState ? toneColor(theme, rowView.tone) : theme.textMuted}
         wrapMode="none"

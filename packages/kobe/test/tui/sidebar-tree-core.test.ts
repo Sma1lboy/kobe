@@ -135,6 +135,37 @@ describe("buildTreeRows", () => {
     ])
   })
 
+  test("a scratch task with tabs renders NO worktree row — tabs hang under the header (issue #41)", () => {
+    // The auto-generated scratch name is noise; the shell IS the session.
+    // The task stays real in the data layer — only its middle row is skipped.
+    const result = rows({
+      tasks: [
+        task("s", { kind: "dir", scratch: true, repo: "/Users/me" }),
+        task("m", { kind: "main", repo: "/repos/kobe", branch: "", worktreePath: "/repos/kobe" }),
+      ],
+      tabsByTask: new Map([["s", [tab("tab-1"), tab("tab-2")]]]),
+    })
+    expect(result.map((r) => [r.kind, r.id])).toEqual([
+      ["project", SCRATCH_SECTION_ID],
+      ["tab", "s::tab-1"],
+      ["tab", "s::tab-2"],
+      ["project", "/repos/kobe"],
+      ["worktree", "m"],
+    ])
+    // Every emitted row is navigable — no unreachable middle level.
+    expect(treeFlatIds(result)).toEqual(["s::tab-1", "s::tab-2", "m"])
+  })
+
+  test("a scratch task whose tabs never mounted keeps its worktree row as the only handle", () => {
+    // Zero rows would make the task invisible AND unnavigable; the fallback
+    // row is what the cursor (and delete/archive) can still land on.
+    const result = rows({ tasks: [task("s", { kind: "dir", scratch: true, repo: "/Users/me" })] })
+    expect(result.map((r) => [r.kind, r.id])).toEqual([
+      ["project", SCRATCH_SECTION_ID],
+      ["worktree", "s"],
+    ])
+  })
+
   test("a scratch task never mints a project header for its directory", () => {
     // Same dir, one scratch + one ordinary dir task: only the ordinary one
     // groups under the directory; the scratch row lives in Scratch.
