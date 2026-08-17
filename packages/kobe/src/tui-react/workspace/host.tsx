@@ -262,7 +262,8 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
     createPR: () => void createPR(),
     // prefix+m — global entry into the sidebar's move mode: focus the
     // sidebar, highlight the selection (falling back to the first task),
-    // then j/k reorders and enter/esc exits.
+    // then j/k reorders the cursor row's level (tab/task/project — issue
+    // #43) and enter/esc exits.
     enterMoveMode: () => {
       const target = selectedId ?? tasks[0]?.id
       if (!target) return

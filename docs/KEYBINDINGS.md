@@ -37,7 +37,7 @@ the actions that can actually run right now.
 | `ctrl+a` `y` | Resume a prior engine session |
 | `ctrl+a` `h` / `l` | Move focus left / right across panes |
 | `ctrl+a` `o` | Open the Task directory in your editor |
-| `ctrl+a` `m` | Reorder projects in the sidebar |
+| `ctrl+a` `m` | Reorder sidebar rows (scope-aware: tab / task / project) |
 | `ctrl+a` `w` | Close the active split |
 | `ctrl+a` `1` / `2` / `3` | Kanban / Automations / GitHub Issues |
 | `ctrl+a` `z` | Toggle zen mode |
@@ -96,7 +96,7 @@ is active.
 | `d` | Delete Task / forget project | | `/` | Search |
 | `gg` / `shift+g` | Top / bottom | | `x` | Worktrees page |
 | `shift+p` | Pin / unpin managed Task | | `right` | Focus the current engine pane |
-| `shift+m` | Enter project reorder mode | | | |
+| `shift+m` | Enter reorder mode (scope-aware: tab / task / project) | | | |
 
 In reorder mode, `j`/`k` moves the highlighted project and `enter` or `esc`
 finishes. Project headings themselves aren't cursor rows; the move routes

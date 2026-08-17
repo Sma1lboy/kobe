@@ -18,6 +18,7 @@ import { useTheme } from "../context/theme"
 import { useT } from "../i18n"
 import { SidebarTree } from "../panes/sidebar/SidebarTree"
 import { closeTaskTab } from "./terminal-tabs-close"
+import { moveTaskTab } from "./terminal-tabs-move"
 
 export interface HostSidebarProps {
   readonly width: number
@@ -73,6 +74,16 @@ export function HostSidebar(props: HostSidebarProps) {
     },
     [kv, notif, t],
   )
+  // Tab reorder is tab close's sibling (move mode on a tab row, issue #43):
+  // same mounted-vs-background fork, same "who owns this task's state"
+  // question — `moveTaskTab` is where that fork lives. An edge-stop (first
+  // tab up / last down) is a silent no-op, not an error.
+  const moveTab = useCallback(
+    (taskId: string, tabId: string, delta: -1 | 1): void => {
+      moveTaskTab(kv, taskId, tabId, delta)
+    },
+    [kv],
+  )
   const common = {
     width: props.width,
     nav: props.nav,
@@ -116,6 +127,7 @@ export function HostSidebar(props: HostSidebarProps) {
         selectedTabId={props.selectedTabId}
         onSelectTab={props.onSelectTab}
         onCloseTab={closeTab}
+        onMoveTabRequest={moveTab}
         recentTask={props.recentTask ?? null}
       />
       {/* First-use key hint (component/keyboard-hints.tsx): renders until

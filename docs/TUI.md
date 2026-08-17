@@ -84,7 +84,10 @@ row or one of its tab rows:
   the Task's engine session is reopened; it does not replace a running turn.
 - `o` opens the Task directory in the configured GUI/workspace editor.
 - `shift+p` pins or unpins a managed Task. `shift+m`, followed by `j`/`k`,
-  reorders whole projects rather than individual Tasks.
+  reorders the row under the cursor at its own level: a tab moves within its
+  Task, a Task moves within its repo group, and a project-main row moves the
+  whole project. Moves stop at the edges (no wrap-around), and the new order
+  persists across restarts.
 - `a` archives a managed or directory Task after confirmation, stopping its
   hosted sessions but preserving its directory, branch, tab snapshot, and
   engine history. Archived Tasks leave the sidebar entirely; they remain

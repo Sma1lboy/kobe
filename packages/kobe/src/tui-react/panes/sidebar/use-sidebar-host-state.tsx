@@ -47,9 +47,10 @@ export interface SidebarHostState {
    */
   readonly notifyInfo: (message: string) => void
   /**
-   * The Sidebar's project-move request (`shift+m`): select a row and toggle
-   * move mode. The tree resolves that row's project and routes j/k through
-   * its synthetic `main` task, reordering the PROJECTS section.
+   * The Sidebar's move-mode request (`shift+m`): select a row and toggle
+   * move mode. The tree then routes j/k by the cursor row's LEVEL (issue
+   * #43): a tab moves within its task, a task within its repo group, and a
+   * `main` row drags its whole project.
    */
   readonly onLocalMergeRequest: (id: string) => void
 }

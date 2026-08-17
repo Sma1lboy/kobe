@@ -218,6 +218,34 @@ export function takeUnclaimedTabAdopt(): { taskId: string; tabIds: readonly stri
   return pending
 }
 
+/**
+ * Cross-component "move this tab up/down" request (sidebar move mode, issue
+ * #43) — same claim protocol as {@link requestTabClose}: the sidebar can name
+ * a tab of a task whose TerminalTabs is not mounted, so an unclaimed request
+ * is written in the background (`moveTaskTabRow`).
+ */
+let pendingTabMove: { taskId: string; tabId: string; delta: -1 | 1 } | null = null
+
+export function requestTabMove(taskId: string, tabId: string, delta: -1 | 1): void {
+  pendingTabMove = { taskId, tabId, delta }
+  for (const listener of tabActivationListeners) listener()
+}
+
+/** Consume a pending tab-move for this task, or null. */
+export function takeTabMove(taskId: string): { tabId: string; delta: -1 | 1 } | null {
+  if (pendingTabMove?.taskId !== taskId) return null
+  const { tabId, delta } = pendingTabMove
+  pendingTabMove = null
+  return { tabId, delta }
+}
+
+/** The twin of {@link takeUnclaimedTabClose} for tab moves. */
+export function takeUnclaimedTabMove(): { taskId: string; tabId: string; delta: -1 | 1 } | null {
+  const pending = pendingTabMove
+  pendingTabMove = null
+  return pending
+}
+
 /** Consume a pending tab-open for this task, or null. */
 export function takeTabOpen(taskId: string): {
   argv: readonly string[]

@@ -156,10 +156,13 @@ export class TaskEditor {
 
   /**
    * Move a task up/down within its visible ordering partition. Main
-   * (project) rows move among each other — the sidebar's PROJECTS section
-   * renders stored order (owner 2026-07-16), so reordering the store IS
-   * reordering the list. Regular tasks keep their partition (archived +
-   * pinned flags) so a move can't jump groups.
+   * (project) rows move among each other — the sidebar renders projects in
+   * the mains' stored order (owner 2026-07-16), so reordering the store IS
+   * reordering the project list. Regular tasks move within their REPO's
+   * partition (issue #43: the sidebar tree groups tasks under their repo, so
+   * a cross-repo swap would be invisible or jump groups), still split by
+   * archived + pinned flags. Edge-stop: `store.move` past the partition's
+   * first/last is a no-op, never a wrap.
    */
   async moveTask(id: TaskId | string, delta: -1 | 1): Promise<void> {
     const task = this.requireTask(id)
@@ -170,6 +173,7 @@ export class TaskEditor {
         isMain
           ? (t.kind ?? "task") === "main"
           : (t.kind ?? "task") !== "main" &&
+            t.repo === task.repo &&
             t.archived === task.archived &&
             (t.pinned ?? false) === (task.pinned ?? false),
       )

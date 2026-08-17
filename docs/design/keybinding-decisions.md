@@ -172,12 +172,15 @@ something tree-shaped inside it:
   on top of a task's title + repo, a query also matches a worktree's branch
   and a tab's live title. Matches keep their ancestors so a hit is never
   orphaned from its project.
-- `prefix+m` (`task.moveMode`) — the same global move mode retargeted at the
-  level the tree actually shows: `j`/`k` drag the cursor row's **project**,
-  not its task. It rides on the project's `main` checkout, which `moveTask`
-  already reorders among mains, so project order needed no new persistence
-  and no new daemon verb. A repo with no main checkout has no row to move,
-  and the chord is a silent no-op there.
+- `prefix+m` (`task.moveMode`) — the same global move mode, scope-aware
+  since issue #43: `j`/`k` drag the cursor row at its **own level**. A tab
+  row moves within its task's tab list (persisted in the tab snapshot), a
+  task row moves within its repo group (`moveTask` partitions by repo), and
+  a `main` row — the nearest navigable stand-in for the group header — drags
+  the whole project, riding on `moveTask` reordering mains among mains. No
+  new chord and no new daemon verb; every level stops at the edges (no
+  wrap). A repo with no main checkout has no project row to move, and the
+  chord is a silent no-op there.
 
 Right-click on any row opens that row's menu. The entries are exactly what
 the row's own chords already do, so the menu never becomes a second place

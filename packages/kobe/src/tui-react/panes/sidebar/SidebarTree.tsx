@@ -48,6 +48,8 @@ export type SidebarTreeProps = SidebarProps & {
   onSelectTab?: (taskId: string, tabId: string) => void
   /** Close one tab of any worktree — offered by the tab row's menu. */
   onCloseTab?: (taskId: string, tabId: string) => void
+  /** Move one tab within its task (move mode on a tab row, issue #43). */
+  onMoveTabRequest?: (taskId: string, tabId: string, delta: -1 | 1) => void
   /** Narrow mode's "↩ recent" jump target (issue #14, 2A) — renders as the
    *  first navigable row; ⏎ re-enters that task's workspace. */
   recentTask?: Task | null
@@ -189,23 +191,33 @@ export function SidebarTree(props: SidebarTreeProps) {
   const ctrl = controllerRef.current
 
   /**
-   * Move mode reorders PROJECTS in the tree (owner call 2026-08-01), not
-   * tasks: the tree already shows a project as a group, so "move" at the
-   * level you can see is the group. It routes through the project's `main`
-   * task, which `moveTask` already swaps past the neighbouring project's main
-   * — no new persistence, no new daemon call (see `mainTaskIdOfProject`).
+   * Move mode is SCOPE-AWARE (issue #43): the cursor row's level is what
+   * moves. A tab row moves within its task's tab list; a task/branch row
+   * moves within its repo group (`moveTask` partitions by repo); a `main`
+   * row — the repo's own checkout, the group's first row and the nearest
+   * navigable thing to the group header — moves the whole PROJECT, since
+   * project order IS the mains' stored order (see `mainTaskIdOfProject`).
+   * Every level edge-stops (store/`moveTab` refuse past the ends — no wrap).
    */
-  const cursorProjectId = useMemo((): string | null => {
-    const rowId = tree.flatIds[cursorIndex]
-    if (rowId === undefined) return null
-    return tree.projectIdOfTask(parseRowId(rowId).taskId)
-  }, [tree.flatIds, tree.projectIdOfTask, cursorIndex])
-
-  const moveCursorProject = useCallback(
+  const tasksRef = useLatest(props.tasks)
+  const moveCursorRow = useCallback(
     (delta: -1 | 1): void => {
       const rowId = flatIdsRef.current[cursorRef.current]
-      if (rowId === undefined) return
-      const projectId = tree.projectIdOfTask(parseRowId(rowId).taskId)
+      if (rowId === undefined || rowId === RECENT_ROW_ID) return
+      const { taskId, tabId } = parseRowId(rowId)
+      if (tabId !== null) {
+        props.onMoveTabRequest?.(taskId, tabId, delta)
+        return
+      }
+      const task = tasksRef.current.find((candidate) => candidate.id === taskId)
+      if (!task) return
+      // Non-main rows (regular tasks, dir tasks, scratch) move themselves —
+      // `moveTask` keeps them inside their repo/flag partition.
+      if (task.kind !== "main") {
+        props.onMoveRequest?.(taskId, delta)
+        return
+      }
+      const projectId = tree.projectIdOfTask(taskId)
       if (projectId === null) return
       // No main checkout ⇒ nothing to move. Silent rather than an error: a
       // repo with only task worktrees has no project row position to change.
@@ -213,8 +225,22 @@ export function SidebarTree(props: SidebarTreeProps) {
       if (mainId === null) return
       props.onMoveRequest?.(mainId, delta)
     },
-    [tree.projectIdOfTask, tree.mainTaskIdOfProject, props.onMoveRequest],
+    [tree.projectIdOfTask, tree.mainTaskIdOfProject, props.onMoveRequest, props.onMoveTabRequest],
   )
+
+  // What wears the move chip: a main row drags its whole PROJECT, so the
+  // group header carries the chip (the pre-#43 rendering); any other row
+  // drags itself, so the chip sits on the row under the cursor.
+  const cursorRowId = tree.flatIds[cursorIndex]
+  const cursorMove = useMemo((): { projectId: string | null; rowId: string | null } => {
+    if (cursorRowId === undefined || cursorRowId === RECENT_ROW_ID) return { projectId: null, rowId: null }
+    const { taskId, tabId } = parseRowId(cursorRowId)
+    if (tabId === null) {
+      const task = props.tasks.find((candidate) => candidate.id === taskId)
+      if (task?.kind === "main") return { projectId: tree.projectIdOfTask(taskId), rowId: null }
+    }
+    return { projectId: null, rowId: cursorRowId }
+  }, [cursorRowId, props.tasks, tree.projectIdOfTask])
 
   const menu = useTreeMenu({
     tree,
@@ -234,13 +260,13 @@ export function SidebarTree(props: SidebarTreeProps) {
     // them for the same reason: j/k/enter belong to the menu while it is up.
     enabled: focused && !search.active && !menu.open,
     bindings: bindByIds({
-      // In move mode j/k drag the project instead of walking the cursor —
-      // same multiplexing the flat sidebar does for tasks.
+      // In move mode j/k drag the cursor row's LEVEL instead of walking the
+      // cursor — same multiplexing the flat sidebar does for tasks.
       "sidebar.nav": (_evt, slot) => {
         markKeysUsed()
         const down = (slot ?? 0) % 2 === 0
         if (moveMode) {
-          moveCursorProject(down ? 1 : -1)
+          moveCursorRow(down ? 1 : -1)
           return
         }
         if (down) ctrl.moveDown()
@@ -390,6 +416,7 @@ export function SidebarTree(props: SidebarTreeProps) {
     cursorIndex,
     activeRowId: tree.activeRowId,
     selectedTaskId: props.selectedId,
+    movingRowId: moveMode ? cursorMove.rowId : null,
     rowEls,
     onPress: (flatIndex, rowId) => {
       // Clicking a row while a menu is up dismisses it — otherwise the menu
@@ -437,7 +464,7 @@ export function SidebarTree(props: SidebarTreeProps) {
         searching={search.active && search.query.trim().length > 0}
         shared={shared}
         onProjectContextMenu={menu.openForProject}
-        movingProjectId={moveMode ? cursorProjectId : null}
+        movingProjectId={moveMode ? cursorMove.projectId : null}
         setScrollRef={(r) => {
           scrollRef.current = r
         }}

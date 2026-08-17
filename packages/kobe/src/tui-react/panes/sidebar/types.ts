@@ -26,7 +26,9 @@ export type SidebarTaskCallbacks = {
   onArchiveRequest?: (taskId: string) => void
   /** Shift+M — lowercase `m` is captured but ignored (shift dropped on letters). */
   onLocalMergeRequest?: (taskId: string) => void
-  /** Task reorder mode: j/k move the cursor task instead of the cursor. */
+  /** Scope-aware reorder mode (issue #43): j/k move the cursor row's LEVEL
+   *  — a tab within its task, a task within its repo group, a main row's
+   *  whole project — instead of walking the cursor. */
   moveMode?: boolean
   onMoveRequest?: (taskId: string, delta: -1 | 1) => void
   onMoveModeExit?: () => void

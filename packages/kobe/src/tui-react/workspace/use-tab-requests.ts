@@ -19,13 +19,20 @@ import { useEffect } from "react"
 import { getDefaultPtyRegistry } from "../../tui/panes/terminal/registry"
 import { closePluginPanes, openPluginPane } from "../../tui/workspace/pane-split"
 import { adoptTabs } from "../../tui/workspace/tabs-adopt"
-import { type TabsState, selectTab, splitLeafPtyKey, tabPtyKeyFor } from "../../tui/workspace/terminal-tabs-core"
+import {
+  type TabsState,
+  moveTab,
+  selectTab,
+  splitLeafPtyKey,
+  tabPtyKeyFor,
+} from "../../tui/workspace/terminal-tabs-core"
 import {
   tabActivationListeners,
   takePaneClose,
   takeTabActivation,
   takeTabAdopt,
   takeTabClose,
+  takeTabMove,
   takeTabOpen,
 } from "./terminal-tabs-shared"
 
@@ -82,6 +89,15 @@ export function useTabRequests(io: TabRequestIO): void {
       if (adopt) {
         const prev = stateRef.current
         const next = adoptTabs(prev, adopt)
+        if (next !== prev) updateRef.current(next)
+      }
+      // Move-from-elsewhere (sidebar move mode): reorder through the single
+      // state writer so the change persists; `moveTab` edge-stops, so a
+      // top/bottom press is a same-object no-op nothing writes.
+      const move = takeTabMove(taskId)
+      if (move) {
+        const prev = stateRef.current
+        const next = moveTab(prev, move.tabId, move.delta)
         if (next !== prev) updateRef.current(next)
       }
       // Close-from-elsewhere (the sidebar tree's menu): claiming it here is

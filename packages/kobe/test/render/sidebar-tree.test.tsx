@@ -179,10 +179,9 @@ test("escape leaves search and restores the full tree", async () => {
   expect(text).not.toContain("/bravo")
 })
 
-test("move mode drags the PROJECT, routed through its main checkout", async () => {
-  // Owner call 2026-08-01: move at the level the tree shows, which is the
-  // group. The call goes to the project's `main` task because that is the row
-  // `moveTask` reorders projects by — no new persistence.
+// ─── Move mode is scope-aware (issue #43): the cursor row's LEVEL moves ───
+
+test("move mode on a TASK row moves the task itself within its repo group", async () => {
   tabsByTask.clear()
   const moves: Array<[string, number]> = []
   const tasks = [MAIN, task("a"), task("x", { repo: "/repos/foxychat", branch: "feat/x" })]
@@ -192,18 +191,67 @@ test("move mode drags the PROJECT, routed through its main checkout", async () =
   )
   await new Promise((r) => setTimeout(r, SETTLE))
 
-  // The cursor sits on `a`, whose project is /repos/kobe — main is `m`.
+  // The cursor sits on `a` — a regular task, so j/k move IT (the repo-group
+  // partition lives in moveTask), not its project's main.
   mockInput.typeText("j")
   await new Promise((r) => setTimeout(r, SETTLE))
   mockInput.typeText("k")
   await new Promise((r) => setTimeout(r, SETTLE))
 
   expect(moves).toEqual([
-    ["m", 1],
-    ["m", -1],
+    ["a", 1],
+    ["a", -1],
   ])
-  // …and the cursor did NOT walk: j/k belong to the drag while move mode is on.
+  // …the cursor did NOT walk (j/k belong to the drag), and the dragged ROW
+  // wears the chip — not the project header.
   expect(await frame()).toContain(" move")
+})
+
+test("move mode on a MAIN row drags the whole project", async () => {
+  // Project order is the mains' stored order, so moving the main IS moving
+  // the group — the pre-#43 behavior, now scoped to the main row.
+  tabsByTask.clear()
+  const moves: Array<[string, number]> = []
+  const tasks = [MAIN, task("a")]
+  const { mockInput } = await renderComponent(
+    tree({ tasks, selectedId: "m", moveMode: true, onMoveRequest: (id, delta) => moves.push([id, delta]) }),
+    { width: 28, height: 20 },
+  )
+  await new Promise((r) => setTimeout(r, SETTLE))
+
+  // Cursor anchors on the selected `m` (the repo's own checkout row).
+  mockInput.typeText("j")
+  await new Promise((r) => setTimeout(r, SETTLE))
+  expect(moves).toEqual([["m", 1]])
+})
+
+test("move mode on a TAB row moves the tab within its task", async () => {
+  seedTabs("a", ["tab-1", "tab-2"])
+  const tabMoves: Array<[string, string, number]> = []
+  const taskMoves: string[] = []
+  const { mockInput } = await renderComponent(
+    tree({
+      selectedTabId: "tab-2",
+      moveMode: true,
+      onMoveRequest: (id) => taskMoves.push(id),
+      onMoveTabRequest: (taskId, tabId, delta) => tabMoves.push([taskId, tabId, delta]),
+    }),
+    { width: 28, height: 20 },
+  )
+  await new Promise((r) => setTimeout(r, SETTLE))
+
+  // The active row is a's tab-2 — the cursor anchors there, so j/k move the
+  // TAB, and the task/project callbacks stay silent.
+  mockInput.typeText("k")
+  await new Promise((r) => setTimeout(r, SETTLE))
+  mockInput.typeText("j")
+  await new Promise((r) => setTimeout(r, SETTLE))
+
+  expect(tabMoves).toEqual([
+    ["a", "tab-2", -1],
+    ["a", "tab-2", 1],
+  ])
+  expect(taskMoves).toEqual([])
 })
 
 test("escape leaves move mode", async () => {

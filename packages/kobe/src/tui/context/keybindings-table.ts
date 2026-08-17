@@ -160,7 +160,7 @@ export const KobeKeymap: readonly KobeBinding[] = [
     keys: [],
     prefixKeys: ["m"],
     category: "Global",
-    description: "Reorder projects (then j/k)",
+    description: "Reorder sidebar rows (then j/k)",
   },
   {
     id: "settings.open",
