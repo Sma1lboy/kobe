@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.8.128
+
+### Patch Changes
+
+- a9b0984: `land` now refuses to merge a branch with zero commits ahead of the base instead of silently landing a no-op. If the task's worktree still holds uncommitted files, the error (`EMPTY_BRANCH_DIRTY_WORKTREE`) lists them and carries an executable recovery path (`hint` + `nextCommandArgs`) that sends the worker back to commit its own work; a clean worktree fails with `EMPTY_BRANCH` and no auto-recovery, surfacing the "worker reported success but delivered nothing" case for a human.
+
+## 0.8.127
+
+### Patch Changes
+
+- 89dddf6: Rove skill v29: "succeeded" means committed — a worker's green tests in an uncommitted working tree are not a deliverable, and the outcome report may only claim success once the work is committed on the branch. Closes the done-definition gap between workers (tests green) and `land` (commits exist) that produced silent empty merges.
+
 ## 0.8.126
 
 ### Patch Changes

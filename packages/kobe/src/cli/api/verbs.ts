@@ -430,7 +430,7 @@ export const VERBS: readonly VerbSpec[] = [
   {
     name: "land",
     summary:
-      "Merge a task's branch back into its base repo's current branch. Refuses a dirty base checkout; on conflict, aborts and returns the conflicted files (resolve by hand). Returns { landedOn, commit }.",
+      "Merge a task's branch back into its base repo's current branch. Refuses a dirty base checkout and refuses a branch with zero commits ahead of the base (EMPTY_BRANCH; EMPTY_BRANCH_DIRTY_WORKTREE with a send-back recovery path when the worktree still holds the uncommitted work). On conflict, aborts and returns the conflicted files (resolve by hand). Returns { landedOn, commit }.",
     flags: [
       F.taskId(),
       {

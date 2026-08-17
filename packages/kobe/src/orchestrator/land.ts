@@ -20,9 +20,9 @@ import fs from "node:fs"
 import path from "node:path"
 import type { ExecHost } from "../exec/exec-host.ts"
 import type { Task, TaskId } from "../types/task.ts"
-import { LandConflictError, MainCheckoutDirtyError } from "./errors.ts"
+import { EmptyBranchDirtyWorktreeError, EmptyBranchError, LandConflictError, MainCheckoutDirtyError } from "./errors.ts"
 import { type WorktreeExecDeps, defaultExecDeps } from "./worktree/exec-deps.ts"
-import type { GitWorktreeManager } from "./worktree/manager.ts"
+import { GitWorktreeManager } from "./worktree/manager.ts"
 
 export type LandStrategy = "merge" | "squash"
 
@@ -160,13 +160,65 @@ async function conflictedFiles(exec: ExecHost, dir: string): Promise<string[]> {
     .filter((l) => l.length > 0)
 }
 
+/** Uncommitted/untracked paths from `git status --porcelain` output (strip the XY prefix). */
+function porcelainPaths(stdout: string): string[] {
+  return stdout
+    .split("\n")
+    .filter((l) => l.length > 0)
+    .map((l) => l.slice(3).trim())
+}
+
+/**
+ * Refuse to land a branch with ZERO commits ahead of the base — that merge is
+ * a git-level no-op, and in practice it means "worker reported success but
+ * delivered nothing committed". Two distinct refusals:
+ *   - worktree still dirty → the work exists but was never committed
+ *     ({@link EmptyBranchDirtyWorktreeError}, lists the files + hint);
+ *   - worktree clean/gone → genuine no-op ({@link EmptyBranchError}).
+ * An unreadable worktree (already removed, remote path mismatch) falls through
+ * to the clean case — ambiguity must not hide the no-op signal.
+ */
+async function assertBranchHasWork(
+  task: Task,
+  branch: string,
+  landedOn: string,
+  exec: ExecHost,
+  dir: string,
+  deps: WorktreeExecDeps,
+): Promise<void> {
+  const aheadOut = await git(exec, dir, ["rev-list", "--count", `${landedOn}..${branch}`])
+  const ahead = Number.parseInt(aheadOut.stdout.trim(), 10)
+  if (!Number.isFinite(ahead) || ahead > 0) return
+  const worktreePath = task.worktreePath.trim()
+  if (worktreePath) {
+    const manager = new GitWorktreeManager(deps)
+    let dirty = false
+    try {
+      dirty = await manager.isDirty(worktreePath)
+    } catch {
+      dirty = false // worktree gone/unreadable → treat as the clean no-op case
+    }
+    if (dirty) {
+      const wtExec = deps.execForPath(worktreePath)
+      const files = porcelainPaths((await git(wtExec, worktreePath, ["status", "--porcelain"])).stdout)
+      throw new EmptyBranchDirtyWorktreeError(branch, landedOn, worktreePath, files)
+    }
+  }
+  throw new EmptyBranchError(branch, landedOn)
+}
+
 /**
  * Land `task`'s branch into its base repo's current branch.
  *
  * Preconditions checked here (fail before any git write):
  *   - the task has a branch to land (a never-materialised task has none);
  *   - the base checkout is clean — a merge into a dirty tree would entangle the
- *     user's in-progress work with the landed branch, so we refuse.
+ *     user's in-progress work with the landed branch, so we refuse;
+ *   - the branch has at least one commit ahead of the base — a zero-commit
+ *     branch is a no-op land ("worker reported success, delivered nothing"),
+ *     refused as {@link EmptyBranchError}, or as
+ *     {@link EmptyBranchDirtyWorktreeError} when the worktree still holds the
+ *     never-committed work.
  *
  * On conflict: abort the merge (leaving the base checkout exactly as it was) and
  * throw {@link LandConflictError} with the conflicted paths. On success: return
@@ -193,6 +245,10 @@ export async function landTask(
   }
 
   if (await isDirty(exec, dir)) throw new MainCheckoutDirtyError(task.repo, dir)
+
+  // Fail BEFORE any merge: a branch with zero commits ahead of the base is a
+  // no-op land — refuse it (and its never-committed-work variant) loudly.
+  await assertBranchHasWork(task, branch, landedOn, exec, dir, deps)
 
   if (strategy === "squash") {
     const merge = await git(exec, dir, ["merge", "--squash", branch])

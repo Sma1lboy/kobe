@@ -186,6 +186,52 @@ describe("task lifecycle handlers", () => {
     expect(payload.callerCwd).toBeUndefined()
   })
 
+  it("land maps EMPTY_BRANCH_DIRTY_WORKTREE to an executable recovery send (worker commits its own work)", async () => {
+    // The daemon wire preserves only the message, so the CLI lifts the branch
+    // back out of it for the prefilled prompt.
+    const client = new FakeClient({
+      "task.land": () => {
+        throw new Error(
+          "EMPTY_BRANCH_DIRTY_WORKTREE: 'rove/wip' has no commits ahead of 'main' but its worktree /tmp/wt has uncommitted changes (wip.txt) — commit them in the worktree first, then land again",
+        )
+      },
+    })
+    try {
+      await invokeVerb("land", ["--task-id", "t1"], { client, runtime: stubRuntime() })
+      expect.unreachable("should have thrown")
+    } catch (err) {
+      expect(err).toBeInstanceOf(ApiError)
+      const apiErr = err as ApiError
+      expect(apiErr.code).toBe("EMPTY_BRANCH_DIRTY_WORKTREE")
+      expect(apiErr.data?.hint).toMatch(/commit its own work/)
+      expect(apiErr.data?.nextCommandArgs).toEqual([
+        "api",
+        "send",
+        "--task-id",
+        "t1",
+        "--prompt",
+        "your work is uncommitted on rove/wip — commit it yourself with a proper message, then report back",
+      ])
+    }
+  })
+
+  it("land passes EMPTY_BRANCH (clean worktree) through with no recovery path — a human must look", async () => {
+    const client = new FakeClient({
+      "task.land": () => {
+        throw new Error(
+          "EMPTY_BRANCH: 'rove/nothing' has no commits ahead of 'main' — landing it would be a no-op (the worker may not have delivered anything)",
+        )
+      },
+    })
+    // No hint/nextCommandArgs mapping — toApiError falls through to RPC_ERROR,
+    // and the EMPTY_BRANCH code still rides the message for matching.
+    await expectApiError(
+      () => invokeVerb("land", ["--task-id", "t1"], { client, runtime: stubRuntime() }),
+      "RPC_ERROR",
+      /EMPTY_BRANCH/,
+    )
+  })
+
   it("sets and clears active task", async () => {
     const client = new FakeClient({ "task.setActive": () => ({}) })
     await invokeVerb("set-active", ["--task-id", "t1"], { client, runtime: stubRuntime() })
