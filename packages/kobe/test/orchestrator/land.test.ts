@@ -13,7 +13,14 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { afterEach, beforeEach, describe, expect, test } from "vitest"
-import { LandConflictError, MainCheckoutDirtyError } from "../../src/orchestrator/errors.ts"
+import {
+  EMPTY_BRANCH_CODE,
+  EMPTY_BRANCH_DIRTY_WORKTREE_CODE,
+  EmptyBranchDirtyWorktreeError,
+  EmptyBranchError,
+  LandConflictError,
+  MainCheckoutDirtyError,
+} from "../../src/orchestrator/errors.ts"
 import { landTask, landTaskWithCleanup } from "../../src/orchestrator/land.ts"
 import { GitWorktreeManager } from "../../src/orchestrator/worktree/manager.ts"
 import type { Task } from "../../src/types/task.ts"
@@ -113,18 +120,55 @@ describe("landTask", () => {
     expect(status).toBe("")
   })
 
-  test("merge refuses a branch with nothing to land (already merged / no commits ahead)", async () => {
-    // `feat` branches off main but adds no commits of its own, so it is fully
-    // merged into main from the start. `git merge --no-ff` exits 0 ("Already up
-    // to date.") without creating a commit — landTask must reject this rather
-    // than report a fake success on the unchanged base commit.
+  test("merge refuses a branch with no commits ahead (already merged / empty)", async () => {
+    // `feat` branches off main but adds no commits of its own. Landing it
+    // would be a git-level no-op — landTask must reject it as EMPTY_BRANCH
+    // rather than report a fake success on the unchanged base commit.
     git(["branch", "feat"], repo)
     const head = spawnSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" }).stdout.trim()
 
-    await expect(landTask(task("feat"))).rejects.toThrow(/nothing to land/)
+    await expect(landTask(task("feat"))).rejects.toBeInstanceOf(EmptyBranchError)
+    await expect(landTask(task("feat"))).rejects.toThrow(EMPTY_BRANCH_CODE)
     // Base checkout must be untouched — no phantom merge commit.
     const after = spawnSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" }).stdout.trim()
     expect(after).toBe(head)
+  })
+
+  test("empty branch + clean worktree → EMPTY_BRANCH (no-op, worker delivered nothing)", async () => {
+    // A materialised worktree on `feat` with no commits and no local changes:
+    // the worker may have reported success without delivering anything.
+    const wt = path.join(tmpRoot, "wt-clean")
+    git(["worktree", "add", "-b", "feat", wt], repo)
+    const head = spawnSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" }).stdout.trim()
+
+    await expect(landTask({ ...task("feat"), worktreePath: wt })).rejects.toBeInstanceOf(EmptyBranchError)
+    await expect(landTask({ ...task("feat"), worktreePath: wt })).rejects.toThrow(/no-op/)
+    const after = spawnSync("git", ["rev-parse", "HEAD"], { cwd: repo, encoding: "utf8" }).stdout.trim()
+    expect(after).toBe(head)
+  })
+
+  test("empty branch + dirty worktree → EMPTY_BRANCH_DIRTY_WORKTREE listing the uncommitted files", async () => {
+    // The work was WRITTEN but never committed: branch has 0 commits ahead,
+    // the worktree still holds the changes. Refuse, name the files, and hint
+    // at committing in the worktree — never silently drop them into a no-op.
+    const wt = path.join(tmpRoot, "wt-dirty")
+    git(["worktree", "add", "-b", "feat", wt], repo)
+    fs.writeFileSync(path.join(wt, "wip.txt"), "uncommitted work\n")
+
+    try {
+      await landTask({ ...task("feat"), worktreePath: wt })
+      expect.unreachable("landTask should refuse an empty branch with a dirty worktree")
+    } catch (err) {
+      expect(err).toBeInstanceOf(EmptyBranchDirtyWorktreeError)
+      const msg = (err as Error).message
+      expect(msg).toContain(EMPTY_BRANCH_DIRTY_WORKTREE_CODE)
+      expect(msg).toContain("wip.txt")
+      expect(msg).toContain(wt)
+      expect(msg).toMatch(/commit them in the worktree/)
+    }
+    // The uncommitted file survives the refusal, and the base is untouched.
+    expect(fs.existsSync(path.join(wt, "wip.txt"))).toBe(true)
+    expect(fs.existsSync(path.join(repo, "wip.txt"))).toBe(false)
   })
 
   test("refuses a dirty base checkout", async () => {

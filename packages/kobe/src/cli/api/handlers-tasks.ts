@@ -5,9 +5,11 @@
  * Split out of `api-cmd.ts` (see that file's header).
  */
 
+import { errorMessage } from "@/lib/error-message"
 import type { SerializedTask } from "@sma1lboy/kobe-daemon/daemon/protocol"
 import { resolveCommandProtocol } from "../../engine/engine-presets.ts"
 import { kobeApiInvocation } from "../../engine/interactive-command.ts"
+import { EMPTY_BRANCH_DIRTY_WORKTREE_CODE } from "../../orchestrator/errors.ts"
 import type { VendorId } from "../../types/vendor.ts"
 import type { DaemonRpc } from "../daemon-session.ts"
 import { readOwnDispatcher, resolveDispatcherTab, verifiedSelfSession } from "./dispatcher.ts"
@@ -259,17 +261,51 @@ export async function land(ctx: VerbContext): Promise<unknown> {
   const taskId = ctx.args.require("task-id")
   const strategy = ctx.args.str("strategy") === "squash" ? "squash" : "merge"
   const removeWorktree = ctx.args.bool("remove-worktree") ?? false
-  const res = await daemon.request<{ result: unknown }>("task.land", {
-    taskId,
-    strategy,
-    deleteBranch: ctx.args.bool("delete-branch") ?? false,
-    archive: ctx.args.bool("then-archive") ?? false,
-    removeWorktree,
-    // The daemon refuses to remove the worktree the caller is running from —
-    // it can only know where the caller is if we tell it.
-    ...(removeWorktree ? { callerCwd: process.cwd() } : {}),
-  })
+  let res: { result: unknown }
+  try {
+    res = await daemon.request<{ result: unknown }>("task.land", {
+      taskId,
+      strategy,
+      deleteBranch: ctx.args.bool("delete-branch") ?? false,
+      archive: ctx.args.bool("then-archive") ?? false,
+      removeWorktree,
+      // The daemon refuses to remove the worktree the caller is running from —
+      // it can only know where the caller is if we tell it.
+      ...(removeWorktree ? { callerCwd: process.cwd() } : {}),
+    })
+  } catch (err) {
+    throw landRecoveryError(err, taskId)
+  }
   return { ok: true, taskId, ...(res.result as object) }
+}
+
+/**
+ * Give EMPTY_BRANCH_DIRTY_WORKTREE an executable recovery path (the
+ * self-healing `hint` + `nextCommandArgs` convention, same shape as
+ * TASK_NOT_FOUND): the worker WROTE its work but never committed it, so the
+ * recovery is a `send` back to THAT worker telling it to commit its own work
+ * with its own message — never an auto-commit here, the commit message
+ * belongs to whoever did the work. The branch name rides the daemon's error
+ * message (only the message survives the RPC wire), so it is lifted back out
+ * for the prompt. The clean-worktree variant (EMPTY_BRANCH) deliberately
+ * gets NO recovery path: "worker reported success but delivered nothing" is
+ * a signal a human must look at, not something to auto-retry.
+ */
+function landRecoveryError(err: unknown, taskId: string): unknown {
+  const message = errorMessage(err)
+  if (!message.includes(EMPTY_BRANCH_DIRTY_WORKTREE_CODE)) return err
+  const branch = /EMPTY_BRANCH_DIRTY_WORKTREE: '([^']+)'/.exec(message)?.[1] ?? "your task branch"
+  return new ApiError(message, EMPTY_BRANCH_DIRTY_WORKTREE_CODE, {
+    hint: "the worker wrote files but never committed them — send it back to commit its own work, then land again",
+    nextCommandArgs: [
+      "api",
+      "send",
+      "--task-id",
+      taskId,
+      "--prompt",
+      `your work is uncommitted on ${branch} — commit it yourself with a proper message, then report back`,
+    ],
+  })
 }
 
 export async function adopt(ctx: VerbContext): Promise<unknown> {

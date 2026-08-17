@@ -107,6 +107,56 @@ export class MainCheckoutDirtyError extends Error {
 }
 
 /**
+ * Stable sentinel embedded in {@link EmptyBranchError}'s message — same
+ * wire-boundary reason as {@link DIRTY_WORKTREE_CODE}.
+ */
+export const EMPTY_BRANCH_CODE = "EMPTY_BRANCH"
+
+/**
+ * Thrown by `landTask` when the task branch has ZERO commits ahead of the base
+ * branch and its worktree is clean (or gone). Merging it would be a no-op —
+ * the classic shape of "worker reported success but delivered nothing" — so we
+ * refuse loudly instead of landing an empty merge into main.
+ */
+export class EmptyBranchError extends Error {
+  constructor(
+    public readonly branch: string,
+    public readonly landedOn: string,
+  ) {
+    super(
+      `${EMPTY_BRANCH_CODE}: '${branch}' has no commits ahead of '${landedOn}' — landing it would be a no-op (the worker may not have delivered anything)`,
+    )
+    this.name = "EmptyBranchError"
+  }
+}
+
+/**
+ * Stable sentinel embedded in {@link EmptyBranchDirtyWorktreeError}'s message.
+ */
+export const EMPTY_BRANCH_DIRTY_WORKTREE_CODE = "EMPTY_BRANCH_DIRTY_WORKTREE"
+
+/**
+ * Thrown by `landTask` when the task branch has ZERO commits ahead of the base
+ * branch AND its worktree still has uncommitted/untracked files: the work was
+ * written but never committed, so landing would silently drop it. The file
+ * list rides in the message; the hint points at committing in the worktree.
+ */
+export class EmptyBranchDirtyWorktreeError extends Error {
+  constructor(
+    public readonly branch: string,
+    public readonly landedOn: string,
+    public readonly worktreePath: string,
+    public readonly files: readonly string[],
+  ) {
+    const list = files.length > 0 ? files.join(", ") : "(none reported)"
+    super(
+      `${EMPTY_BRANCH_DIRTY_WORKTREE_CODE}: '${branch}' has no commits ahead of '${landedOn}' but its worktree ${worktreePath} has uncommitted changes (${list}) — commit them in the worktree first, then land again`,
+    )
+    this.name = "EmptyBranchDirtyWorktreeError"
+  }
+}
+
+/**
  * Stable sentinel embedded in {@link LandConflictError}'s message — same
  * wire-boundary reason as {@link DIRTY_WORKTREE_CODE}. The conflicted-file list
  * rides along in the message so a CLI/TUI caller can print it after matching.
