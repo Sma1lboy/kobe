@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.8.126
+
+### Patch Changes
+
+- df02a79: The plugin-migration warning now ends by pointing at the shortest path: the user reading it inside a session can simply ask their agent to run the cleanup.
+
 ## 0.8.125
 
 ### Patch Changes
