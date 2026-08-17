@@ -48,6 +48,10 @@ export type TreeRowShared = {
    *  after a restart — and a lamp that ignores the session you are sitting
    *  in is exactly the bug. */
   readonly selectedTaskId: string | null
+  /** The row being dragged in move mode (issue #43) — wears the move chip.
+   *  Null outside move mode, and while a `main` row drags its whole project
+   *  (the group HEADER wears the chip then — `movingProjectId`). */
+  readonly movingRowId?: string | null
   /** Keyed by FLAT INDEX so one scroll-follow lookup covers every row. */
   readonly rowEls: Map<number, BoxRenderable>
   readonly onPress: (flatIndex: number, rowId: string) => void
@@ -62,6 +66,19 @@ export type TreeRowShared = {
   readonly engineLifecycle?: ReadonlyMap<string, { readonly subagents: number }>
   readonly taskJobs?: ReadonlyMap<string, TaskJobState>
   readonly worktreeChanges?: ReadonlyMap<string, WorktreeChanges> | null
+}
+
+/** The move-mode chip a dragged ROW wears (issue #43) — same vocabulary as
+ *  the project header's chip, so all three levels read identically. */
+function MoveChip(props: { readonly rowId: string; readonly shared: TreeRowShared }) {
+  const { theme } = useTheme()
+  const t = useT()
+  if (props.shared.movingRowId !== props.rowId) return null
+  return (
+    <text fg={theme.info} wrapMode="none" flexShrink={0}>
+      {t("tasks.moveChip").trim()}
+    </text>
+  )
 }
 
 function RowShell(props: {
@@ -166,6 +183,7 @@ export function WorktreeTreeRow(props: {
           </text>
         ) : null}
         <ChangeStats changes={changes} />
+        <MoveChip rowId={props.rowId} shared={shared} />
         <JumpDigit flatIndex={props.flatIndex} dim={!isCursor} />
       </box>
     </RowShell>
@@ -269,6 +287,7 @@ export function TabTreeRow(props: {
         <text fg={theme.textMuted} wrapMode="none" flexBasis={0} flexGrow={1} flexShrink={1}>
           {props.tab.label}
         </text>
+        <MoveChip rowId={props.rowId} shared={shared} />
         <JumpDigit flatIndex={props.flatIndex} dim={!isCursor} />
       </box>
     </RowShell>

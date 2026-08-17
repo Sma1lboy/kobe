@@ -52,8 +52,12 @@ afterEach(async () => {
   await rm(home, { recursive: true, force: true })
 })
 
-async function makeTask(overrides: { title?: string; worktreePath?: string } = {}) {
-  const task = await orch.createTask({ repo: "/repo", title: overrides.title ?? "t", vendor: "claude" })
+async function makeTask(overrides: { title?: string; worktreePath?: string; repo?: string } = {}) {
+  const task = await orch.createTask({
+    repo: overrides.repo ?? "/repo",
+    title: overrides.title ?? "t",
+    vendor: "claude",
+  })
   if (overrides.worktreePath) {
     await store.update(task.id, { worktreePath: overrides.worktreePath })
   }
@@ -194,6 +198,34 @@ describe("moveTask", () => {
       .filter((t) => !t.archived && t.kind !== "main")
       .map((t) => t.title)
     expect(order).toEqual(["c", "a"])
+  })
+
+  // Issue #43: the sidebar tree groups tasks under their repo, so a regular
+  // task's move partition is its REPO — a swap must never cross into another
+  // repo's group (invisible there) or reorder it as a side effect.
+  it("keeps a regular task inside its repo group, skipping other repos' tasks", async () => {
+    const a = await makeTask({ title: "a" })
+    const other = await makeTask({ title: "other", repo: "/repo-b" })
+    const b = await makeTask({ title: "b" })
+
+    // b up: its repo neighbour is a — `other` (between them in the store) is
+    // not in the partition and must be skipped, not swapped with.
+    await orch.moveTask(b.id, -1)
+    const titles = orch
+      .listTasks()
+      .filter((t) => t.kind !== "main")
+      .map((t) => t.title)
+    expect(titles).toEqual(["b", "a", "other"])
+
+    // Edge-stop within the repo group: b is now the group's first row, so a
+    // further up is a no-op — no wrap to the bottom, no cross-repo jump.
+    const before = orch.listTasks().map((t) => t.id)
+    await orch.moveTask(b.id, -1)
+    expect(orch.listTasks().map((t) => t.id)).toEqual(before)
+    // The lone task of another repo has no neighbour — both directions no-op.
+    await orch.moveTask(other.id, -1)
+    await orch.moveTask(other.id, 1)
+    expect(orch.listTasks().map((t) => t.id)).toEqual(before)
   })
 
   // Projects render stored order (owner 2026-07-16), so main rows are

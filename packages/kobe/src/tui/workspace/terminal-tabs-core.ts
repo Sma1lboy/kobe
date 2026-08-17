@@ -324,6 +324,24 @@ export function cycleTab(state: TabsState, delta: 1 | -1): TabsState {
   return { ...state, activeId: next.id }
 }
 
+/**
+ * Move a tab up/down within its task's tab list (sidebar move mode, issue
+ * #43). Edge-stops — moving the first tab up or the last down returns the
+ * SAME state object (no wrap), so callers persist nothing on a no-op. Tab
+ * order IS the persisted `tabs` array order (`rehydrateTabs` keeps it), so
+ * this needs no new persistence key.
+ */
+export function moveTab(state: TabsState, id: string, delta: -1 | 1): TabsState {
+  const i = state.tabs.findIndex((t) => t.id === id)
+  const j = i + delta
+  if (i < 0 || j < 0 || j >= state.tabs.length) return state
+  const tabs = [...state.tabs]
+  const a = tabs[i] as TerminalTab
+  tabs[i] = tabs[j] as TerminalTab
+  tabs[j] = a
+  return { ...state, tabs }
+}
+
 /** Switch directly to `id` (the tab strip's click target) — no-op if it
  *  isn't present OR is already active. The already-active guard matters:
  *  without it, clicking the current tab returned a NEW state object, which

@@ -227,7 +227,7 @@ export const SCENES: readonly Scene[] = [
   },
   {
     name: "move-mode",
-    about: "project reorder mode — the chip says so and j/k drag instead of walking",
+    about: "scope-aware reorder mode (issue #43) — the dragged ROW wears the chip and j/k drag instead of walking",
     setup: seedStandard,
     element: tree({ moveMode: true }),
   },

@@ -77,7 +77,7 @@ export const SIDEBAR_BINDINGS: readonly KobeBinding[] = [
     scope: "sidebar",
     keys: ["shift+m"],
     category: "Sidebar",
-    description: "Reorder project (Shift+M, then j/k)",
+    description: "Reorder row (Shift+M, then j/k)",
     hint: { keys: "M" },
   },
   {
