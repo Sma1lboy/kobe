@@ -37,9 +37,44 @@ const MAX_OUTPUT_CHARS = 4000
 /** Upper bound on a user-supplied timeout, so a typo can't wedge the sweep. */
 const MAX_TIMEOUT_SECONDS = 600
 
-function tail(chunks: readonly (Buffer | string)[]): string {
-  const text = chunks.map((c) => c.toString()).join("")
-  return text.length <= MAX_OUTPUT_CHARS ? text : text.slice(-MAX_OUTPUT_CHARS)
+/**
+ * Decode captured stream chunks to text, keeping only the last
+ * `MAX_OUTPUT_CHARS`.
+ *
+ * The chunks are raw `data`-event payloads: `Buffer`s from the child's pipes,
+ * plus the occasional pre-decoded error string we push ourselves. Node splits
+ * a pipe's `data` events at arbitrary byte offsets, so a multi-byte UTF-8
+ * sequence can straddle two chunks. Decoding each `Buffer` on its own — the
+ * old `chunks.map((c) => c.toString())` — turns that seam into a `�`, so a
+ * `gh pr list` full of CJK/emoji titles came back mojibake. Concatenate each
+ * contiguous run of Buffers and decode it as one instead.
+ *
+ * Cap by whole code points, not UTF-16 units, so the tail slice can't halve a
+ * surrogate pair and strand a lone surrogate at the cut.
+ */
+export function tail(chunks: readonly (Buffer | string)[]): string {
+  let text = ""
+  let pending: Buffer[] = []
+  const flushPending = (): void => {
+    if (pending.length > 0) {
+      text += Buffer.concat(pending).toString("utf8")
+      pending = []
+    }
+  }
+  for (const chunk of chunks) {
+    if (typeof chunk === "string") {
+      flushPending()
+      text += chunk
+    } else {
+      pending.push(chunk)
+    }
+  }
+  flushPending()
+  // `text.length` (UTF-16 units) >= code-point count, so an under-cap string is
+  // safe to return as-is; only pay for the code-point split when over.
+  if (text.length <= MAX_OUTPUT_CHARS) return text
+  const points = Array.from(text)
+  return points.length <= MAX_OUTPUT_CHARS ? text : points.slice(-MAX_OUTPUT_CHARS).join("")
 }
 
 /**

@@ -6,9 +6,41 @@ import {
   formatPrecheckSkip,
   precheckPassed,
   runAutomationPrecheck,
+  tail,
 } from "../../../kobe-daemon/src/daemon/automation-precheck.ts"
 
 const CWD = process.cwd()
+
+describe("tail", () => {
+  it("decodes a multi-byte char split across two chunks without mojibake", () => {
+    // Node emits a pipe's `data` events split at arbitrary byte offsets, so a
+    // multi-byte UTF-8 sequence can straddle two Buffers. Slicing the 4-byte
+    // rocket in half is exactly that seam.
+    const bytes = Buffer.from("🚀 café 中文", "utf8")
+    const first = bytes.subarray(0, 2)
+    const second = bytes.subarray(2)
+    expect(tail([first, second])).toBe("🚀 café 中文")
+    expect(tail([first, second])).not.toContain("�")
+  })
+
+  it("keeps a pushed error string in order alongside buffers", () => {
+    expect(tail([Buffer.from("out"), "spawn failed"])).toBe("outspawn failed")
+  })
+
+  it("caps to the last MAX_OUTPUT_CHARS code points without halving a surrogate pair", () => {
+    // 4001 rockets is past the 4000-char cap; slicing by UTF-16 unit would cut
+    // the boundary rocket in half and strand a lone surrogate.
+    const capped = tail([Buffer.from("🚀".repeat(4001), "utf8")])
+    expect(Array.from(capped)).toHaveLength(4000)
+    expect(capped).not.toContain("�")
+    expect([...capped].every((point) => point === "🚀")).toBe(true)
+  })
+
+  it("returns short output untouched", () => {
+    expect(tail([Buffer.from("hello")])).toBe("hello")
+    expect(tail([])).toBe("")
+  })
+})
 
 describe("runAutomationPrecheck", () => {
   it("reports exit 0 as a pass", async () => {
