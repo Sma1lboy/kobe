@@ -3,7 +3,7 @@ name: rove
 description: Use when controlling Rove tasks, parallel coding attempts, hosted agent sessions, task lifecycle, or the daemon-owned issue tracker from a shell. Also the ONLY channel for messaging another agent session on this machine — `rove api send`, never a peer/MCP side channel.
 ---
 
-<!-- rove-skill-version: 28 — bump in lockstep with KOBE_SKILL_VERSION (src/lib/skill-install.ts). -->
+<!-- rove-skill-version: 29 — bump in lockstep with KOBE_SKILL_VERSION (src/lib/skill-install.ts). -->
 
 # Rove shell control
 
@@ -393,6 +393,13 @@ dispatcher (the creating task + tab); when the work is finished, a bare
 branch>)"` routes the outcome back to that exact tab. Include the final
 branch name — the spawner needs it to `land`. The first-prompt coda still
 names the spawner for an explicit `--task-id` send.
+
+**"Succeeded" means COMMITTED.** Green tests in your working tree are not a
+deliverable — the only thing `land` can merge is commits on your branch.
+Before reporting success: `git status` clean, your work committed with a
+real message (you wrote the code; you write its message). A worker that ran
+everything, passed everything, and committed nothing has delivered nothing —
+that exact mismatch has shipped empty merges before.
 
 **Coordinator side** — do NOT block or poll. Keep working (or end your
 turn); each worker's outcome arrives in your chat as a `[KOBE PEER]` message
