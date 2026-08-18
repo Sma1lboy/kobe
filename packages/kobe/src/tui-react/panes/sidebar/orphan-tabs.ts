@@ -20,7 +20,7 @@
  * ordinals, kinds and split state a session key can't.
  */
 
-import { stripEngineStatusPrefix } from "../../../engine/registry"
+import { isEnginePlaceholderTitle, stripEngineStatusPrefix } from "../../../engine/registry"
 import { type TreeTab, parseRowId, tabRowId } from "../../../tui/panes/sidebar/tree-core"
 
 /** One live pty-host session, as this module needs it. */
@@ -48,8 +48,17 @@ export interface LiveSession {
  * engine's own status decoration comes off first: kobe draws the state glyph
  * on this row, and two status languages side by side is what
  * `stripEngineStatusPrefix` exists to prevent. Vendor-agnostic strip — an
- * unregistered session has no resolved vendor by construction.
+ * unregistered session has no resolved vendor by construction, which is also
+ * why the placeholder check runs against every built-in's rules: a codex
+ * session that has not named its thread reports a bare UUID, and the tab id
+ * this falls back to says strictly more.
  */
+/** The live title as a NAME, or "" when it is decoration/a placeholder. */
+function orphanLabel(raw: string | null | undefined): string {
+  const name = stripEngineStatusPrefix(raw?.trim() ?? "", null).trim()
+  return isEnginePlaceholderTitle(name, null) ? "" : name
+}
+
 export function orphanTabsByTask(
   sessions: readonly LiveSession[],
   registered: ReadonlySet<string>,
@@ -68,7 +77,7 @@ export function orphanTabsByTask(
     if (tabs.some((tab) => tab.id === tabId)) continue
     tabs.push({
       id: tabId,
-      label: `⚠ ${stripEngineStatusPrefix(session.title?.trim() ?? "", null).trim() || tabId}`,
+      label: `⚠ ${orphanLabel(session.title) || tabId}`,
       // The first unregistered tab of a snapshot-less task reads active; the
       // caller demotes this when merging under a task that has snapshot tabs.
       active: tabs.length === 0,

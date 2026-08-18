@@ -132,4 +132,21 @@ describe("tabTitleStable", () => {
     const tab = engineTab({ vendor: "codex", lastTitle: "⠹" })
     expect(tabTitleStable(tab, "codex")).toBe("codex 1")
   })
+
+  // Codex's OSC title is its thread ID until the thread is named, so the
+  // recorded/live title on a codex row is `01a00ee9-…` — an identifier, not a
+  // name (owner report 2026-08-17).
+  it("a codex thread id is not a name — the first prompt is", () => {
+    const id = "01a00ee9-f0e9-7503-a11c-83b4eface0f6"
+    const tab = engineTab({ vendor: "codex", lastTitle: id, autoTitle: "add a login form" })
+    expect(tabTitleStable(tab, "codex", "codex")).toBe("add a login form")
+    // The host's LIVE title (the argument) goes through the same judgement,
+    // spinner prefix and all.
+    expect(tabTitleStable(tab, "codex", "codex", `⠹ ${id}`)).toBe("add a login form")
+    // With nothing derived yet, the vendor default — never the raw id.
+    const bare = engineTab({ vendor: "codex", lastTitle: id })
+    expect(tabTitleStable(bare, "codex", "codex")).toBe("codex 1")
+    // A named thread is a name again, with no further signal needed.
+    expect(tabTitleStable(tab, "codex", "codex", "⠹ rework the parser")).toBe("rework the parser 1")
+  })
 })

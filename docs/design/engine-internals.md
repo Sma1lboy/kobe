@@ -193,13 +193,30 @@ needs-input**; every other engine tops out at working/done.
 
 Claude and Codex own their OSC title while visible
 (`terminalTitle.ownsStatus`), so neutral tab chrome doesn't prefix a
-duplicate turn glyph. Codex additionally launches with
-`-c tui.terminal_title=["activity","thread-title"]` so tabs show its thread
-title instead of the repo name. Everywhere a live engine title is displayed
-(tab labels, split corner tags) it collapses to the launch binary
-(`✳ Claude Code` renders as `claude`), so all Rove surfaces speak one
-vocabulary for a process. Vendor identity comes from the process tree, never
-from matching the title string.
+duplicate turn glyph. The title stream IS the tab label — Rove strips only
+the engine's own status decoration (`terminalTitle.statusPrefixes`, drawn in
+Rove's glyph column instead) and never rewrites the name. Vendor identity
+comes from the process tree, never from matching the title string.
+
+An engine's title is only as good as what the engine has to put there, so the
+policy (`src/engine/terminal-title.ts`) carries three engine-declared knobs —
+one to ask for a better title, two to reject one that still isn't a name — so
+no neutral layer ever names a vendor:
+
+| Knob | Meaning | Declared by |
+|---|---|---|
+| `launchArgs` | ask the engine for a better title at launch | codex: `-c tui.terminal_title=["activity","thread-title"]` |
+| `sessionIdFromTitle` | the title IS a session id — don't render it, and name the tab from that session | codex: its thread UUID |
+| `isPlaceholderTitle` | the title is noise carrying no id — don't render it | (none yet) |
+
+Codex's `thread-title` segment is documented as "the thread title, **or the
+thread identifier when unnamed**", and an unnamed thread stays unnamed, so
+codex tabs reported a bare UUID. Rove reads that id back (it names the rollout
+under `~/.codex/sessions/**`) and labels the tab with the conversation's
+first prompt instead — the same rung claude tabs use, one they could not reach
+before because codex accepts no caller-set `--session-id`. The judgement is
+display-side: snapshots that already recorded a UUID heal without a migration,
+and the moment codex names a thread its real title wins again.
 
 ## Transcript readers
 

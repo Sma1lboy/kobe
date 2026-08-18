@@ -49,6 +49,7 @@ import { readClaudeTurns } from "./claude-code-local/turns.ts"
 import { codexCapabilities, codexIdentity } from "./codex-local/capabilities.ts"
 import { CodexHookAdapter } from "./codex-local/hook-adapter.ts"
 import { fetchCodexQuotaUsage } from "./codex-local/quota.ts"
+import { codexSessionIdFromTitle } from "./codex-local/terminal-title.ts"
 import { trustCodexWorktree } from "./codex-local/trust.ts"
 import {
   EMPTY_HISTORY,
@@ -59,6 +60,13 @@ import {
 } from "./history-readers.ts"
 import { type EngineHookAdapter, NoopHookAdapter } from "./hook-adapter.ts"
 import { trustKimiWorktree } from "./kimi-local/trust.ts"
+import {
+  type EngineTerminalTitle,
+  stripStatusPrefix,
+  titleIsPlaceholder,
+  titleSessionId,
+  titleTurnHint,
+} from "./terminal-title.ts"
 import { ClaudeTurnDetector, CodexTurnDetector, type EngineTurnDetector, UnknownTurnDetector } from "./turn-detector.ts"
 
 /**
@@ -138,39 +146,12 @@ export interface EngineRegistryEntry {
   /** Product identity (composer placeholder etc.). Paired with capabilities. */
   readonly identity?: EngineIdentity
   /**
-   * Native OSC 0/2 title policy for interactive terminal sessions.
-   * `ownsStatus` means the engine's live title is the status surface while
-   * it is visible, so neutral tab chrome must not prefix a duplicate turn
-   * glyph. `launchArgs` lets an adapter select the engine's own title fields
-   * without teaching the launcher vendor-specific config syntax.
+   * Native OSC 0/2 title policy for interactive terminal sessions — status
+   * vocabulary, the launch args that select the engine's own title fields,
+   * and the rules for a title that isn't a name (see `terminal-title.ts`,
+   * which owns the shape and every rule that reads it).
    */
-  readonly terminalTitle?: {
-    readonly ownsStatus: boolean
-    readonly launchArgs?: readonly string[]
-    /**
-     * Leading STATUS decoration the engine writes into its own OSC title,
-     * stripped before kobe renders the name. Engine-owned by construction:
-     * only the adapter knows its vendor's glyph vocabulary, and kobe already
-     * draws that state in its own column — showing both is the same fact
-     * twice, and the animated variants make a resting tab look busy.
-     *
-     * Matched anchored at the start, longest-first, with any following
-     * whitespace; the remainder is the title. A pattern that would consume
-     * the WHOLE title is not applied (a session actually named "Working" is
-     * a name, not a status).
-     */
-    readonly statusPrefixes?: readonly string[]
-    /**
-     * The subset of {@link statusPrefixes} the engine ONLY writes while a
-     * turn is running (its animated frames). A title that stops starting
-     * with one of these is the engine's own "I stopped working" signal —
-     * the one observable event an ESC interrupt leaves behind (claude-code
-     * runs no Stop hook on its abort path; issue #15). Consumed by
-     * {@link engineTitleTurnHint}. Omit when the engine's resting title is
-     * indistinguishable from its working one.
-     */
-    readonly workingPrefixes?: readonly string[]
-  }
+  readonly terminalTitle?: EngineTerminalTitle
   /**
    * Subscription-quota probe: snapshot of the account's usage windows, or
    * null when unknowable. Drives the daemon's rate-limit auto-resume
@@ -280,6 +261,11 @@ const BUILTIN_ENGINES: Record<"claude" | "codex" | "copilot" | "kimi", EngineReg
       // working prefix.
       statusPrefixes: ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"],
       workingPrefixes: ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"],
+      // `thread-title` falls back to the thread ID until codex names the
+      // thread, so that title is usually a bare UUID. The id names the
+      // rollout the tab's first prompt lives in, which is what kobe shows
+      // instead — see `codex-local/terminal-title.ts`.
+      sessionIdFromTitle: codexSessionIdFromTitle,
     },
     quotaUsage: () => fetchCodexQuotaUsage(),
   },
@@ -374,6 +360,11 @@ const ALL_STATUS_PREFIXES: readonly string[] = [
   ...new Set(Object.values(BUILTIN_ENGINES).flatMap((entry) => entry.terminalTitle?.statusPrefixes ?? [])),
 ]
 
+/** Every built-in's declared title policy — the union fallback's input. */
+const ALL_TITLE_POLICIES: readonly EngineTerminalTitle[] = Object.values(BUILTIN_ENGINES).flatMap((entry) =>
+  entry.terminalTitle ? [entry.terminalTitle] : [],
+)
+
 /**
  * The status-glyph vocabulary to judge a vendor's title by: its own when it
  * declares one, else the union of every built-in's (see
@@ -385,14 +376,8 @@ export function engineStatusPrefixes(vendor: VendorId): readonly string[] {
 }
 
 /**
- * Strip the engine's own STATUS decoration from a live OSC title.
- *
- * Engines that own their title write their turn state into it — claude's
- * `✳`/`⠂`/`⠐`, codex's braille spinner frame. Kobe draws that same state in
- * its own glyph column, so rendering the prefix too says it twice, and the
- * animated frames make a resting tab look busy. The vocabulary is declared
- * per engine (`terminalTitle.statusPrefixes`), so no neutral layer hard-codes
- * a vendor's glyphs.
+ * Strip the engine's own STATUS decoration from a live OSC title (rule:
+ * {@link stripStatusPrefix}).
  *
  * `vendor` NARROWS the vocabulary; it never gates the strip. Anything
  * unknown — a custom wrapper (`claudecpa`, a zsh function that ends up
@@ -403,49 +388,48 @@ export function engineStatusPrefixes(vendor: VendorId): readonly string[] {
  * is what gets RECORDED (owner report 2026-08-10: the prefix kept coming
  * back). The union is safe precisely because these glyphs are decoration in
  * any vendor's title — nothing writes a leading `⠹` it wants kept.
- *
- * Still conservative where it matters: a prefix that would consume the whole
- * title is returned unchanged, so a session genuinely named after one of
- * these glyphs keeps its name.
  */
 export function stripEngineStatusPrefix(title: string, vendor: VendorId | null | undefined): string {
-  const prefixes = vendor ? engineStatusPrefixes(vendor) : ALL_STATUS_PREFIXES
-  // Longest-first so a multi-char prefix isn't shadowed by a shorter one.
-  for (const prefix of [...prefixes].sort((a, b) => b.length - a.length)) {
-    if (!title.startsWith(prefix)) continue
-    const rest = title.slice(prefix.length).trimStart()
-    // Whole title was the decoration → it is the name, not a status.
-    if (rest.length === 0) return title
-    return rest
-  }
-  return title
+  return stripStatusPrefix(title, vendor ? engineStatusPrefixes(vendor) : ALL_STATUS_PREFIXES)
 }
 
 /**
- * What the engine's live OSC title says about its turn state, or `null`
- * when the title carries no verdict.
- *
- * A status-owning engine writes its animated frames (`workingPrefixes`)
- * into the title exactly while a turn runs and rewrites the title the
- * moment it stops — including on an ESC interrupt, which fires no Stop
- * hook at all (claude-code's abort path returns before its stop hooks;
- * issue #15). That rewrite is therefore the one event-grade "the turn
- * ended" signal an interrupt produces, and this hint is how consumers
- * (the TUI's interrupt observer, the daemon's activity reconciler) read
- * it without hard-coding any vendor's glyphs.
- *
- * Strict on purpose: `"rest"` is only claimed for a vendor that declares
- * `workingPrefixes` AND wrote a non-empty title without one — an engine
- * that never decorates its title (copilot, custom wrappers) or a session
- * that never set a title answers `null`, never `"rest"`.
+ * What the engine's live OSC title says about its turn state (rule:
+ * {@link titleTurnHint}) — how consumers (the TUI's interrupt observer, the
+ * daemon's activity reconciler) read an interrupt without hard-coding any
+ * vendor's glyphs.
  */
 export function engineTitleTurnHint(vendor: VendorId, title: string): "working" | "rest" | null {
-  const terminalTitle = engineEntry(vendor).terminalTitle
-  const working = terminalTitle?.workingPrefixes
-  if (terminalTitle?.ownsStatus !== true || !working || working.length === 0) return null
-  const trimmed = title.trim()
-  if (trimmed.length === 0) return null
-  return working.some((prefix) => trimmed.startsWith(prefix)) ? "working" : "rest"
+  return titleTurnHint(engineEntry(vendor).terminalTitle, title)
+}
+
+/**
+ * The engine session id a live OSC title IS, or null when it is a name.
+ * STRICT on the vendor (unlike {@link isEnginePlaceholderTitle} below): the
+ * id is only useful read against the store of the engine that wrote it, so
+ * an unresolved vendor answers null rather than guessing. See
+ * {@link EngineTerminalTitle.sessionIdFromTitle}.
+ */
+export function engineSessionIdFromTitle(vendor: VendorId | null | undefined, title: string): string | null {
+  if (!vendor) return null
+  return titleSessionId(engineEntry(vendor).terminalTitle, title)
+}
+
+/**
+ * True when a live OSC title is NOT a name — the engine's placeholder for
+ * one it doesn't have yet (codex writes its thread UUID until the thread is
+ * named). Surfaces render the next rung down instead: the tab's first-prompt
+ * summary, then the vendor default.
+ *
+ * Union fallback for an unresolved vendor, for the same reason (and with the
+ * same ~2s `ps`-walk gap) as {@link stripEngineStatusPrefix}: without it a
+ * placeholder slips through on every tick the probe can't answer and gets
+ * recorded as the tab's name. Safe because these rules describe shapes no
+ * engine WANTS shown — a bare UUID is not a title anyone chose.
+ */
+export function isEnginePlaceholderTitle(title: string, vendor: VendorId | null | undefined): boolean {
+  if (vendor) return titleIsPlaceholder(engineEntry(vendor).terminalTitle, title)
+  return ALL_TITLE_POLICIES.some((policy) => titleIsPlaceholder(policy, title))
 }
 
 /**
