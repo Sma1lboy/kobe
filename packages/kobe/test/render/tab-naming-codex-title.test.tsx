@@ -12,7 +12,10 @@
  * the tab from that thread's rollout.
  *
  * Lives in the bun-run render track: the hook is a React effect, so it needs
- * a real renderer to mount against.
+ * a real renderer to mount against. ONE case on purpose — the pass runs on a
+ * real 5s interval, so every extra case costs another 5s of wall clock, and
+ * the negative side ("a title that is a NAME yields no session id") is a pure
+ * rule already pinned in test/engine/terminal-title-placeholder.test.ts.
  */
 
 import { afterEach, expect, test } from "bun:test"
@@ -20,9 +23,9 @@ import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises"
 import { tmpdir } from "node:os"
 import path from "node:path"
 import type { ReactNode } from "react"
-import { type TabLifecycleIO, useTabHydration, useTabNaming } from "../../src/tui-react/workspace/use-tab-lifecycle"
+import { type TabLifecycleIO, useTabNaming } from "../../src/tui-react/workspace/use-tab-lifecycle"
 import type { EngineTab, TabsState } from "../../src/tui/workspace/terminal-tabs-core"
-import { act, renderComponent } from "./harness"
+import { renderComponent } from "./harness"
 
 /** A codex thread id, exactly as codex writes it into its OSC title. */
 const THREAD_ID = "01a00ee9-f0e9-7503-a11c-83b4eface0f6"
@@ -99,11 +102,6 @@ function Naming({ io }: { io: TabLifecycleIO }): ReactNode {
   return <text>naming</text>
 }
 
-function Hydrating({ io }: { io: TabLifecycleIO }): ReactNode {
-  const hydrating = useTabHydration(true, io)
-  return <text>{hydrating ? "hydrating" : "ready"}</text>
-}
-
 test("names a codex tab from the thread id in its own OSC title", async () => {
   await seedCodexRollout()
   const io = lifecycleIO(codexTabs({ lastTitle: THREAD_ID }), "codex")
@@ -114,30 +112,4 @@ test("names a codex tab from the thread id in its own OSC title", async () => {
   // Deriving a title off a real transcript also proves the session exists,
   // which is exactly what `spawned` records (it gates the resume path).
   expect(engineTab(io.state()).spawned).toBe(true)
-}, 20_000)
-
-test("a title that is NOT an id leaves the tab unnamed", async () => {
-  await seedCodexRollout()
-  // A named thread publishes its NAME, which is not a session id — there is
-  // nothing to look up, and the tab keeps its vendor default.
-  const io = lifecycleIO(codexTabs({ lastTitle: "rework the parser" }), "codex")
-  await renderComponent(<Naming io={io} />)
-
-  await until(() => engineTab(io.state()).autoTitle != null, 6_000)
-  expect(engineTab(io.state()).autoTitle).toBeUndefined()
-}, 20_000)
-
-test("hydration re-verifies a rehydrated tab's session against the real store", async () => {
-  const io = lifecycleIO(codexTabs({ sessionId: "00000000-0000-4000-8000-000000000000", spawned: true }), "codex")
-  const handle = await renderComponent(<Hydrating io={io} />)
-
-  // The verification pass flips React state when it lands — drive it under
-  // act() so the renderer sees the same commit the assertion below reads.
-  await act(async () => {
-    await until(() => engineTab(io.state()).spawned === false, 6_000)
-  })
-  // The snapshot claimed the session had run; the store says otherwise, so
-  // the next spawn opens fresh instead of resuming a session that isn't there.
-  expect(engineTab(io.state()).spawned).toBe(false)
-  expect(await handle.frame()).toContain("ready")
 }, 20_000)

@@ -199,15 +199,17 @@ Rove's glyph column instead) and never rewrites the name. Vendor identity
 comes from the process tree, never from matching the title string.
 
 An engine's title is only as good as what the engine has to put there, so the
-policy (`src/engine/terminal-title.ts`) carries three engine-declared knobs —
-one to ask for a better title, two to reject one that still isn't a name — so
+policy (`src/engine/terminal-title.ts`) carries two engine-declared knobs — one
+to ask for a better title, one to reject a title that still isn't a name — so
 no neutral layer ever names a vendor:
 
 | Knob | Meaning | Declared by |
 |---|---|---|
 | `launchArgs` | ask the engine for a better title at launch | codex: `-c tui.terminal_title=["activity","thread-title"]` |
 | `sessionIdFromTitle` | the title IS a session id — don't render it, and name the tab from that session | codex: its thread UUID |
-| `isPlaceholderTitle` | the title is noise carrying no id — don't render it | (none yet) |
+
+An engine whose bad title carries no session id at all would need a sibling
+knob beside `sessionIdFromTitle`; none does today, so none exists.
 
 Codex's `thread-title` segment is documented as "the thread title, **or the
 thread identifier when unnamed**", and an unnamed thread stays unnamed, so

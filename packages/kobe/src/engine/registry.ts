@@ -360,11 +360,6 @@ const ALL_STATUS_PREFIXES: readonly string[] = [
   ...new Set(Object.values(BUILTIN_ENGINES).flatMap((entry) => entry.terminalTitle?.statusPrefixes ?? [])),
 ]
 
-/** Every built-in's declared title policy — the union fallback's input. */
-const ALL_TITLE_POLICIES: readonly EngineTerminalTitle[] = Object.values(BUILTIN_ENGINES).flatMap((entry) =>
-  entry.terminalTitle ? [entry.terminalTitle] : [],
-)
-
 /**
  * The status-glyph vocabulary to judge a vendor's title by: its own when it
  * declares one, else the union of every built-in's (see
@@ -404,14 +399,14 @@ export function engineTitleTurnHint(vendor: VendorId, title: string): "working" 
 }
 
 /**
- * The engine session id a live OSC title IS, or null when it is a name.
- * STRICT on the vendor (unlike {@link isEnginePlaceholderTitle} below): the
- * id is only useful read against the store of the engine that wrote it, so
- * an unresolved vendor answers null rather than guessing. See
+ * The engine session id a live OSC title IS, or null when it is a name. Both
+ * this and {@link isEnginePlaceholderTitle} take a RESOLVED vendor — unlike
+ * {@link stripEngineStatusPrefix}, which falls back to every built-in's
+ * glyphs, there is no safe guess here: the id is only meaningful read against
+ * the store of the engine that wrote it. See
  * {@link EngineTerminalTitle.sessionIdFromTitle}.
  */
-export function engineSessionIdFromTitle(vendor: VendorId | null | undefined, title: string): string | null {
-  if (!vendor) return null
+export function engineSessionIdFromTitle(vendor: VendorId, title: string): string | null {
   return titleSessionId(engineEntry(vendor).terminalTitle, title)
 }
 
@@ -420,16 +415,9 @@ export function engineSessionIdFromTitle(vendor: VendorId | null | undefined, ti
  * one it doesn't have yet (codex writes its thread UUID until the thread is
  * named). Surfaces render the next rung down instead: the tab's first-prompt
  * summary, then the vendor default.
- *
- * Union fallback for an unresolved vendor, for the same reason (and with the
- * same ~2s `ps`-walk gap) as {@link stripEngineStatusPrefix}: without it a
- * placeholder slips through on every tick the probe can't answer and gets
- * recorded as the tab's name. Safe because these rules describe shapes no
- * engine WANTS shown — a bare UUID is not a title anyone chose.
  */
-export function isEnginePlaceholderTitle(title: string, vendor: VendorId | null | undefined): boolean {
-  if (vendor) return titleIsPlaceholder(engineEntry(vendor).terminalTitle, title)
-  return ALL_TITLE_POLICIES.some((policy) => titleIsPlaceholder(policy, title))
+export function isEnginePlaceholderTitle(title: string, vendor: VendorId): boolean {
+  return titleIsPlaceholder(engineEntry(vendor).terminalTitle, title)
 }
 
 /**

@@ -18,11 +18,10 @@
  * Question 3 exists because an engine's title is only as good as what the
  * engine has to put in it. Codex writes its thread UUID until the thread is
  * named, so a fresh codex tab reported `01a00ee9-f0e9-…` where claude and
- * kimi report a sentence. Two knobs answer that, because two different
- * things can be wrong with a title and a future engine may need either: the
- * placeholder carries a session id kobe can name the tab FROM
- * ({@link EngineTerminalTitle.sessionIdFromTitle}), or it carries nothing at
- * all ({@link EngineTerminalTitle.isPlaceholderTitle}).
+ * kimi report a sentence. {@link EngineTerminalTitle.sessionIdFromTitle} is
+ * how an engine says so — and, because that placeholder happens to be an id,
+ * how it says what to name the tab instead. An engine whose bad title carries
+ * NO id needs a sibling knob here; none does today, so none exists yet.
  */
 
 /**
@@ -74,27 +73,13 @@ export interface EngineTerminalTitle {
    * actually wanted.
    *
    * Resolution is deliberately STRICT — only the engine that declared the
-   * rule may answer, never the guess-the-vendor union
-   * {@link titleIsPlaceholder} falls back on: the id is about to be looked
-   * up in THAT vendor's transcript store, and reading it from the wrong one
-   * is worse than having no name.
+   * rule may answer, never a guess at which engine wrote the title: the id is
+   * about to be looked up in THAT vendor's transcript store, and reading it
+   * from the wrong one is worse than having no name.
    *
    * Absent = this engine's title is always a name (claude, kimi).
    */
   readonly sessionIdFromTitle?: (title: string) => string | null
-  /**
-   * The other shape of "this is not a name": a placeholder carrying no
-   * session id either — an engine that writes its cwd, its model, or a
-   * literal "shell" until it has something better to say. Kobe drops such a
-   * title and names the tab from what it already knows (the first-prompt
-   * summary, then the vendor default).
-   *
-   * Engines whose placeholder IS an id declare {@link sessionIdFromTitle}
-   * instead — that already implies this one. This knob is for the ones where
-   * it isn't, so a future engine's bad title never becomes a vendor check in
-   * neutral code.
-   */
-  readonly isPlaceholderTitle?: (title: string) => boolean
 }
 
 /**
@@ -154,13 +139,11 @@ export function titleSessionId(config: EngineTerminalTitle | undefined, title: s
 }
 
 /**
- * True when this title is not a NAME under the given policy — either an
- * explicit placeholder or an identifier the engine writes until its session
- * is named. Callers render something else instead (the first-prompt summary,
- * then the vendor default); they never show the placeholder itself.
+ * True when this title is not a NAME under the given policy — today, an
+ * identifier the engine writes until its session is named. Callers render the
+ * next rung down instead (the first-prompt summary, then the vendor default);
+ * they never show the placeholder itself.
  */
 export function titleIsPlaceholder(config: EngineTerminalTitle | undefined, title: string): boolean {
-  const trimmed = title.trim()
-  if (!trimmed) return false
-  return config?.isPlaceholderTitle?.(trimmed) === true || titleSessionId(config, trimmed) !== null
+  return titleSessionId(config, title) !== null
 }

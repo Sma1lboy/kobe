@@ -36,13 +36,6 @@ describe("orphanTabsByTask", () => {
     expect(map.get("t1")?.map((t) => t.id)).toEqual(["tab-1"])
   })
 
-  // A codex session that has not named its thread reports its thread ID; the
-  // tab id this falls back to says strictly more than a UUID.
-  it("falls back to the tab id when the live title is a placeholder", () => {
-    const map = orphanTabsByTask([session("t1::tab-1", { title: "⠹ 01a00ee9-f0e9-7503-a11c-83b4eface0f6" })], new Set())
-    expect(map.get("t1")?.[0]?.label).toBe("⚠ tab-1")
-  })
-
   it("skips a tab the snapshot already answered for", () => {
     const map = orphanTabsByTask([session("t1::tab-1")], new Set(["t1::tab-1"]))
     expect(map.has("t1")).toBe(false)

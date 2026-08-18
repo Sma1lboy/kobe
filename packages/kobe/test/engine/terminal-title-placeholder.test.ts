@@ -32,29 +32,12 @@ describe("engine placeholder titles", () => {
     }
   })
 
-  it("an unresolved vendor still rejects the placeholder, but never claims the id", () => {
-    // The process-tree probe is a ~2s ps walk; without the union fallback a
-    // placeholder slips through on every tick it can't answer and gets
-    // recorded as the tab's name (the same reason stripEngineStatusPrefix
-    // falls back to the union of every built-in's glyphs).
-    expect(isEnginePlaceholderTitle(CODEX_THREAD_TITLE, undefined)).toBe(true)
-    expect(isEnginePlaceholderTitle("fix the flaky watcher test", null)).toBe(false)
-    // …but an id is only meaningful against the store of the engine that
-    // wrote it, so an unresolved vendor answers null rather than guessing.
-    expect(engineSessionIdFromTitle(undefined, CODEX_THREAD_TITLE)).toBeNull()
-    expect(engineSessionIdFromTitle(null, CODEX_THREAD_TITLE)).toBeNull()
-  })
-
-  it("the pure rules cover the other placeholder shape too", () => {
-    // An engine whose bad title carries NO session id (a cwd, a model name)
-    // declares `isPlaceholderTitle` instead — no vendor check in neutral code.
-    const policy = { ownsStatus: false, isPlaceholderTitle: (t: string) => t === "shell" }
-    expect(titleIsPlaceholder(policy, "shell")).toBe(true)
-    expect(titleSessionId(policy, "shell")).toBeNull()
-    expect(titleIsPlaceholder(policy, "reviewing the diff")).toBe(false)
-    // An engine with no policy at all judges nothing, and "" is never a
-    // placeholder — it is "nothing reported yet".
-    expect(titleIsPlaceholder(undefined, "anything")).toBe(false)
-    expect(titleIsPlaceholder(policy, "   ")).toBe(false)
+  it("an engine that declares no rule judges nothing", () => {
+    // The pure layer is what a future engine plugs into; with no policy there
+    // is no verdict, and "" is never a placeholder — it is "nothing reported
+    // yet", which every caller already treats as absent.
+    expect(titleIsPlaceholder(undefined, CODEX_THREAD_TITLE)).toBe(false)
+    expect(titleSessionId(undefined, CODEX_THREAD_TITLE)).toBeNull()
+    expect(titleIsPlaceholder({ ownsStatus: true, sessionIdFromTitle: () => null }, "   ")).toBe(false)
   })
 })
