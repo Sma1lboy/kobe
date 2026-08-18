@@ -11,12 +11,17 @@
  *      "created at" tiebreaker. Sidebar grouping/ordering can rely on
  *      string compare instead of parsing `createdAt`.
  *
- *   2. **Monotonic within the same millisecond** — when two tasks are
- *      created back-to-back, the second must sort *after* the first.
- *      We achieve this by remembering the last (timestamp, randomness)
- *      we emitted: if the same millisecond comes around again, we
- *      increment the previous random tail by one instead of generating
- *      fresh randomness. (Spec: github.com/ulid/spec — "Monotonicity".)
+ *   2. **Monotonic across calls** — when two tasks are created
+ *      back-to-back, the second must sort *after* the first. We achieve
+ *      this by remembering the last (timestamp, randomness) we emitted:
+ *      if the incoming timestamp does not advance past it — the same
+ *      millisecond, or a wall clock that stepped *backward* (NTP
+ *      correction, VM resume, a manual clock change) — we hold the last
+ *      timestamp and increment the previous random tail by one instead of
+ *      generating fresh randomness. Holding the timestamp is what keeps a
+ *      backward clock step from minting an id whose prefix sorts before its
+ *      predecessor and silently reordering the task index.
+ *      (Spec: github.com/ulid/spec — "Monotonicity".)
  *
  * Inlined intentionally (~80 LoC, no deps). If we ever need a battle-
  * tested impl, swap to the `ulid` npm package — the public surface
@@ -91,9 +96,17 @@ function indicesToString(indices: number[]): string {
  */
 export function ulid(now: number = Date.now()): string {
   let randIndices: number[]
-  if (now === lastTime) {
-    // Same millisecond: increment the previous tail to preserve
-    // strict monotonic ordering across same-ms calls.
+  let time: number
+  if (now > lastTime) {
+    // The clock advanced: a fresh millisecond gets fresh randomness.
+    time = now
+    randIndices = randomIndices(RAND_LEN)
+  } else {
+    // The clock did NOT advance — same millisecond, or it stepped
+    // backward. Hold the last timestamp (never regress the sortable
+    // prefix) and increment the previous tail to preserve strict
+    // monotonic ordering across the call.
+    time = lastTime
     const next = lastRand.slice()
     if (!incrementIndices(next)) {
       // Astronomically unlikely (16 Z's). Fall back to fresh randomness.
@@ -101,12 +114,10 @@ export function ulid(now: number = Date.now()): string {
     } else {
       randIndices = next
     }
-  } else {
-    randIndices = randomIndices(RAND_LEN)
   }
-  lastTime = now
+  lastTime = time
   lastRand = randIndices
-  return encodeTime(now, TIME_LEN) + indicesToString(randIndices)
+  return encodeTime(time, TIME_LEN) + indicesToString(randIndices)
 }
 
 /** Reset the monotonic state — exported for tests only. */
