@@ -3,10 +3,10 @@
 var KOBE_I18N = (function () {
   var zh = {
     'meta.title': 'Rove — 把编码代理跑成一张图，终端原生',
-    'meta.desc': 'Rove 是本地优先的图工程 TUI：把多个 AI 编码代理跑成一张由隔离尝试组成的图——git worktree、托管引擎会话、显式结果上报——最后合入赢家。',
+    'meta.desc': 'Rove 是本地优先的图工程 TUI：把多个 AI 编码代理跑成隔离尝试——git worktree、托管引擎会话、回到发起会话的结果回复——再比较并合入赢家。',
     'nav.workflow': '--原语', 'nav.install': '--安装', 'nav.plugins': '--插件', 'nav.themes': '--主题', 'nav.changelog': '--更新日志',
     'hero.kicker': '提示词工程 → 上下文工程 → <span class="acc">图工程</span>',
-    'hero.title': '装在你 shell 里的 agent <span class="acc">多路复用器</span>。',
+    'hero.title': '装在你 shell 里的 agent <span class="acc hero-term">多路复用器</span>。',
     'hero.sub': '一个代理是一场对话，五个同时跑就是一张图：节点是隔离的尝试——git worktree + 引擎会话 + 分支——边是依赖，门是你的判断。Rove 是这张图的终端原生运行时。',
     'hero.getStarted': '快速上手 ↗',
     'hero.requirements': '支持 macOS 和 Linux（Windows 走 WSL）。需要 Bun ≥ 1.3.11，以及 PATH 上任意一个引擎 CLI。',
@@ -15,8 +15,8 @@ var KOBE_I18N = (function () {
     's1.no': '1.0 · 扇出', 's1.title': '一条 prompt 变成 N 个隔离的尝试。',
     's1.body': '扇出是第一个原语，而隔离正是重点。Rove 为每个尝试建独立的 git worktree 和分支，运行你指定的引擎——claude、codex、copilot、kimi，或你自己的命令。独立节点，没有共享状态，代理之间互不碰文件。',
     's1.ownCmd': '你自己的命令',
-    's2.no': '2.0 · 监督', 's2.title': '沉默不是一种状态。尝试要报告。',
-    's2.body': '在一排终端机群里，安静的代理可能在思考，也可能已经挂了。所以在 Rove 里，每个尝试结束时都显式上报结果——succeeded 或 failed——编排代理可以阻塞等待整批尝试出结果。代理编排代理，有真正的完成语义。',
+    's2.no': '2.0 · 监督', 's2.title': '完成结果回到发起它的聊天。',
+    's2.body': '每个派生任务都记得创建它的具体 Rove 会话。工作完成后，子任务把结果和分支回复到那段聊天；需要比较整批任务时，collect 提供只读快照。不再有单独的 report 存储，也不用轮询等待。',
     's3.no': '3.0 · 观察', 's3.title': '读会话本身，不刮终端屏幕。',
     's3.body': 'Rove 直接读每个引擎自己的会话数据——历史、token、上下文——而不是抓取终端文本。每个会话都运行在代码所在机器的 Hosted PTY 里、由 daemon 托管：退出 TUI、断开 SSH，这张图继续跑。从任何地方重新接上。',
     's3.body2': '而且是你的真实机器：真实的依赖、服务、凭证和构建缓存。代理跑通的对你也跑通。',
@@ -32,10 +32,10 @@ var KOBE_I18N = (function () {
   };
   var en = {
     'meta.title': 'Rove — run coding agents as a graph, terminal-native',
-    'meta.desc': 'Rove is a local-first TUI for graph engineering: run many AI coding agents as a graph of isolated attempts — git worktrees, hosted engine sessions, explicit reports — and merge the winner.',
+    'meta.desc': 'Rove is a local-first TUI for graph engineering: run many AI coding agents as isolated attempts — git worktrees, hosted engine sessions, dispatcher replies — then compare and merge the winner.',
     'nav.workflow': '--primitives', 'nav.install': '--install', 'nav.plugins': '--plugins', 'nav.themes': '--themes', 'nav.changelog': '--changelog',
     'hero.kicker': 'prompt engineering → context engineering → <span class="acc">graph engineering</span>',
-    'hero.title': 'The agent <span class="acc">multiplexer</span> in your shell.',
+    'hero.title': 'The agent <span class="acc hero-term">multiplexer</span> in your shell.',
     'hero.sub': 'One agent is a conversation. Five at once are a graph: nodes are isolated attempts — git worktree + engine session + branch — edges are dependencies, and the gates are your judgment. Rove is the terminal-native runtime for that graph.',
     'hero.getStarted': 'Get started ↗',
     'hero.requirements': 'Runs on macOS & Linux (Windows via WSL). Requires Bun ≥ 1.3.11 and one engine CLI on your PATH.',
@@ -44,8 +44,8 @@ var KOBE_I18N = (function () {
     's1.no': '1.0 · FAN OUT', 's1.title': 'One prompt becomes N isolated attempts.',
     's1.body': 'Fan-out is the first primitive, and isolation is the point. Rove spawns every attempt in its own git worktree on its own branch, running whichever engine you point it at — claude, codex, copilot, kimi, or your own command. Independent nodes, no shared state, no agents stepping on each other\'s files.',
     's1.ownCmd': 'your own command',
-    's2.no': '2.0 · SUPERVISE', 's2.title': 'Silence is not a status. Attempts report.',
-    's2.body': 'In a fleet of terminals, a quiet agent could be thinking or could be dead. So in Rove every attempt ends by reporting an explicit outcome — succeeded or failed — and an orchestrating agent can block until the whole fleet resolves. Agents orchestrating agents, with real completion semantics.',
+    's2.no': '2.0 · SUPERVISE', 's2.title': 'Completion comes back through chat.',
+    's2.body': 'Each spawned task remembers the exact Rove session that dispatched it. When the work is done, the worker replies into that chat with its outcome and branch; collect remains a read-only snapshot for comparing the fleet. No report store, no polling loop.',
     's3.no': '3.0 · OBSERVE', 's3.title': 'Read the session, never scrape the screen.',
     's3.body': 'Rove reads each engine\'s own session data — history, tokens, context — instead of scraping terminal text. And every session lives in a hosted PTY behind the daemon, on the machine where your code lives: quit the TUI, drop SSH, the graph keeps running. Reattach from anywhere.',
     's3.body2': 'And it\'s your real machine: real dependencies, services, credentials, build cache. What passes for the agent passes for you.',
@@ -139,7 +139,7 @@ var KOBE_I18N = (function () {
     .catch(function () { if (el.textContent === '–') el.textContent = '☆'; });
 })();
 
-// engine selector → updates the stage-1 fan-out (vendor flag + spawned worktree lanes)
+// engine selector → updates the stage-1 add round (command + spawned worktree lanes)
 (function () {
   var branchMap = {
     'claude': 'claude', 'codex': 'codex', 'copilot': 'copilot',
@@ -161,8 +161,12 @@ var KOBE_I18N = (function () {
 
   pills.forEach(function (pill) {
     pill.addEventListener('click', function () {
-      pills.forEach(function (p) { p.setAttribute('data-active', 'false'); });
+      pills.forEach(function (p) {
+        p.setAttribute('data-active', 'false');
+        p.setAttribute('aria-pressed', 'false');
+      });
       pill.setAttribute('data-active', 'true');
+      pill.setAttribute('aria-pressed', 'true');
       render(pill.getAttribute('data-engine'));
     });
   });

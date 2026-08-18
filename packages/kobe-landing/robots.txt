@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://rove.sma1lboy.me/sitemap.xml
