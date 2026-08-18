@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.8.134
+
+### Patch Changes
+
+- 7ae0af9: Codex tabs wear their first prompt instead of a thread UUID
+
+  Codex's `thread-title` segment falls back to the thread IDENTIFIER while a
+  thread is unnamed, so codex tabs, sidebar rows, and the Inbox all read
+  `01a00ee9-f0e9-…` where claude and kimi read a sentence. The engine contract
+  now covers a title that isn't a name: an adapter declares `sessionIdFromTitle`,
+  and a non-null answer means both "never render this" and "name the tab from
+  that session's first prompt" — so the fix generalizes to the next engine with
+  the same problem instead of a vendor check in the TUI. That also gives codex
+  tabs the first-prompt auto-title they could never reach before, since codex
+  accepts no caller-set session id. Display-side, so snapshots already holding a
+  UUID heal on sight — and once codex names a thread, that name wins.
+
 ## 0.8.133
 
 ### Patch Changes
