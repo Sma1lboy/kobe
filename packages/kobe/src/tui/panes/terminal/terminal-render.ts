@@ -12,6 +12,17 @@ export function isShellMissing(message: string): boolean {
   return m.includes("enoent") || m.includes("not found")
 }
 
+/**
+ * Cells a single grapheme code point occupies, matching `displayWidth`'s
+ * accounting exactly: a zero-width mark (combining diacritic, emoji variation
+ * selector, ZWJ/bidi control) contributes 0. xterm folds such a mark onto its
+ * base char's cell, so counting it as 1 drifts the cell-column cursor right by
+ * one column per mark to its left — do NOT `|| 1` this back to a width of one.
+ */
+function cellWidth(ch: string): number {
+  return charWidth(ch.codePointAt(0) as number)
+}
+
 function cloneChunk(c: Chunk, text: string, attrs = c.attributes ?? 0): Chunk {
   return {
     text,
@@ -24,7 +35,7 @@ function cloneChunk(c: Chunk, text: string, attrs = c.attributes ?? 0): Chunk {
 /** Sum the display width (in cells) of a chunk's text. */
 function chunkCells(chars: readonly string[]): number {
   let w = 0
-  for (const ch of chars) w += charWidth(ch.codePointAt(0) as number) || 1
+  for (const ch of chars) w += cellWidth(ch)
   return w
 }
 
@@ -51,7 +62,7 @@ function overlayCursorRow(row: readonly Chunk[], x: number): Chunk[] {
     let localCol = col
     let hit = -1
     for (let idx = 0; idx < chars.length; idx++) {
-      const w = charWidth((chars[idx] as string).codePointAt(0) as number) || 1
+      const w = cellWidth(chars[idx] as string)
       if (x >= localCol && x < localCol + w) {
         hit = idx
         break
@@ -137,7 +148,7 @@ export function sealRowEndAttributes(
       const chars = Array.from(chunk.text)
       for (let j = 0; j < chars.length; j++) {
         const ch = chars[j] as string
-        const w = charWidth(ch.codePointAt(0) as number) || 1
+        const w = cellWidth(ch)
         if (col + w <= lastColumn) {
           col += w
           continue
