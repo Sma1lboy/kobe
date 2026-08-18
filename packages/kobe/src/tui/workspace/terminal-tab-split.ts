@@ -12,7 +12,12 @@
  */
 
 import type { VendorId } from "@/types/vendor"
-import { engineEntry, engineStatusPrefixes, stripEngineStatusPrefix } from "../../engine/registry"
+import {
+  engineEntry,
+  engineStatusPrefixes,
+  isEnginePlaceholderTitle,
+  stripEngineStatusPrefix,
+} from "../../engine/registry"
 import { t } from "../i18n"
 import { pathLeaf } from "../lib/path-helpers"
 import { type SplitState, leaves } from "./split-core"
@@ -169,6 +174,11 @@ function stableRecordedTitle(raw: string | null | undefined, vendor: VendorId): 
   const cleaned = stripEngineStatusPrefix(recorded, vendor)
   // Unchanged AND made only of this engine's glyphs = decoration, not a name.
   if (cleaned === recorded && isEngineDecoration(recorded, vendor)) return null
+  // The engine wrote a PLACEHOLDER, not a name (codex's thread UUID until the
+  // thread is named). Same judgement as the decoration case one line up, and
+  // display-side for the same reason: recordings already on disk heal without
+  // a migration, and the moment codex names the thread its real title wins.
+  if (isEnginePlaceholderTitle(cleaned, vendor)) return null
   return cleaned || null
 }
 
@@ -270,6 +280,17 @@ export function tabTitleStable(
   return tabTitle({ ...tab, kind: "engine", vendor, lastTitle: named } as TerminalTab, taskVendor)
 }
 
+/**
+ * The engine whose title rules judge this tab's live/recorded name: what runs
+ * in it NOW, else what it was launched as, else the task's engine. Naming
+ * only — a confirmed-dead engine (`liveVendor === null`) still falls back to
+ * the pin here, because "is this string a name" is a question about the
+ * SHAPE the engine writes, not about what is running this second.
+ */
+function titleVendor(tab: TerminalTab, taskVendor: VendorId): VendorId {
+  return tab.liveVendor ?? (tab.kind === "engine" ? tab.vendor : undefined) ?? taskVendor
+}
+
 export function tabTitle(tab: TerminalTab, taskVendor: VendorId, liveName?: string | null): string {
   // Manual rename always wins; a conversation's first-prompt title beats
   // the numbered default; a multi-leaf SPLIT tab is a "group N" (its
@@ -287,13 +308,17 @@ export function tabTitle(tab: TerminalTab, taskVendor: VendorId, liveName?: stri
   // only the pre-title fallback. Deriving from the task's CURRENT vendor
   // relabelled every inherit-mode tab the moment a new tab switched the
   // task engine, while their PTYs kept running the old one.
-  if (liveName) return `${liveName} ${tab.ordinal}`
+  // A live title only names the tab when it IS a name: an engine that puts a
+  // placeholder there (codex's thread id) must fall through to the rungs
+  // below, which is where the conversation's first prompt lives.
+  const vendor = titleVendor(tab, taskVendor)
+  if (liveName && !isEnginePlaceholderTitle(liveName, vendor)) return `${liveName} ${tab.ordinal}`
   // No LIVE title here (a surface rendering a tab it doesn't host — the
   // Inbox), so fall back to the last live title this tab recorded. Without
   // it those surfaces drop straight to `autoTitle`, the FIRST prompt's
   // summary, and a tab that has long moved on still reads as its opening
   // question.
-  if (tab.lastTitle) return `${tab.lastTitle} ${tab.ordinal}`
+  if (tab.lastTitle && !isEnginePlaceholderTitle(tab.lastTitle, vendor)) return `${tab.lastTitle} ${tab.ordinal}`
   const auto = meaningfulAutoTitle(tab.autoTitle)
   if (auto) return auto
   const name =

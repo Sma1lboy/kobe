@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest"
-import { tabTitle } from "../../src/tui/workspace/terminal-tab-split.ts"
+import { tabTitle, visibleNativeStatus } from "../../src/tui/workspace/terminal-tab-split.ts"
 import {
   type TabsState,
   type TerminalTab,
@@ -59,5 +59,50 @@ describe("recorded live title (lastTitle)", () => {
     const state = setTabLastTitle(initialTabs(), firstTab(initialTabs()).id, "running tests")
     expect(setTabLastTitle(state, firstTab(state).id, "running tests")).toBe(state)
     expect(setTabLastTitle(state, "no-such-tab", "x")).toBe(state)
+  })
+})
+
+/**
+ * Codex's OSC title is its THREAD ID until the thread is named, so the live
+ * stream hands the ladder `01a00ee9-…` — an identifier, not a name. It must
+ * lose to the tab's own first-prompt title (owner report 2026-08-17: "现在显示
+ * 的是uuid"), which is what the naming pass derives from that very id.
+ */
+describe("placeholder live titles (codex thread ids)", () => {
+  const THREAD_ID = "01a00ee9-f0e9-7503-a11c-83b4eface0f6"
+
+  it("a thread id never names a codex tab — the first prompt does", () => {
+    let state = initialTabs()
+    const id = firstTab(state).id
+    state = setTabAutoTitle(state, id, "add a login form")
+    expect(tabTitle(firstTab(state), "codex", THREAD_ID)).toBe("add a login form")
+    // Recorded (the Inbox / sidebar path) heals the same way, with no
+    // migration of the snapshots that already hold one.
+    state = setTabLastTitle(state, id, THREAD_ID)
+    expect(tabTitle(firstTab(state), "codex")).toBe("add a login form")
+  })
+
+  it("with nothing else to say, the vendor default beats a raw id", () => {
+    const state = initialTabs()
+    expect(tabTitle(firstTab(state), "codex", THREAD_ID)).toBe(`codex ${firstTab(state).ordinal}`)
+  })
+
+  it("a NAMED codex thread still wins — the fallback heals itself", () => {
+    let state = initialTabs()
+    state = setTabAutoTitle(state, firstTab(state).id, "add a login form")
+    expect(tabTitle(firstTab(state), "codex", "rework the parser")).toContain("rework the parser")
+  })
+
+  // The turn chip hides only while the engine's OWN status line is what the
+  // row renders. A placeholder isn't rendered, so kobe draws its own state.
+  it("kobe's turn chip comes back when the id is not shown", () => {
+    const state = initialTabs()
+    expect(visibleNativeStatus(firstTab(state), "codex", "codex", THREAD_ID)).toBe(false)
+    expect(visibleNativeStatus(firstTab(state), "codex", "codex", "rework the parser")).toBe(true)
+  })
+
+  it("claude's titles are untouched by the codex rule", () => {
+    const state = setTabAutoTitle(initialTabs(), firstTab(initialTabs()).id, "add a login form")
+    expect(tabTitle(firstTab(state), "claude", THREAD_ID)).toContain(THREAD_ID)
   })
 })
