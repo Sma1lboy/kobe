@@ -9,7 +9,7 @@ var KOBE_I18N = (function () {
     'hero.title': '装在你 shell 里的 agent <span class="acc">多路复用器</span>。',
     'hero.sub': '一个代理是一场对话，五个同时跑就是一张图：节点是隔离的尝试——git worktree + 引擎会话 + 分支——边是依赖，门是你的判断。Rove 是这张图的终端原生运行时。',
     'hero.getStarted': '快速上手 ↗',
-    'hero.requirements': '支持 macOS 和 Linux（Windows 走 WSL）。需要 Bun ≥ 1.3.11，以及 PATH 上任意一个引擎 CLI。',
+    'hero.requirements': '支持 macOS 和 Linux（Windows 走 WSL）。npm、bun、npx 或一行 curl 都能装 —— Bun 运行时由 Rove 自己带上。只需 git 和 PATH 上任意一个引擎 CLI。',
     'copy.hint': '点击复制', 'copy.done': '✓ 已复制',
     'workspace.equation': '一个节点 =', 'workspace.sessions': '托管引擎会话',
     's1.no': '1.0 · 扇出', 's1.title': '一条 prompt 变成 N 个隔离的尝试。',
@@ -38,7 +38,7 @@ var KOBE_I18N = (function () {
     'hero.title': 'The agent <span class="acc">multiplexer</span> in your shell.',
     'hero.sub': 'One agent is a conversation. Five at once are a graph: nodes are isolated attempts — git worktree + engine session + branch — edges are dependencies, and the gates are your judgment. Rove is the terminal-native runtime for that graph.',
     'hero.getStarted': 'Get started ↗',
-    'hero.requirements': 'Runs on macOS & Linux (Windows via WSL). Requires Bun ≥ 1.3.11 and one engine CLI on your PATH.',
+    'hero.requirements': 'Runs on macOS & Linux (Windows via WSL). npm, bun, npx, or one curl line — Rove brings its own Bun runtime. Needs git and one engine CLI on your PATH.',
     'copy.hint': 'click to copy', 'copy.done': '✓ copied',
     'workspace.equation': 'one node =', 'workspace.sessions': 'hosted engine session',
     's1.no': '1.0 · FAN OUT', 's1.title': 'One prompt becomes N isolated attempts.',
@@ -109,7 +109,7 @@ var KOBE_I18N = (function () {
   var timer;
   btn.addEventListener('click', function () {
     try {
-      if (navigator.clipboard) navigator.clipboard.writeText('bun install -g @sma1lboy/rove');
+      if (navigator.clipboard) navigator.clipboard.writeText('npm i -g @sma1lboy/rove');
     } catch (e) {}
     label.textContent = KOBE_I18N.t('copy.done');
     clearTimeout(timer);

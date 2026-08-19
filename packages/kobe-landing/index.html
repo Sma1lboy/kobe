@@ -197,12 +197,12 @@ h1{font-family:var(--font-display);font-optical-sizing:auto;font-size:clamp(44px
     <div class="hero-row rise" style="animation-delay:.48s">
       <button id="copyBtn" class="copy-cmd">
         <span class="ps">$</span>
-        <span>bun install -g @sma1lboy/rove</span>
+        <span>npm i -g @sma1lboy/rove</span>
         <span id="copyLabel" class="hint">click to copy</span>
       </button>
       <a class="btn-primary" href="https://github.com/Sma1lboy/rove#readme" data-i18n="hero.getStarted">Get started ↗</a>
     </div>
-    <p class="hero-req rise" style="animation-delay:.58s" data-i18n="hero.requirements">Runs on macOS &amp; Linux (Windows via WSL). Requires Bun ≥ 1.3.11 and one engine CLI on your PATH.</p>
+    <p class="hero-req rise" style="animation-delay:.58s" data-i18n="hero.requirements">Runs on macOS &amp; Linux (Windows via WSL). npm, bun, npx, or one curl line — Rove brings its own Bun runtime. Needs git and one engine CLI on your PATH.</p>
   </div>
 
   <div class="quicklook rise" style="animation-delay:.7s">
@@ -310,7 +310,7 @@ c  <span class="ok">+96</span>  <span class="del">−88</span>  · 5 files
     <h2 data-i18n="install.title">Spin it up where your code lives.</h2>
     <p data-i18n="install.body">Your laptop, a devbox, a VPS, or any machine you can SSH into. No browser, no VNC, no desktop app. Optimize the one metric that matters: merged code per hour of your attention.</p>
     <figure class="term-frame install-term"><div class="tbar" aria-hidden="true"><i class="r"></i><i class="y"></i><i class="g"></i><span>install</span></div>
-    <pre class="term-out"><span class="ps">$</span> bun install -g @sma1lboy/rove
+    <pre class="term-out"><span class="ps">$</span> curl -fsSL https://rove.sma1lboy.me/install.sh | sh
 <span class="ps">$</span> ssh devbox && cd repo
 <span class="ps">$</span> rove
 <span class="d">3 attempts running. Go do something else.</span></pre></figure>

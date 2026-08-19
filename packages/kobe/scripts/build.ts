@@ -7,7 +7,10 @@
  * default transpiler honours — no build plugin required.
  *
  * Output: `dist/cli/kobe.js` and `dist/cli/rove.js` with executable perms,
- * plus their shared `index.js` implementation. After
+ * plus their shared `index.js` implementation. Those two bins are the NODE
+ * launcher (src/cli/launcher.ts) — installers disagree about which runtime
+ * starts a bin file, and only node is guaranteed under `npm i -g` / `npx` —
+ * so the Bun bundles they front ship beside them as `<name>-run.js`. After
  * the kobed → kobe bin merge (KOB-136), daemon lifecycle lives at
  * `kobe daemon ...`, so there is no separate `kobed` binary to build.
  *
@@ -28,7 +31,9 @@
 import { existsSync } from "node:fs"
 import { chmod, cp, mkdir, rm } from "node:fs/promises"
 
-const OUT_FILES = ["./dist/cli/kobe.js", "./dist/cli/rove.js"]
+/** Both published bin names; each gets a launcher + the Bun bundle behind it. */
+const CLI_NAMES = ["kobe", "rove"] as const
+const OUT_FILES = CLI_NAMES.flatMap((name) => [`./dist/cli/${name}.js`, `./dist/cli/${name}-run.js`])
 /** Canonical skill source (repo root) → its home in the tarball. */
 const SKILL_SRC_DIR = "../../.agents/skills/kobe"
 const SKILL_OUT_DIR = "./dist/skills/rove"
@@ -128,6 +133,36 @@ if (!ptyHostNode.success) {
   for (const log of ptyHostNode.logs) console.error(log)
   process.exit(1)
 }
+
+/** Write a program file with an explicit shebang, replacing any bundled one. */
+async function writeExecutable(file: string, shebang: string, code: string): Promise<void> {
+  const body = code.startsWith("#!") ? code.slice(code.indexOf("\n") + 1) : code
+  await Bun.write(file, `${shebang}\n${body}`)
+}
+
+// Move the Bun bundles aside so the bin names can carry the node launcher.
+for (const name of CLI_NAMES) {
+  const bundle = await Bun.file(`./dist/cli/${name}.js`).text()
+  await writeExecutable(`./dist/cli/${name}-run.js`, "#!/usr/bin/env bun", bundle)
+}
+
+// The launcher itself, as a NODE program: it runs before any Bun exists, so
+// it can only use plain node APIs (see src/cli/bun-runtime.ts).
+const launcher = await Bun.build({
+  entrypoints: ["./src/cli/launcher.ts"],
+  target: "node",
+  format: "esm",
+  minify: true,
+})
+
+if (!launcher.success) {
+  console.error("launcher build failed:")
+  for (const log of launcher.logs) console.error(log)
+  process.exit(1)
+}
+
+const launcherCode = await launcher.outputs[0].text()
+for (const name of CLI_NAMES) await writeExecutable(`./dist/cli/${name}.js`, "#!/usr/bin/env node", launcherCode)
 
 for (const file of OUT_FILES) await chmod(file, 0o755)
 await copyWebUi()

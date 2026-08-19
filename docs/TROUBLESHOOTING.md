@@ -3,6 +3,29 @@
 User-facing symptom → cause → fix, for the questions that keep coming back.
 One section per symptom; keep entries short and command-exact.
 
+## `rove` exits with "no Bun was found" (or `env: bun: No such file or directory`)
+
+The Rove CLI runs on the [Bun](https://bun.sh) runtime. The published `rove` and
+`kobe` bins are node launchers that re-exec through Bun, so an `npm install -g`
+or `npx` on a machine without Bun still works — the first launch offers to
+install Bun for you. You land on this error when that offer could not be made
+(no TTY, `CI=true`, or `ROVE_NO_BUN_BOOTSTRAP=1`) or was declined.
+
+Fix it with any of:
+
+```bash
+curl -fsSL https://bun.sh/install | bash        # macOS / Linux / WSL
+powershell -c "irm bun.sh/install.ps1 | iex"    # Windows
+npm install -g bun                              # any platform
+```
+
+Bun is discovered on `PATH`, in `$BUN_INSTALL/bin`, in `~/.bun/bin`, and in a
+`bun` npm package installed beside Rove. A Bun anywhere else needs
+`ROVE_BUN=/path/to/bun` — export it from your shell profile so daemon restarts
+see it too. The bare `env: bun: No such file or directory` message comes from an install
+made before the launcher shipped, whose bin needed Bun on `PATH` — `rove update`
+replaces it.
+
 ## Windows opens Rove, but engine and terminal tabs never start
 
 Windows needs three separate runtimes:

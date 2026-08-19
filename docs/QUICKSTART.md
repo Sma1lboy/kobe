@@ -4,8 +4,10 @@ rove runs many AI coding sessions side by side in your terminal. Each managed
 Task gets its own git worktree and branch, so parallel Tasks never step on
 each other. Extra tabs inside one Task share that Task's directory.
 
-You need [Bun](https://bun.sh) ≥ 1.3.11, git, and at least one engine CLI
-(`claude`, `codex`, `copilot`, or `kimi`) on your `PATH`.
+You need git and at least one engine CLI (`claude`, `codex`, `copilot`, or
+`kimi`) on your `PATH`. The Rove CLI itself runs on the [Bun](https://bun.sh)
+runtime (≥ 1.3.11) — you do not have to install Bun yourself, every route
+below brings it along.
 
 **Windows also requires [Node.js](https://nodejs.org) and Git for Windows.**
 Rove uses Node.js for its Windows PTY host and Git Bash as the POSIX shell
@@ -14,12 +16,33 @@ the new executables are on `PATH`.
 
 ## Install
 
-```bash
-bun install -g @sma1lboy/rove
+One line on a fresh machine — installs Bun if it is missing, then Rove:
 
-# or try it without installing
-bunx @sma1lboy/rove
+```bash
+curl -fsSL https://rove.sma1lboy.me/install.sh | sh
+
+# pin a version
+curl -fsSL https://rove.sma1lboy.me/install.sh | sh -s -- 0.8.136
 ```
+
+Or use a package manager you already have:
+
+```bash
+npm install -g @sma1lboy/rove   # npm — the first launch offers to install Bun
+bun install -g @sma1lboy/rove   # bun
+npx @sma1lboy/rove              # try it without installing
+```
+
+On Windows, use the npm route (the shell script needs a POSIX shell):
+
+```powershell
+npm install -g @sma1lboy/rove
+```
+
+Rove looks for Bun on `PATH`, in `$BUN_INSTALL/bin`, and in `~/.bun/bin`. If
+yours lives somewhere else, point Rove at it with `ROVE_BUN=/path/to/bun`. To
+never be asked about installing Bun (CI, images, locked-down machines), set
+`ROVE_NO_BUN_BOOTSTRAP=1` — Rove then prints the install commands and exits.
 
 ## First launch
 
