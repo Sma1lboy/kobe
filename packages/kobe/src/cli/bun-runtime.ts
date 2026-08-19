@@ -10,6 +10,12 @@
  *
  * Everything in this file must run under plain node: no Bun globals, no
  * imports that pull the Bun bundle in.
+ *
+ * Deliberately NOT solved by declaring `bun` an optionalDependency (owner,
+ * reaffirmed 2026-08-19): that downloads a ~90MB platform binary on EVERY
+ * install, including `bun install -g`, where a Bun is already present. The
+ * install offer below costs nothing and covers the same gap; the npm-package
+ * path stays a lookup candidate for anyone who installs `bun` themselves.
  */
 
 import { type SpawnSyncReturns, spawnSync } from "node:child_process"
