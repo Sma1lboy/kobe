@@ -348,10 +348,6 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
   // through a ref rather than the one from its first render.
   const tabCloseRef = useLatest(tabClose)
 
-  // Cross-component requests aimed at this task: F7 activation, plugin-pane
-  // open/close, sidebar close, adoption of unregistered live sessions.
-  useTabRequests({ stateRef, propsRef, updateRef, tabCloseRef, activeLeafSizeRef })
-
   // Rename + the unified new-conversation dialog (issue #7) — extracted
   // (file-size cap split); recreated per render for state freshness.
   const { requestRename, requestNewChat } = useTabDialogs({
@@ -369,6 +365,23 @@ export function TerminalTabs(props: TerminalTabsProps): ReactNode {
     onQuickFork: props.onQuickFork,
     onOpenScratch: props.onOpenScratch,
     notifyError: (title) => notif.notify({ kind: "error", taskId: props.taskId, tabId: active.id, title }),
+  })
+
+  const requestNewChatRef = useLatest(requestNewChat)
+
+  // Cross-component requests aimed at this task: F7 activation, plugin-pane
+  // open/close, the sidebar menu's new-conversation / new-shell / close, and
+  // adoption of unregistered live sessions. Declared AFTER the dialogs hook
+  // so the picker opener exists to hand over — the listener is mount-only and
+  // reads it through the ref, so render order is the only ordering that
+  // matters.
+  useTabRequests({
+    stateRef,
+    propsRef,
+    updateRef,
+    tabCloseRef,
+    activeLeafSizeRef,
+    requestNewChatRef,
   })
 
   /** What a plain ctrl+t tab should run — the full preference chain.

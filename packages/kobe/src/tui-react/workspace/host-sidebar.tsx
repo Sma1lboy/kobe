@@ -19,6 +19,7 @@ import { useT } from "../i18n"
 import { SidebarTree } from "../panes/sidebar/SidebarTree"
 import { closeTaskTab } from "./terminal-tabs-close"
 import { moveTaskTab } from "./terminal-tabs-move"
+import { requestNewTab } from "./terminal-tabs-shared"
 
 export interface HostSidebarProps {
   readonly width: number
@@ -84,6 +85,18 @@ export function HostSidebar(props: HostSidebarProps) {
     },
     [kv],
   )
+  // "New conversation" / "New shell" from a row's menu (owner ask
+  // 2026-08-18). Unlike close/move there is no background path: the picker is
+  // a dialog and a shell tab needs its PTY where the tabs render, so this
+  // ENTERS the task first and the request is claimed by its workspace — on
+  // the spot when it is already mounted, on first mount otherwise.
+  const newTab = useCallback(
+    (taskId: string, kind: "chat" | "shell"): void => {
+      props.onActivate(taskId)
+      requestNewTab(taskId, kind)
+    },
+    [props.onActivate],
+  )
   const common = {
     width: props.width,
     nav: props.nav,
@@ -127,6 +140,7 @@ export function HostSidebar(props: HostSidebarProps) {
         selectedTabId={props.selectedTabId}
         onSelectTab={props.onSelectTab}
         onCloseTab={closeTab}
+        onNewTab={newTab}
         onMoveTabRequest={moveTab}
         recentTask={props.recentTask ?? null}
       />

@@ -3,10 +3,11 @@
  * from `TerminalTabs.tsx` (the ~500-line cap), sibling of
  * `use-tab-handoffs.ts`.
  *
- * All five requests (`terminal-tabs-shared.ts`) share one mount-once
- * listener: activation (F7 attention jump), plugin-pane open/close
- * (`tab.open` / `tab.close`), close-from-elsewhere (the sidebar tree menu)
- * and adoption of live-but-unregistered sessions. Consuming them HERE is
+ * All requests (`terminal-tabs-shared.ts`) share one mount-once listener:
+ * activation (F7 attention jump), plugin-pane open/close (`tab.open` /
+ * `tab.close`), new-tab (the sidebar tree menu's "New conversation" / "New
+ * shell"), close-from-elsewhere (the same menu) and adoption of
+ * live-but-unregistered sessions. Consuming them HERE is
  * what claims them — a request still pending after the listener sweep is
  * one nobody owns, and only then may a background writer touch the state
  * (see `closeTaskTab` / `adoptTaskTabs`).
@@ -16,18 +17,21 @@
  */
 
 import { useEffect } from "react"
+import { defaultShell } from "../../tui/panes/terminal/pty-types"
 import { getDefaultPtyRegistry } from "../../tui/panes/terminal/registry"
 import { closePluginPanes, openPluginPane } from "../../tui/workspace/pane-split"
 import { adoptTabs } from "../../tui/workspace/tabs-adopt"
 import {
   type TabsState,
   moveTab,
+  openCommandTab,
   selectTab,
   splitLeafPtyKey,
   tabPtyKeyFor,
 } from "../../tui/workspace/terminal-tabs-core"
 import {
   tabActivationListeners,
+  takeNewTab,
   takePaneClose,
   takeTabActivation,
   takeTabAdopt,
@@ -45,10 +49,13 @@ export interface TabRequestIO {
   readonly tabCloseRef: { readonly current: { closeById: (id: string) => void } }
   /** Active leaf geometry for the split-size gate; null when no PTY yet. */
   readonly activeLeafSizeRef: { readonly current: () => { cols: number; rows: number } | null }
+  /** Latest-render mirror of the ctrl+e picker opener (`useTabDialogs`) —
+   *  what the sidebar's "New conversation" entry ends up pressing. */
+  readonly requestNewChatRef: { readonly current: () => void }
 }
 
 export function useTabRequests(io: TabRequestIO): void {
-  const { stateRef, propsRef, updateRef, tabCloseRef, activeLeafSizeRef } = io
+  const { stateRef, propsRef, updateRef, tabCloseRef, activeLeafSizeRef, requestNewChatRef } = io
   // biome-ignore lint/correctness/useExhaustiveDependencies: mount-once by design — every read goes through a latest-render ref.
   useEffect(() => {
     const consume = (): void => {
@@ -83,6 +90,14 @@ export function useTabRequests(io: TabRequestIO): void {
         }
         for (const id of closedTabIds) tabCloseRef.current.closeById(id)
       }
+      // New tab from the sidebar tree's menu: "New conversation" opens the
+      // same ctrl+e picker (engines + shell + plugin panes), "New shell" is
+      // that picker's shell pick taken directly — a bare command tab named by
+      // its live foreground process. The sidebar activated this task first,
+      // so a request aimed at a cold task is claimed by its first mount.
+      const newTab = takeNewTab(taskId)
+      if (newTab === "chat") requestNewChatRef.current()
+      else if (newTab === "shell") updateRef.current(openCommandTab(stateRef.current, [defaultShell()], null))
       // Adoption: a live session this component's state doesn't list becomes
       // a real tab, so it can be opened and closed like any other.
       const adopt = takeTabAdopt(taskId)

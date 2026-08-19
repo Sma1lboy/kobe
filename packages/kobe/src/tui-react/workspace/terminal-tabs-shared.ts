@@ -137,6 +137,31 @@ export function requestTabOpen(
 }
 
 /**
+ * Cross-component "add a session to this task" request — the sidebar tree's
+ * right-click "New conversation" / "New shell" (owner ask 2026-08-18).
+ *
+ * Twin of {@link requestTabActivation}, not of {@link requestTabClose}: both
+ * kinds need the task's OWN workspace (the picker is a dialog; a shell tab
+ * has to spawn its PTY where the tabs render), so the caller selects the task
+ * first and an unclaimed request simply waits for that mount instead of
+ * falling back to a background write.
+ */
+let pendingNewTab: { taskId: string; kind: "chat" | "shell" } | null = null
+
+export function requestNewTab(taskId: string, kind: "chat" | "shell"): void {
+  pendingNewTab = { taskId, kind }
+  for (const listener of tabActivationListeners) listener()
+}
+
+/** Consume a pending new-tab request for this task, or null. */
+export function takeNewTab(taskId: string): "chat" | "shell" | null {
+  if (pendingNewTab?.taskId !== taskId) return null
+  const kind = pendingNewTab.kind
+  pendingNewTab = null
+  return kind
+}
+
+/**
  * Cross-component "close panes opened under a title" request (`tab.close` —
  * pane-close, the inverse of {@link requestTabOpen}). Consumed by the
  * mounted TerminalTabs; matching is by pane label, so only titled

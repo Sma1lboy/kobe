@@ -85,8 +85,9 @@ test("a menu entry fires the row's real callback", async () => {
   await mockMouse.click(2, lineOf(await frame(), "feat/a"), RIGHT)
   await settle()
 
-  // Highlight starts on "Open"; j steps to "Rename".
-  mockInput.typeText("j")
+  // Highlight starts on "Open"; the new-conversation pair sits between it and
+  // the task verbs, so "Rename" is three steps down.
+  mockInput.typeText("jjj")
   await settle()
   mockInput.pressEnter()
   await settle()
@@ -180,6 +181,50 @@ test("a tab row's menu closes that tab, naming the (task, tab) pair", async () =
   await settle()
 
   expect(closed).toEqual([["a", "tab-2"]])
+})
+
+test("a worktree row's menu opens a new conversation in that task", async () => {
+  // The sidebar's route to ctrl+e: the entry names the task, the host enters
+  // it and hands the request to that task's workspace.
+  tabsByTask.clear()
+  const asked: Array<[string, string]> = []
+  const { frame, mockMouse, mockInput } = await renderComponent(
+    tree({ onNewTab: (taskId, kind) => asked.push([taskId, kind]) }),
+    { width: 40, height: 24 },
+  )
+  await settle()
+  await mockMouse.click(2, lineOf(await frame(), "feat/a"), RIGHT)
+  await settle()
+  expect(await frame()).toContain("New conversation")
+
+  // Open → New conversation.
+  mockInput.typeText("j")
+  await settle()
+  mockInput.pressEnter()
+  await settle()
+
+  expect(asked).toEqual([["a", "chat"]])
+})
+
+test("a tab row's menu opens a new shell in its worktree", async () => {
+  tabsByTask.clear()
+  seedTabs("a", ["tab-1", "tab-2"])
+  const asked: Array<[string, string]> = []
+  const { frame, mockMouse, mockInput } = await renderComponent(
+    tree({ onNewTab: (taskId, kind) => asked.push([taskId, kind]) }),
+    { width: 40, height: 24 },
+  )
+  await settle()
+  await mockMouse.click(2, lineOf(await frame(), "tab 2"), RIGHT)
+  await settle()
+
+  // Open tab → Close tab → New conversation → New shell.
+  mockInput.typeText("jjj")
+  await settle()
+  mockInput.pressEnter()
+  await settle()
+
+  expect(asked).toEqual([["a", "shell"]])
 })
 
 test("a worktree's LAST tab offers no close", async () => {
