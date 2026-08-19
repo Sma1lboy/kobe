@@ -9,12 +9,21 @@ surface.
 
 ## Install and update
 
-Needs Bun ≥ 1.3.11, git, and at least one engine CLI on `PATH`.
+Needs git and at least one engine CLI on `PATH`. The CLI runs on the Bun
+runtime (≥ 1.3.11); each route below installs Bun for you when it is missing.
 
 ```bash
-bun install -g @sma1lboy/rove   # install
-bunx @sma1lboy/rove             # try without installing
+curl -fsSL https://rove.sma1lboy.me/install.sh | sh   # installs Bun, then Rove
+npm install -g @sma1lboy/rove                         # npm (asks about Bun on first run)
+bun install -g @sma1lboy/rove                         # bun
+npx @sma1lboy/rove                                    # try without installing
 ```
+
+The `rove` and `kobe` bins are small launchers: they run the CLI directly when
+started by Bun, and find (or offer to install) a Bun when started by node —
+which is what `npm install -g` and `npx` do. Two environment variables steer
+that: `ROVE_BUN` names the Bun binary to use, `ROVE_NO_BUN_BOOTSTRAP=1` turns a
+missing Bun into a plain error instead of an install offer.
 
 The installed package exposes both `rove` and `kobe`. `rove` is the canonical
 entry point; `kobe` remains a fully supported compatibility alias. They run the

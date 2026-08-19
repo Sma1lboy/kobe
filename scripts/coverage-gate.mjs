@@ -61,6 +61,13 @@ const SUBPROCESS_ONLY_EXCLUSIONS = new Set([
   // entries and verifies their observable identity and env precedence.
   "packages/kobe/src/cli/kobe.ts",
   "packages/kobe/src/cli/rove.ts",
+  // The published bin: a node launcher that finds a Bun runtime and re-execs
+  // the real entry through it (npm/npx hand a bin to node, `bun install -g`
+  // hands it to Bun). Its module body IS the side effect — importing it from
+  // a test would relaunch the CLI inside the runner. All of its logic lives
+  // in src/cli/bun-runtime.ts, which test/cli/bun-runtime.test.ts covers
+  // directly; test/behavior/rove-alias.test.ts spawns the built launchers.
+  "packages/kobe/src/cli/launcher.ts",
   // `kobe pty-host`: internal subcommand spawned DETACHED by
   // ensurePtyHostReachable() (see src/cli/pty-host-cmd.ts) — it blocks in the
   // foreground running a real server and installs SIGINT/SIGTERM handlers

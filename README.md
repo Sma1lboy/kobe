@@ -32,21 +32,28 @@ The sidebar tracks tasks and their sessions, the workspace embeds the active age
 
 ## Quick start
 
-Requires [Bun](https://bun.sh) ≥ 1.3.11, git, and at least one supported agent CLI on `PATH`. Rove runs on macOS, Linux, and Windows; Windows also requires Node.js and Git for Windows/Git Bash.
-
-Try it without installing:
+One line, on a machine with nothing installed — it sets up the Bun runtime Rove needs, then Rove itself:
 
 ```bash
-bunx @sma1lboy/rove
+curl -fsSL https://rove.sma1lboy.me/install.sh | sh
 ```
 
-Or install it globally, then launch it in a repository:
+Or use the package manager you already have:
 
 ```bash
-bun install -g @sma1lboy/rove
+npm install -g @sma1lboy/rove   # offers to install Bun on first launch
+bun install -g @sma1lboy/rove   # if you already run Bun
+npx @sma1lboy/rove              # try it without installing
+```
+
+Then launch it in a repository:
+
+```bash
 cd your-repo
 rove
 ```
+
+Rove needs git and at least one supported agent CLI on `PATH`, and runs on macOS, Linux, and Windows; Windows also requires Node.js and Git for Windows/Git Bash. The CLI itself runs on [Bun](https://bun.sh) ≥ 1.3.11 — every install route above brings it along, and `ROVE_BUN=/path/to/bun` points Rove at a Bun installed somewhere unusual.
 
 Press `n`, choose a repository, base branch, and agent, then enter a prompt. Press `F1` for the live keybinding reference; `ctrl+q` returns to the sidebar and quits from there without stopping sessions.
 

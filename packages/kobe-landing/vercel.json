@@ -4,6 +4,12 @@
   "outputDirectory": ".",
   "ignoreCommand": "git diff --quiet HEAD^ HEAD -- .",
   "cleanUrls": true,
+  "rewrites": [
+    {
+      "source": "/install.sh",
+      "destination": "https://raw.githubusercontent.com/Sma1lboy/rove/main/scripts/install.sh"
+    }
+  ],
   "redirects": [
     {
       "source": "/docs",

@@ -37,6 +37,22 @@ describe("Rove package distribution", () => {
     expect(pkg.bin).toEqual({ kobe: "dist/cli/kobe.js", rove: "dist/cli/rove.js" })
   })
 
+  test("the bins are node launchers fronting the Bun bundles, so npm/npx installs run", () => {
+    const build = read("packages/kobe/scripts/build.ts")
+    const launcher = read("packages/kobe/src/cli/launcher.ts")
+
+    // `npm install -g` and `npx` start a bin with node, `bun install -g`
+    // symlinks it and starts it with Bun. The bin file has one shebang, so
+    // it is the node launcher, and the Bun bundle moves to `<name>-run.js`.
+    expect(launcher.startsWith("#!/usr/bin/env node")).toBe(true)
+    expect(build).toContain('const CLI_NAMES = ["kobe", "rove"] as const')
+    expect(build).toContain('writeExecutable(`./dist/cli/${name}-run.js`, "#!/usr/bin/env bun", bundle)')
+    expect(build).toContain('writeExecutable(`./dist/cli/${name}.js`, "#!/usr/bin/env node", launcherCode)')
+    expect(build).toContain('entrypoints: ["./src/cli/launcher.ts"]')
+    // The launcher runs before any Bun exists: no Bun-only import may reach it.
+    expect(launcher).not.toMatch(/from "\.\/(?!bun-runtime)/)
+  })
+
   test("acceptance tooling defaults to the built Rove artifacts while retaining explicit alias coverage", () => {
     const harness = read("packages/kobe/test/behavior/harness.ts")
     const visualFixture = read("packages/kobe-web/e2e/visual-fixture.ts")

@@ -2,11 +2,25 @@
 
 The published Rove CLI and PureTUI package.
 
+Install it any of these ways:
+
 ```bash
-bun install -g @sma1lboy/rove
+curl -fsSL https://rove.sma1lboy.me/install.sh | sh   # installs Bun if needed, then Rove
+npm install -g @sma1lboy/rove                         # npm
+bun install -g @sma1lboy/rove                         # bun
+npx @sma1lboy/rove                                    # no install
+```
+
+Then:
+
+```bash
 rove add /path/to/repo
 rove
 ```
+
+The CLI runs on the Bun runtime. The published `rove` / `kobe` bins are node
+launchers that re-exec through Bun, so an `npm install -g` or `npx` on a
+machine without Bun still ends up with a working Rove.
 
 The package also keeps `kobe` as a compatibility alias. Both executable names
 copy supported legacy state into `~/.rove` and `~/.config/rove` without deleting
