@@ -10,9 +10,8 @@
  */
 
 import { spawnSync } from "node:child_process"
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync } from "node:fs"
+import { cpSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync } from "node:fs"
 import { mkdtempSync } from "node:fs"
-import { tmpdir } from "node:os"
 import { basename, join, resolve } from "node:path"
 import { createInterface } from "node:readline/promises"
 import {
@@ -23,7 +22,12 @@ import {
   pluginManifestPath,
   supportsPlatform,
 } from "@sma1lboy/kobe-daemon/plugins/manifest"
-import { pluginCheckoutDir, pluginConfigDir, pluginStateDir } from "@sma1lboy/kobe-daemon/plugins/plugin-paths"
+import {
+  pluginCheckoutDir,
+  pluginConfigDir,
+  pluginStateDir,
+  pluginsRootDir,
+} from "@sma1lboy/kobe-daemon/plugins/plugin-paths"
 import {
   type PluginRegistryEntry,
   loadPluginRegistry,
@@ -101,6 +105,29 @@ function runBuildCommands(parsed: ParsedPluginManifest, root: string): void {
   }
 }
 
+/**
+ * Stage the clone inside the plugins root, not the OS temp dir: `/tmp` is a
+ * separate filesystem on most Linux setups (tmpfs, and always so under WSL2),
+ * and `rename(2)` across devices fails with EXDEV. Staging next to the
+ * destination keeps the final move an atomic same-device rename.
+ */
+function makeStagingDir(): string {
+  const root = pluginsRootDir()
+  mkdirSync(root, { recursive: true })
+  return mkdtempSync(join(root, ".staging-"))
+}
+
+/** Rename, falling back to copy+delete if the two paths still span devices. */
+function movePluginTree(from: string, to: string): void {
+  try {
+    renameSync(from, to)
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== "EXDEV") throw err
+    cpSync(from, to, { recursive: true, verbatimSymlinks: true })
+    rmSync(from, { recursive: true, force: true })
+  }
+}
+
 function register(entry: PluginRegistryEntry): void {
   savePluginRegistry(upsertPluginEntry(loadPluginRegistry(), entry))
   mkdirSync(pluginConfigDir(entry.id), { recursive: true })
@@ -114,7 +141,7 @@ export async function installPlugin(spec: string, opts: { yes: boolean; ref?: st
   const [, owner, repo, subdirRaw] = match
   const subdir = subdirRaw?.replace(/^\//, "")
 
-  const tmp = mkdtempSync(join(tmpdir(), "kobe-plugin-"))
+  const tmp = makeStagingDir()
   try {
     const url = `https://github.com/${owner}/${repo}.git`
     console.log(`cloning ${url}${opts.ref ? ` @ ${opts.ref}` : ""}`)
@@ -151,7 +178,7 @@ export async function installPlugin(spec: string, opts: { yes: boolean; ref?: st
     const checkout = pluginCheckoutDir(id)
     rmSync(checkout, { recursive: true, force: true })
     mkdirSync(join(checkout, ".."), { recursive: true })
-    renameSync(tmp, checkout)
+    movePluginTree(tmp, checkout)
     register({
       id,
       source: { kind: "github", spec },
