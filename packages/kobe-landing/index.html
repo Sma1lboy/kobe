@@ -79,12 +79,19 @@ button{font-family:inherit;cursor:pointer}
 .hero-kicker .acc{font-style:normal;font-weight:700}
 h1{font-family:var(--font-display);font-optical-sizing:auto;font-size:clamp(44px,6.6vw,88px);font-weight:380;letter-spacing:-.028em;line-height:1.0;color:var(--ink);max-width:16ch;margin:26px 0 22px;text-shadow:0 1px 30px oklch(95% 0.02 210/.8)}
 .hero-sub{font-size:clamp(15px,1.5vw,17.5px);max-width:56ch;color:var(--ink-soft);text-shadow:0 1px 18px oklch(95% 0.02 210/.9)}
-.hero-row{display:flex;gap:14px;flex-wrap:wrap;justify-content:center;align-items:center;margin-top:36px}
+.hero-row{display:flex;gap:14px;flex-wrap:wrap;justify-content:center;align-items:center;margin-top:36px;max-width:100%}
 .copy-cmd{display:inline-flex;align-items:center;gap:12px;font-family:var(--font-mono);font-size:13.5px;color:var(--ink);background:oklch(100% 0 0/.55);border:1px solid oklch(100% 0 0/.85);backdrop-filter:blur(14px);border-radius:999px;padding:13px 20px;box-shadow:0 14px 40px oklch(40% 0.04 60/.18);transition:transform 140ms var(--ease-out),box-shadow 200ms}
 .copy-cmd:hover{transform:translateY(-2px);box-shadow:0 20px 50px oklch(40% 0.04 60/.24)}
 .copy-cmd:active{transform:scale(.98)}
 .copy-cmd .ps{color:var(--accent);font-weight:700}
-.copy-cmd .hint{font-size:11px;color:var(--faint);border-left:1px solid var(--line-2);padding-left:12px}
+.copy-cmd .hint{font-size:11px;color:var(--faint);border-left:1px solid var(--line-2);padding-left:12px;white-space:nowrap}
+/* A flex item defaults to min-width:auto, so without these the pill keeps its
+   intrinsic width and the hero clips the command instead of ellipsing it. */
+.copy-cmd{max-width:100%;min-width:0}
+.copy-cmd .cmd{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+/* Phone: drop the copy hint and the URL scheme so the whole command still
+   reads. The clipboard payload keeps https:// (index.js owns that string). */
+@media(max-width:720px){.copy-cmd{font-size:12px;padding:12px 16px;gap:8px}.copy-cmd .hint{display:none}.copy-cmd .scheme{display:none}}
 .btn-primary{display:inline-flex;align-items:center;gap:8px;border-radius:999px;font-size:14.5px;font-weight:520;padding:14px 26px;background:var(--ink);color:oklch(97% 0.008 85);transition:transform 140ms var(--ease-out),box-shadow 200ms}
 .btn-primary:hover{transform:translateY(-2px);box-shadow:0 12px 32px oklch(25% 0.02 60/.3)}
 .btn-quiet{display:inline-flex;align-items:center;gap:8px;border-radius:999px;font-size:14.5px;font-weight:480;padding:14px 26px;background:transparent;color:var(--ink);border:1px solid var(--line-2);transition:transform 140ms,background 140ms,border-color 140ms}
@@ -197,7 +204,7 @@ h1{font-family:var(--font-display);font-optical-sizing:auto;font-size:clamp(44px
     <div class="hero-row rise" style="animation-delay:.48s">
       <button id="copyBtn" class="copy-cmd">
         <span class="ps">$</span>
-        <span>npm i -g @sma1lboy/rove</span>
+        <span class="cmd">curl -fsSL <span class="scheme">https://</span>rove.sma1lboy.me/install.sh | sh</span>
         <span id="copyLabel" class="hint">click to copy</span>
       </button>
       <a class="btn-primary" href="https://github.com/Sma1lboy/rove#readme" data-i18n="hero.getStarted">Get started ↗</a>

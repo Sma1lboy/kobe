@@ -109,7 +109,7 @@ var KOBE_I18N = (function () {
   var timer;
   btn.addEventListener('click', function () {
     try {
-      if (navigator.clipboard) navigator.clipboard.writeText('npm i -g @sma1lboy/rove');
+      if (navigator.clipboard) navigator.clipboard.writeText('curl -fsSL https://rove.sma1lboy.me/install.sh | sh');
     } catch (e) {}
     label.textContent = KOBE_I18N.t('copy.done');
     clearTimeout(timer);
