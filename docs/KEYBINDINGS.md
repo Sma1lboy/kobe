@@ -121,7 +121,8 @@ everything is always visible. Search (`/`) matches titles, repos, branches,
 and live tab titles, and keeps matching rows' parents so a hit is never
 orphaned.
 
-Right-click any row for its context menu; common row actions also have direct
+Right-click any row for its context menu; `j`/`k` and `⏎` drive it, and a press
+anywhere else — or `esc` — dismisses it. Common row actions also have direct
 chords. (If right-click opens your *terminal's* menu instead, see
 [Troubleshooting](./TROUBLESHOOTING.md).)
 
