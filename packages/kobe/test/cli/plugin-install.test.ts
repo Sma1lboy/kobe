@@ -1,7 +1,7 @@
 import { existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
 import { join } from "node:path"
-import { pluginConfigDir, pluginStateDir } from "@sma1lboy/kobe-daemon/plugins/plugin-paths"
+import { pluginConfigDir, pluginStateDir, pluginsRootDir } from "@sma1lboy/kobe-daemon/plugins/plugin-paths"
 import { loadPluginRegistry, savePluginRegistry } from "@sma1lboy/kobe-daemon/plugins/registry"
 import { afterEach, describe, expect, it, vi } from "vitest"
 
@@ -122,6 +122,30 @@ describe("plugin manifest diagnostics", () => {
       version: "2.0.0",
     })
     expect(existsSync(join(entry?.root ?? "", "rove-plugin.toml"))).toBe(true)
+  })
+
+  it("stages the clone beside the destination so the move never crosses devices", async () => {
+    // Regression: staging in os.tmpdir() made the final rename() fail with
+    // EXDEV wherever /tmp is its own filesystem (tmpfs, WSL2).
+    const home = pluginDir()
+    vi.stubEnv("ROVE_HOME_DIR", home)
+    vi.spyOn(console, "log").mockImplementation(() => {})
+    const cloneTargets: string[] = []
+    mocks.spawnSync.mockImplementation((_command: string, args: string[]) => {
+      const checkout = args.at(-1) as string
+      cloneTargets.push(checkout)
+      writeFileSync(
+        join(checkout, "rove-plugin.toml"),
+        'id = "managed.plugin"\nname = "Managed"\nversion = "2.0.0"\nmin_rove_version = "0.1.0"',
+      )
+      return { status: 0 }
+    })
+
+    await installPlugin("owner/repo", { yes: true })
+
+    expect(cloneTargets).toHaveLength(1)
+    expect(cloneTargets[0]?.startsWith(`${pluginsRootDir(home)}/`)).toBe(true)
+    expect(existsSync(cloneTargets[0] as string)).toBe(false)
   })
 
   it("rejects a build that switches from the previewed legacy manifest to a canonical one", async () => {
