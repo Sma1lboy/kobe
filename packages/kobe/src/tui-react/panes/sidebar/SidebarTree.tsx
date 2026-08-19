@@ -48,6 +48,9 @@ export type SidebarTreeProps = SidebarProps & {
   onSelectTab?: (taskId: string, tabId: string) => void
   /** Close one tab of any worktree — offered by the tab row's menu. */
   onCloseTab?: (taskId: string, tabId: string) => void
+  /** Open a new conversation ("chat" — the ctrl+e picker) or a bare shell tab
+   *  in any worktree — offered by the worktree/tab rows' menu. */
+  onNewTab?: (taskId: string, kind: "chat" | "shell") => void
   /** Move one tab within its task (move mode on a tab row, issue #43). */
   onMoveTabRequest?: (taskId: string, tabId: string, delta: -1 | 1) => void
   /** Narrow mode's "↩ recent" jump target (issue #14, 2A) — renders as the
@@ -248,6 +251,7 @@ export function SidebarTree(props: SidebarTreeProps) {
     setCursorIndex,
     onAddTask: props.onAddTask,
     onCloseTab: props.onCloseTab,
+    onNewTab: props.onNewTab,
     actions: props,
   })
 

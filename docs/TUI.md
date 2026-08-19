@@ -22,7 +22,8 @@ Click a pane or row to focus it. `F4` moves focus forward, `ctrl+a` `h` / `l`
 moves left or right, and `ctrl+q` returns from the workspace to Tasks. From the
 Tasks pane, right arrow enters the current engine tab. Mouse clicks select rows
 and tabs; right-clicking a sidebar row opens the same common actions available
-from the keyboard, and clicking anywhere else dismisses that menu.
+from the keyboard — including **New conversation** and **New shell** for that
+Task's worktree — and clicking anywhere else dismisses that menu.
 
 Zen mode (`ctrl+a` `z`) hides Files and lets the workspace use the freed width.
 The Tasks rail remains visible. Below 70 columns, the separate

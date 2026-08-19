@@ -44,6 +44,10 @@ export interface TreeMenuDeps {
   /** Close one tab of a worktree — the host owns the mounted/background split
    *  (`closeTaskTab`), the tree only names the pair. */
   readonly onCloseTab?: (taskId: string, tabId: string) => void
+  /** Add a session to a worktree: `"chat"` opens the ctrl+e engine/shell
+   *  picker there, `"shell"` opens a bare shell tab. The host activates the
+   *  task and hands the request to its workspace. */
+  readonly onNewTab?: (taskId: string, kind: "chat" | "shell") => void
   readonly actions: SidebarTaskCallbacks
 }
 
@@ -143,6 +147,12 @@ export function useTreeMenu(deps: TreeMenuDeps): TreeMenu {
           // Only a tab row offers it, and only above one tab (tree-menu.ts).
           if (row.kind === "tab") deps.onCloseTab?.(taskId, row.tab.id)
           break
+        case "newChat":
+          deps.onNewTab?.(taskId, "chat")
+          break
+        case "newShell":
+          deps.onNewTab?.(taskId, "shell")
+          break
         case "rename":
           actions.onRenameRequest?.(taskId)
           break
@@ -162,7 +172,7 @@ export function useTreeMenu(deps: TreeMenuDeps): TreeMenu {
           break
       }
     },
-    [menu, activateRow, actions, deps.onAddTask, deps.onCloseTab],
+    [menu, activateRow, actions, deps.onAddTask, deps.onCloseTab, deps.onNewTab],
   )
 
   const pickCurrent = useCallback((): void => fire(menu?.actions[cursor]), [fire, menu, cursor])
