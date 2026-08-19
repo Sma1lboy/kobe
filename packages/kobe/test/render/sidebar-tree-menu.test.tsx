@@ -196,3 +196,48 @@ test("a worktree's LAST tab offers no close", async () => {
   expect(after).toContain("Open tab")
   expect(after).not.toContain("Close tab")
 })
+
+/** Screen position of the first occurrence of `needle`. */
+function posOf(text: string, needle: string): { x: number; y: number } {
+  const y = lineOf(text, needle)
+  const x = (text.split("\n")[y] ?? "").indexOf(needle)
+  return { x, y }
+}
+
+test("a press anywhere else dismisses the menu", async () => {
+  // The whole point of the feature: the menu is not a mode you have to shoot
+  // down by re-clicking the row it came from.
+  tabsByTask.clear()
+  const { frame, mockMouse } = await renderComponent(tree(), { width: 40, height: 24 })
+  await settle()
+  await mockMouse.click(2, lineOf(await frame(), "feat/a"), RIGHT)
+  await settle()
+  expect(await frame()).toContain("Rename")
+
+  // Empty space below the last row — no row handler runs, so only the
+  // root-level dismiss can close it.
+  await mockMouse.click(2, 22, 0)
+  await settle()
+  expect(await frame()).not.toContain("Rename")
+})
+
+test("a press ON the menu still picks its entry", async () => {
+  // The dismiss listener must not eat the menu's own press: the pick lands on
+  // the mouse-UP, so a menu closed by the DOWN would never fire anything.
+  tabsByTask.clear()
+  const renamed: string[] = []
+  const { frame, mockMouse } = await renderComponent(tree({ onRenameRequest: (id) => renamed.push(id) }), {
+    width: 40,
+    height: 24,
+  })
+  await settle()
+  await mockMouse.click(2, lineOf(await frame(), "feat/a"), RIGHT)
+  await settle()
+
+  const entry = posOf(await frame(), "Rename")
+  await mockMouse.click(entry.x, entry.y, 0)
+  await settle()
+
+  expect(renamed).toEqual(["a"])
+  expect(await frame()).not.toContain("Delete")
+})

@@ -58,6 +58,11 @@ export function ContextMenu(props: {
       backgroundColor={theme.backgroundElement}
       paddingLeft={1}
       paddingRight={1}
+      // The menu swallows its own press so the owner's "a click landed
+      // elsewhere → dismiss" listener (`useGlobalMouseDown`) never sees it —
+      // otherwise the down phase of picking an entry would close the menu
+      // before the up phase could fire it.
+      onMouseDown={(e: { stopPropagation(): void }) => e.stopPropagation()}
     >
       {props.entries.map((entry, i) => {
         const active = i === props.cursor

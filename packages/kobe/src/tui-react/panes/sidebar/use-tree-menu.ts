@@ -13,6 +13,7 @@ import { useCallback, useState } from "react"
 import type { TreeRow } from "../../../tui/panes/sidebar/tree-core"
 import { type TreeMenuAction, type TreeMenuContext, treeMenuItems } from "../../../tui/panes/sidebar/tree-menu"
 import { useT } from "../../i18n"
+import { useGlobalMouseDown } from "../../lib/use-global-mouse-down"
 import type { ContextMenuEntry } from "../../ui/context-menu"
 import type { SidebarTaskCallbacks } from "./types"
 import type { TreeState } from "./use-tree-state"
@@ -98,6 +99,13 @@ export function useTreeMenu(deps: TreeMenuDeps): TreeMenu {
   )
 
   const close = useCallback((): void => setMenu(null), [])
+
+  // A press anywhere else dismisses the menu — the click that opened it is
+  // over, so the next one belongs to whatever the user pressed, not to a
+  // popup they have to shoot down first. Presses INSIDE the menu never reach
+  // the root (`ContextMenu` stops the down phase), so picking an entry still
+  // gets its mouse-up.
+  useGlobalMouseDown(menu !== null, close)
 
   const moveCursor = useCallback(
     (delta: 1 | -1): void => {
