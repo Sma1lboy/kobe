@@ -28,7 +28,7 @@ function task(id: string): Task {
   return {
     id: toTaskId(id),
     title: id,
-    repo: "/repos/kobe",
+    repo: "/repos/rove",
     branch: `feat/${id}`,
     worktreePath: `/wt/${id}`,
     kind: "task",

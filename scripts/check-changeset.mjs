@@ -76,12 +76,19 @@ function check(file) {
   // `bump:` variant parses nowhere and only throws at release time
   // (`invalid release type for package "packages"`) — seen 2026-06-26,
   // fixed mid-release twice.
-  const fm = /^---\n([\s\S]*?)\n---/.exec(source)
+  //
+  // `\n?` on the opening delimiter: `changeset --empty` writes the two
+  // fences with NOTHING between them (`---\n---\n`), which is the escape
+  // hatch ci.yml's changeset-cap points tooling/docs-only PRs at. Requiring
+  // a body line rejected the tool's own output.
+  const fm = /^---\n([\s\S]*?)\n?---/.exec(source)
   if (!fm) {
     problems.push(`${name}: no --- frontmatter block`)
     return
   }
   const body = fm[1]
+  // An empty block is the deliberate "no package versioned" changeset.
+  if (body.trim() === "") return
   if (/^\s*(packages:|bump:)/m.test(body)) {
     problems.push(`${name}: uses the invalid "packages:/bump:" form — write '"<pkg>": patch' instead`)
     return

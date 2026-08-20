@@ -13,7 +13,7 @@
 | SCRATCH ──────────────────── |
 |  …deep/nested/project-dir    |
 |                              |
-| kobe ─────────────────────── |
+| rove ─────────────────────── |
 |  feat/alpha                  |
 |▌ · build                     |
 |                              |

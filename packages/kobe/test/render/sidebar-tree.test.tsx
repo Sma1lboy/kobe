@@ -25,7 +25,7 @@ function task(id: string, over: Partial<Task> = {}): Task {
   return {
     id: toTaskId(id),
     title: id,
-    repo: "/repos/kobe",
+    repo: "/repos/rove",
     branch: `feat/${id}`,
     worktreePath: `/wt/${id}`,
     kind: "task",
@@ -46,7 +46,7 @@ function seedTabs(taskId: string, tabIds: readonly string[]): void {
   })
 }
 
-const MAIN = task("m", { kind: "main", branch: "", worktreePath: "/repos/kobe" })
+const MAIN = task("m", { kind: "main", branch: "", worktreePath: "/repos/rove" })
 const SETTLE = 80
 
 function tree(over: Partial<Parameters<typeof SidebarTree>[0]> = {}) {

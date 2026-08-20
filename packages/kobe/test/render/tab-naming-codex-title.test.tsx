@@ -1,9 +1,9 @@
 /** @jsxImportSource @opentui/react */
 /**
  * The tab auto-naming pass (`useTabNaming`), end to end for the engine whose
- * session id kobe cannot pin.
+ * session id Rove cannot pin.
  *
- * Claude tabs carry a `--session-id` kobe chose at spawn, so the pass has
+ * Claude tabs carry a `--session-id` Rove chose at spawn, so the pass has
  * always had a session to read a first prompt from. Codex accepts no such
  * flag — its tabs had NO id, were skipped entirely, and wore `codex N`
  * forever. The one place codex does publish its thread id is its own OSC
@@ -44,7 +44,7 @@ afterEach(async () => {
 
 /** A real `~/.codex` tree holding one rollout for THREAD_ID. */
 async function seedCodexRollout(): Promise<void> {
-  codexHome = await mkdtemp(path.join(tmpdir(), "kobe-codex-home-"))
+  codexHome = await mkdtemp(path.join(tmpdir(), "rove-codex-home-"))
   const day = path.join(codexHome, "sessions", "2026", "08", "18")
   await mkdir(day, { recursive: true })
   const lines = [

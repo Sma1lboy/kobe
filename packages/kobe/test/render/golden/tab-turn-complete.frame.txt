@@ -10,7 +10,7 @@
 | Kanban                       |
 | Routines                     |
 |                              |
-| kobe ─────────────────────── |
+| rove ─────────────────────── |
 |  feat/alpha                  |
 |  ● build                     |
 |  · review                    |

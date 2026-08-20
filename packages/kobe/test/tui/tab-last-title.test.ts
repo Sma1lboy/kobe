@@ -94,8 +94,8 @@ describe("placeholder live titles (codex thread ids)", () => {
   })
 
   // The turn chip hides only while the engine's OWN status line is what the
-  // row renders. A placeholder isn't rendered, so kobe draws its own state.
-  it("kobe's turn chip comes back when the id is not shown", () => {
+  // row renders. A placeholder isn't rendered, so Rove draws its own state.
+  it("rove's turn chip comes back when the id is not shown", () => {
     const state = initialTabs()
     expect(visibleNativeStatus(firstTab(state), "codex", "codex", THREAD_ID)).toBe(false)
     expect(visibleNativeStatus(firstTab(state), "codex", "codex", "rework the parser")).toBe(true)
