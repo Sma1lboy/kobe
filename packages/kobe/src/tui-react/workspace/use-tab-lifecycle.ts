@@ -70,7 +70,7 @@ export function useTabNaming(io: TabLifecycleIO): void {
     let namingBusy = false
     const vendorOf = (tab: EngineTab): VendorId => tab.vendor ?? io.propsRef.current.vendor
     /**
-     * The engine session this tab's name is read from: the id kobe pinned at
+     * The engine session this tab's name is read from: the id Rove pinned at
      * spawn when the vendor accepts one (claude's `--session-id`), else the
      * id the engine reports in its OWN live title — codex writes its thread
      * UUID there until the thread is named, and that thread is exactly the

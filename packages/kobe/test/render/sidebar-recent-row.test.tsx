@@ -20,7 +20,7 @@ function task(id: string, over: Partial<Task> = {}): Task {
   return {
     id: toTaskId(id),
     title: id,
-    repo: "/repos/kobe",
+    repo: "/repos/rove",
     branch: `feat/${id}`,
     worktreePath: `/wt/${id}`,
     kind: "task",

@@ -11,7 +11,7 @@
  *
  * Three questions a neutral surface asks of a live title, in order:
  *   1. what is the NAME in it — {@link stripStatusPrefix} drops the engine's
- *      own status decoration, which kobe draws in its own glyph column;
+ *      own status decoration, which Rove draws in its own glyph column;
  *   2. what does it say about the TURN — {@link titleTurnHint};
  *   3. is it a name at ALL — {@link titleIsPlaceholder} / {@link titleSessionId}.
  *
@@ -37,8 +37,8 @@ export interface EngineTerminalTitle {
   readonly launchArgs?: readonly string[]
   /**
    * Leading STATUS decoration the engine writes into its own OSC title,
-   * stripped before kobe renders the name. Engine-owned by construction:
-   * only the adapter knows its vendor's glyph vocabulary, and kobe already
+   * stripped before Rove renders the name. Engine-owned by construction:
+   * only the adapter knows its vendor's glyph vocabulary, and Rove already
    * draws that state in its own column — showing both is the same fact
    * twice, and the animated variants make a resting tab look busy.
    *
@@ -65,7 +65,7 @@ export interface EngineTerminalTitle {
    * thread identifier when unnamed", so a fresh codex tab's OSC title is a
    * bare UUID.
    *
-   * A non-null answer means BOTH things kobe needs. The title must not be
+   * A non-null answer means BOTH things Rove needs. The title must not be
    * RENDERED as a name — a UUID beside a task is noise where claude and
    * kimi put a sentence. And the session it points at is exactly what names
    * the tab instead: the engine's own `history` reader turns that id into

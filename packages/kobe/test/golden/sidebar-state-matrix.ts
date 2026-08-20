@@ -75,7 +75,7 @@ function task(over: Partial<Task> = {}): Task {
   return {
     id: toTaskId("01JCTASKTASKTASKTASKTASK"),
     title: "fix the sidebar",
-    repo: "/repos/kobe",
+    repo: "/repos/rove",
     branch: BRANCH,
     worktreePath: "/wt/sidebar",
     kind: "task",

@@ -169,7 +169,7 @@ test("every field of SidebarRowView is either recorded in the golden or explicit
     task: {
       id: toTaskId("01JCTASKTASKTASKTASKTASK"),
       title: "t",
-      repo: "/repos/kobe",
+      repo: "/repos/rove",
       branch: "feat/x",
       worktreePath: "/wt/x",
       kind: "task",

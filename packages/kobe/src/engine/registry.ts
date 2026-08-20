@@ -249,7 +249,7 @@ const BUILTIN_ENGINES: Record<"claude" | "codex" | "copilot" | "kimi", EngineReg
     identity: codexIdentity,
     trustWorktree: trustCodexWorktree,
     // Codex's default is activity + project-name, which makes every tab in
-    // one repo say "kobe". Keep its native activity state, but ask Codex to
+    // one repo say "rove". Keep its native activity state, but ask Codex to
     // pair it with the thread title it already owns in its local store.
     terminalTitle: {
       ownsStatus: true,
@@ -263,7 +263,7 @@ const BUILTIN_ENGINES: Record<"claude" | "codex" | "copilot" | "kimi", EngineReg
       workingPrefixes: ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"],
       // `thread-title` falls back to the thread ID until codex names the
       // thread, so that title is usually a bare UUID. The id names the
-      // rollout the tab's first prompt lives in, which is what kobe shows
+      // rollout the tab's first prompt lives in, which is what Rove shows
       // instead — see `codex-local/terminal-title.ts`.
       sessionIdFromTitle: codexSessionIdFromTitle,
     },

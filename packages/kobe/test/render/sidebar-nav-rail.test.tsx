@@ -22,7 +22,7 @@ function task(id: string, over: Partial<Task> = {}): Task {
   return {
     id: toTaskId(id),
     title: id,
-    repo: "/repos/kobe",
+    repo: "/repos/rove",
     branch: `feat/${id}`,
     worktreePath: `/wt/${id}`,
     kind: "task",
@@ -34,7 +34,7 @@ function task(id: string, over: Partial<Task> = {}): Task {
   }
 }
 
-const MAIN = task("m", { kind: "main", branch: "", worktreePath: "/repos/kobe" })
+const MAIN = task("m", { kind: "main", branch: "", worktreePath: "/repos/rove" })
 
 function tree(over: Partial<Parameters<typeof SidebarTree>[0]> = {}) {
   return (

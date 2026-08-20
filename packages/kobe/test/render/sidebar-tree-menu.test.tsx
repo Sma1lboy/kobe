@@ -19,7 +19,7 @@ function task(id: string, over: Partial<Task> = {}): Task {
   return {
     id: toTaskId(id),
     title: id,
-    repo: "/repos/kobe",
+    repo: "/repos/rove",
     branch: `feat/${id}`,
     worktreePath: `/wt/${id}`,
     kind: "task",
@@ -31,7 +31,7 @@ function task(id: string, over: Partial<Task> = {}): Task {
   }
 }
 
-const MAIN = task("m", { kind: "main", branch: "", worktreePath: "/repos/kobe" })
+const MAIN = task("m", { kind: "main", branch: "", worktreePath: "/repos/rove" })
 const SETTLE = 80
 const settle = () => new Promise((r) => setTimeout(r, SETTLE))
 const RIGHT = 2
@@ -127,7 +127,7 @@ test("right-click on a project header offers the project's own actions", async (
   tabsByTask.clear()
   const { frame, mockMouse } = await renderComponent(tree(), { width: 40, height: 24 })
   await settle()
-  await mockMouse.click(2, lineOf(await frame(), "kobe"), RIGHT)
+  await mockMouse.click(2, lineOf(await frame(), "rove"), RIGHT)
   await settle()
 
   const after = await frame()

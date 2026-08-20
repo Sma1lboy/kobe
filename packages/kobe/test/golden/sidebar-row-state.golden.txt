@@ -1124,27 +1124,27 @@ act=error              seen=1 job=1 del=error    vendor=my-engine  tx=- | main=0
 act=error              seen=1 job=1 del=error    vendor=my-engine  tx=after | main=0 title=fix the sidebar  glyph=⠋   tone=error       load=1 matz=1 sub=delete failed
 
 ## project (main) rows — branch resolved from the repo checkout
-mainBranch=main                    act=-                  | main=1 title=kobe             glyph=○   tone=textMuted   load=0 matz=0 sub=main
-mainBranch=main                    act=idle               | main=1 title=kobe             glyph=○   tone=textMuted   load=0 matz=0 sub=main
-mainBranch=main                    act=running            | main=1 title=kobe             glyph=⠋   tone=primary     load=1 matz=0 sub=main
-mainBranch=main                    act=turn_complete      | main=1 title=kobe             glyph=●   tone=primary     load=0 matz=0 sub=main
-mainBranch=main                    act=rate_limited       | main=1 title=kobe             glyph=◷   tone=warning     load=0 matz=0 sub=rate limited
-mainBranch=main                    act=permission_needed  | main=1 title=kobe             glyph=?   tone=warning     load=0 matz=0 sub=needs permission
-mainBranch=main                    act=error              | main=1 title=kobe             glyph=×   tone=error       load=0 matz=0 sub=error
-mainBranch=feat/long-running-branch act=-                  | main=1 title=kobe             glyph=○   tone=textMuted   load=0 matz=0 sub=feat/long-running-branch
-mainBranch=feat/long-running-branch act=idle               | main=1 title=kobe             glyph=○   tone=textMuted   load=0 matz=0 sub=feat/long-running-branch
-mainBranch=feat/long-running-branch act=running            | main=1 title=kobe             glyph=⠋   tone=primary     load=1 matz=0 sub=feat/long-running-branch
-mainBranch=feat/long-running-branch act=turn_complete      | main=1 title=kobe             glyph=●   tone=primary     load=0 matz=0 sub=feat/long-running-branch
-mainBranch=feat/long-running-branch act=rate_limited       | main=1 title=kobe             glyph=◷   tone=warning     load=0 matz=0 sub=rate limited
-mainBranch=feat/long-running-branch act=permission_needed  | main=1 title=kobe             glyph=?   tone=warning     load=0 matz=0 sub=needs permission
-mainBranch=feat/long-running-branch act=error              | main=1 title=kobe             glyph=×   tone=error       load=0 matz=0 sub=error
-mainBranch=-                       act=-                  | main=1 title=kobe             glyph=○   tone=textMuted   load=0 matz=0 sub=—
-mainBranch=-                       act=idle               | main=1 title=kobe             glyph=○   tone=textMuted   load=0 matz=0 sub=—
-mainBranch=-                       act=running            | main=1 title=kobe             glyph=⠋   tone=primary     load=1 matz=0 sub=—
-mainBranch=-                       act=turn_complete      | main=1 title=kobe             glyph=●   tone=primary     load=0 matz=0 sub=—
-mainBranch=-                       act=rate_limited       | main=1 title=kobe             glyph=◷   tone=warning     load=0 matz=0 sub=rate limited
-mainBranch=-                       act=permission_needed  | main=1 title=kobe             glyph=?   tone=warning     load=0 matz=0 sub=needs permission
-mainBranch=-                       act=error              | main=1 title=kobe             glyph=×   tone=error       load=0 matz=0 sub=error
+mainBranch=main                    act=-                  | main=1 title=rove             glyph=○   tone=textMuted   load=0 matz=0 sub=main
+mainBranch=main                    act=idle               | main=1 title=rove             glyph=○   tone=textMuted   load=0 matz=0 sub=main
+mainBranch=main                    act=running            | main=1 title=rove             glyph=⠋   tone=primary     load=1 matz=0 sub=main
+mainBranch=main                    act=turn_complete      | main=1 title=rove             glyph=●   tone=primary     load=0 matz=0 sub=main
+mainBranch=main                    act=rate_limited       | main=1 title=rove             glyph=◷   tone=warning     load=0 matz=0 sub=rate limited
+mainBranch=main                    act=permission_needed  | main=1 title=rove             glyph=?   tone=warning     load=0 matz=0 sub=needs permission
+mainBranch=main                    act=error              | main=1 title=rove             glyph=×   tone=error       load=0 matz=0 sub=error
+mainBranch=feat/long-running-branch act=-                  | main=1 title=rove             glyph=○   tone=textMuted   load=0 matz=0 sub=feat/long-running-branch
+mainBranch=feat/long-running-branch act=idle               | main=1 title=rove             glyph=○   tone=textMuted   load=0 matz=0 sub=feat/long-running-branch
+mainBranch=feat/long-running-branch act=running            | main=1 title=rove             glyph=⠋   tone=primary     load=1 matz=0 sub=feat/long-running-branch
+mainBranch=feat/long-running-branch act=turn_complete      | main=1 title=rove             glyph=●   tone=primary     load=0 matz=0 sub=feat/long-running-branch
+mainBranch=feat/long-running-branch act=rate_limited       | main=1 title=rove             glyph=◷   tone=warning     load=0 matz=0 sub=rate limited
+mainBranch=feat/long-running-branch act=permission_needed  | main=1 title=rove             glyph=?   tone=warning     load=0 matz=0 sub=needs permission
+mainBranch=feat/long-running-branch act=error              | main=1 title=rove             glyph=×   tone=error       load=0 matz=0 sub=error
+mainBranch=-                       act=-                  | main=1 title=rove             glyph=○   tone=textMuted   load=0 matz=0 sub=—
+mainBranch=-                       act=idle               | main=1 title=rove             glyph=○   tone=textMuted   load=0 matz=0 sub=—
+mainBranch=-                       act=running            | main=1 title=rove             glyph=⠋   tone=primary     load=1 matz=0 sub=—
+mainBranch=-                       act=turn_complete      | main=1 title=rove             glyph=●   tone=primary     load=0 matz=0 sub=—
+mainBranch=-                       act=rate_limited       | main=1 title=rove             glyph=◷   tone=warning     load=0 matz=0 sub=rate limited
+mainBranch=-                       act=permission_needed  | main=1 title=rove             glyph=?   tone=warning     load=0 matz=0 sub=needs permission
+mainBranch=-                       act=error              | main=1 title=rove             glyph=×   tone=error       load=0 matz=0 sub=error
 
 ## engine-owned spinner frame sets + withSpinnerFrame overlay
 vendor=claude     frames(0..25)=⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏⠋⠙⠹⠸⠼⠴
