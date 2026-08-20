@@ -46,6 +46,12 @@ bun install -g @sma1lboy/rove   # if you already run Bun
 npx @sma1lboy/rove              # try it without installing
 ```
 
+Install the skill to let a coding agent orchestrate Rove directly:
+
+```bash
+rove skill install
+```
+
 Then launch it in a repository:
 
 ```bash
