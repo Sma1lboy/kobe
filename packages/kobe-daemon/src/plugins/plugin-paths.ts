@@ -23,8 +23,13 @@ export function pluginRegistryPath(homeDir?: string): string {
   return join(stateRoot(homeDir), "plugins.json")
 }
 
+/** Parent of every per-plugin directory — also where installs stage their clone. */
+export function pluginsRootDir(homeDir?: string): string {
+  return join(stateRoot(homeDir), "plugins")
+}
+
 export function pluginDataDir(id: string, homeDir?: string): string {
-  return join(stateRoot(homeDir), "plugins", id)
+  return join(pluginsRootDir(homeDir), id)
 }
 
 export function pluginCheckoutDir(id: string, homeDir?: string): string {
