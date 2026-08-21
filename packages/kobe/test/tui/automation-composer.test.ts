@@ -106,6 +106,14 @@ describe("previewSchedule", () => {
     expect(previewSchedule("0 9 * * *", NOW)).toMatchObject({ relative: "in 23h" })
   })
 
+  test("relative time floors the bucket instead of rounding up", () => {
+    // NOW is 10:00; the coarse unit must never promise more headroom than the
+    // schedule actually has. 11:30 is 90 minutes out — "in 1h", not "in 2h".
+    expect(previewSchedule("30 11 * * *", NOW)).toMatchObject({ relative: "in 1h" })
+    // Aug 1 22:00 is 36 hours out (1d 12h) — "in 1d", not "in 2d".
+    expect(previewSchedule("0 22 1 8 *", NOW)).toMatchObject({ relative: "in 1d" })
+  })
+
   test("the preview's own timestamp is the time it claims", () => {
     // Guards the two formatters drifting from the timestamp they describe.
     const preview = previewSchedule("0 9 * * *", NOW)
