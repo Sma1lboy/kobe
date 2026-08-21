@@ -37,7 +37,11 @@ export function originAllowed(origin: string | null | undefined, opts: { allowed
   const allowedHost = opts.allowedHost?.trim()
   if (!allowedHost) return false
   const hostname = originHostname(origin)
-  return hostname !== null && hostname === allowedHost
+  // Hostnames are case-insensitive (RFC 4343). `originHostname` returns the
+  // WHATWG-lowercased host the browser puts in Origin; lowercase the bind host
+  // too so a mixed-case bind address (e.g. an mDNS `MyMac.local`) still matches
+  // instead of 403ing every browser request.
+  return hostname !== null && hostname === allowedHost.toLowerCase()
 }
 
 export function allowedHostForBindHost(hostname: unknown): string | undefined {
