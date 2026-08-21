@@ -106,6 +106,15 @@ You can attach from several clients at once. Terminal output goes to every
 client watching that session; your cursor, focus, and unsent draft stay
 local to each one.
 
+Two clients sharing one session follow tmux's rules. **Anyone attached can
+type** — there is no read-only mode and no takeover, so input from both
+clients interleaves in arrival order and each client sees the other's
+keystrokes echoed by the shared process. **The last resize wins**: the
+session is sized for whichever client resized it most recently, so a smaller
+window sees wrapped or cut-off output until you resize it again. Closing one
+client detaches only that one; the session and every other client carry on.
+Closing a *tab* still kills its process for everybody, as below.
+
 ## What actually ends a session
 
 - **Exiting the engine CLI is not normally a PTY death.** Every engine runs

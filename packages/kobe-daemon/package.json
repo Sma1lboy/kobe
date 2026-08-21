@@ -45,6 +45,7 @@
     "./daemon/pr-status-collector": "./src/daemon/pr-status-collector.ts",
     "./daemon/prompt-broker": "./src/daemon/prompt-broker.ts",
     "./daemon/protocol": "./src/daemon/protocol.ts",
+    "./daemon/pty-arbitration": "./src/daemon/pty-arbitration.ts",
     "./daemon/pty-driver": "./src/daemon/pty-driver.ts",
     "./daemon/pty-env": "./src/daemon/pty-env.js",
     "./daemon/pty-exit-store": "./src/daemon/pty-exit-store.ts",

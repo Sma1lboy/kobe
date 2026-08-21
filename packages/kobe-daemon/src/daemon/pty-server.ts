@@ -229,10 +229,14 @@ export async function startPtyHostServer(options: PtyHostServerOptions = {}): Pr
       }
       case "pty.resize": {
         const payload = objectPayload(req.payload)
+        // `client` is the origin: last-writer-wins applies the new grid,
+        // and the resulting `pty.resized` event goes to the OTHER attached
+        // connections, never back to the one that asked.
         ptys.resize(
           requireString(payload, "key"),
           typeof payload.cols === "number" ? payload.cols : 80,
           typeof payload.rows === "number" ? payload.rows : 24,
+          client,
         )
         return {}
       }

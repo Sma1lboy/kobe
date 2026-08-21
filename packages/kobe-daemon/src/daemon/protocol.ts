@@ -317,7 +317,7 @@ export type SubscribeRole = "gui" | "pane"
  * PTY session, carry an ordered byte stream (dropping or replaying one
  * corrupts the client's VT state), and never pass through the event bus.
  */
-export type DaemonEventName = ChannelName | "daemon.stopping" | "pty.data" | "pty.exit"
+export type DaemonEventName = ChannelName | "daemon.stopping" | "pty.data" | "pty.exit" | "pty.resized"
 
 /** Targeted `pty.data` event payload — one ordered chunk of PTY output. */
 export interface PtyDataEventPayload {
@@ -337,6 +337,8 @@ export interface PtySessionExit {
   readonly at: string
 }
 
+/** `pty.resized` (the child's grid moved — multi-client arbitration) carries
+ *  `PtyResizeEventPayload`, declared with its contract in `pty-arbitration.ts`. */
 /** Targeted `pty.exit` event payload — the session's child ended. */
 export interface PtyExitEventPayload {
   readonly key: string

@@ -33,7 +33,8 @@
  */
 
 import { resolveLoginShell } from "./platform-shell.js"
-import type { DaemonFrame, PtyPeekResult, PtySessionExit } from "./protocol.ts"
+import type { PtyPeekResult } from "./protocol.ts"
+import { applyResize, fanOut, resizeFrame, writeInput } from "./pty-arbitration.ts"
 import { type PtyExit, bunTerminalDriver } from "./pty-driver.ts"
 import { embeddedTerminalEnv } from "./pty-env.js"
 import { type FrozenPtySession, freezeSession, thawSession } from "./pty-freeze-store.ts"
@@ -131,11 +132,18 @@ export class PtyHost {
       // size, fixing what the stale-size replay painted. Size-less opens
       // (headless delivery/ensure clients) never resize: shrinking a live
       // session out from under its attached TUI garbles the pane (#18).
-      this.resize(key, spec.cols, spec.rows)
+      this.resize(key, spec.cols, spec.rows, token)
     }
     session.sinks.set(token, sink)
-    session.parked = false
-    session.parkedScreenBytes = 0
+    // Only a client that actually CONSUMES the parked screen ends the park.
+    // A size-less headless open (`rove api send`'s delivery attach) that
+    // detaches a moment later must not wipe another client's park
+    // bookkeeping — `rove doctor`'s parked accounting reads it, and phase 4
+    // makes those transient third clients routine.
+    if (sinceOffset !== undefined) {
+      session.parked = false
+      session.parkedScreenBytes = 0
+    }
     // Delta replay: a parking client recorded the monotonic offset it had
     // consumed; when that offset is still inside the ring window AND the
     // child is the same incarnation it parked against (`sincePid`), replay
@@ -178,28 +186,22 @@ export class PtyHost {
     this.warmSpare.warm(cwd, shell, cols, rows)
   }
 
-  /** Forward client input (already UTF-8 text from xterm) to the child. */
+  /** Forward client input (already UTF-8 text from xterm) to the child.
+   *  Every attached client may write — see `pty-arbitration.ts`. */
   write(key: string, data: string): void {
     const session = this.sessions.get(key)
-    if (!session?.alive || data.length === 0) return
-    try {
-      session.proc?.write(data)
-    } catch {
-      // A terminal stream error is not proof the subprocess exited. Bun's
-      // `proc.exited` promise below is the single source of truth.
-    }
+    if (session) writeInput(session, data)
   }
 
-  resize(key: string, cols: number, rows: number): void {
+  /** Last-writer-wins resize (`pty-arbitration.ts`): the newest dimensions
+   *  set the child's grid whoever sent them, an unchanged request is a
+   *  no-op, and a real change is announced to the OTHER attached clients so
+   *  their VT emulator can follow. `origin` is the requesting connection,
+   *  which is skipped by that broadcast. */
+  resize(key: string, cols: number, rows: number, origin?: object): void {
     const session = this.sessions.get(key)
-    if (!session?.alive) return
-    session.cols = cols
-    session.rows = rows
-    try {
-      session.proc?.resize(cols, rows)
-    } catch {
-      // See write(): wait for `proc.exited`, not the PTY stream state.
-    }
+    if (!session || !applyResize(session, cols, rows)) return
+    fanOut(session, resizeFrame(session.key, cols, rows), origin)
   }
 
   /** End the child AND forget the session (explicit close / archive). */
@@ -441,16 +443,10 @@ export class PtyHost {
       const dropped = session.chunks.shift()
       if (dropped) session.bytes -= dropped.byteLength
     }
-    if (session.sinks.size === 0) {
-      this.maybeFreeze(session)
-      return
+    if (session.sinks.size > 0) {
+      const payload = { key: session.key, data: buf.toString("base64") }
+      fanOut(session, { type: "event", name: "pty.data", payload })
     }
-    const frame: DaemonFrame = {
-      type: "event",
-      name: "pty.data",
-      payload: { key: session.key, data: buf.toString("base64") },
-    }
-    for (const sink of session.sinks.values()) sink(frame)
     this.maybeFreeze(session)
   }
 
@@ -463,12 +459,8 @@ export class PtyHost {
     } catch {
       /* already closed */
     }
-    const frame: DaemonFrame = {
-      type: "event",
-      name: "pty.exit",
-      payload: { key: session.key, pid: session.proc?.pid ?? null, ...session.exit },
-    }
-    for (const sink of session.sinks.values()) sink(frame)
+    const payload = { key: session.key, pid: session.proc?.pid ?? null, ...session.exit }
+    fanOut(session, { type: "event", name: "pty.exit", payload })
     this.opts.log?.("pty", `session ${session.key} exited${describeExit(session.exit)}`)
     // Final freeze: the exit record AND the scrollback as it stood at death
     // must both survive this host's own end (idle-exit, crash).
