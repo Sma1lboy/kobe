@@ -44,6 +44,29 @@ yours lives somewhere else, point Rove at it with `ROVE_BUN=/path/to/bun`. To
 never be asked about installing Bun (CI, images, locked-down machines), set
 `ROVE_NO_BUN_BOOTSTRAP=1` — Rove then prints the install commands and exits.
 
+## Install the agent skill
+
+Do this in the same sitting as the install above. The companion skill teaches
+your coding agent (Claude Code, Codex, …) how to drive Rove itself — spawn
+tasks, fan a prompt out to several attempts, compare them, land the winner:
+
+```bash
+rove skill install
+```
+
+**Claude Code users have a one-stop alternative**: the Rove plugin carries the
+skill AND the activity hooks in one install, with no PATH or settings.json
+setup:
+
+```text
+/plugin marketplace add Sma1lboy/rove
+/plugin install rove@rove
+```
+
+If you were already running Rove before installing the plugin, run
+`rove hook cleanup` once afterwards — details in
+[Configuration → Claude Code plugin](CONFIGURATION.md#claude-code-plugin).
+
 ## First launch
 
 The first `rove` launch asks two optional setup questions: whether to install
@@ -53,7 +76,8 @@ with `enter`. `q` or `esc` skips anything you have not answered.
 
 The wizard finishes with a short keyboard primer. It does not sign in to an
 engine; install and authenticate at least one supported engine CLI separately.
-You can install the agent skill later with `rove skill install`.
+The skill question is the same `rove skill install` from the section above —
+answering it there is enough.
 
 ## Your first task
 
@@ -112,24 +136,10 @@ rove api land --task-id a              # merge the winning branch
 
 ## Let your agent drive
 
-Install the companion skill so your coding agent can run this loop itself:
-
-```bash
-rove skill install
-```
-
-**Claude Code users have a one-stop alternative**: the Rove plugin carries the
-skill AND the activity hooks in one install, with no PATH or settings.json
-setup:
-
-```text
-/plugin marketplace add Sma1lboy/rove
-/plugin install rove@rove
-```
-
-If you were already running Rove before installing the plugin, run
-`rove hook cleanup` once afterwards — details in
-[Configuration → Claude Code plugin](CONFIGURATION.md#claude-code-plugin).
+With the [agent skill](#install-the-agent-skill) in place, you do not have to
+type those commands yourself — ask your coding agent for three attempts at a
+prompt and it runs the `rove api` loop above for you, then reports back which
+branch to land.
 
 ## If something's wrong
 

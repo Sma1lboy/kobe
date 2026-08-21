@@ -12,7 +12,7 @@
 | Kanban                       |
 | Routines                     |
 |                              |
-| kobe ─────────────────────── |
+| rove ─────────────────────── |
 |▌ feat/bravo                  |
 |  · tests                     |
 |                              |

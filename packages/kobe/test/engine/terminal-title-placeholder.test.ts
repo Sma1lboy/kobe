@@ -7,7 +7,7 @@ import { titleIsPlaceholder, titleSessionId } from "../../src/engine/terminal-ti
  * (`tui.terminal_title=["activity","thread-title"]` documents itself as "the
  * thread title, or the thread identifier when unnamed"), so a live codex tab
  * reports `01a00ee9-f0e9-7503-a11c-83b4eface0f6` where claude reports a
- * sentence. Kobe must not render that as a name — and the id is exactly what
+ * sentence. Rove must not render that as a name — and the id is exactly what
  * names the tab instead (the rollout it points at holds the first prompt).
  */
 const CODEX_THREAD_TITLE = "01a00ee9-f0e9-7503-a11c-83b4eface0f6"

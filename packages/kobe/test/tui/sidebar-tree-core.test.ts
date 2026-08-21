@@ -20,7 +20,7 @@ function task(id: string, over: Partial<Task> = {}): Task {
   return {
     id: toTaskId(id),
     title: id,
-    repo: "/repos/kobe",
+    repo: "/repos/rove",
     branch: `feat/${id}`,
     worktreePath: `/wt/${id}`,
     kind: "task",
@@ -47,12 +47,12 @@ describe("buildTreeRows", () => {
     const result = rows({
       tasks: [
         task("b", { branch: "feat/b" }),
-        task("m", { kind: "main", repo: "/repos/kobe", branch: "", worktreePath: "/repos/kobe" }),
+        task("m", { kind: "main", repo: "/repos/rove", branch: "", worktreePath: "/repos/rove" }),
         task("a", { branch: "feat/a" }),
       ],
     })
     expect(result.map((r) => [r.kind, r.id])).toEqual([
-      ["project", "/repos/kobe"],
+      ["project", "/repos/rove"],
       // main is a worktree row, not the project row: the project is a repo,
       // the main checkout is a checkout, and only the latter carries tabs.
       ["worktree", "m"],
@@ -87,10 +87,10 @@ describe("buildTreeRows", () => {
     const result = rows({
       tasks: [
         task("loose", { repo: "/repos/no-main" }),
-        task("m", { kind: "main", repo: "/repos/kobe", worktreePath: "/repos/kobe" }),
+        task("m", { kind: "main", repo: "/repos/rove", worktreePath: "/repos/rove" }),
       ],
     })
-    expect(result.filter((r) => r.kind === "project").map((r) => r.id)).toEqual(["/repos/kobe", "/repos/no-main"])
+    expect(result.filter((r) => r.kind === "project").map((r) => r.id)).toEqual(["/repos/rove", "/repos/no-main"])
   })
 
   test("every tab always renders — the tree has no fold", () => {
@@ -98,7 +98,7 @@ describe("buildTreeRows", () => {
     // a map; hiding rows made the map lie.
     const tabs = new Map([["a", [tab("tab-1"), tab("tab-2")]]])
     const result = rows({ tasks: [task("a")], tabsByTask: tabs })
-    expect(result.map((r) => r.id)).toEqual(["/repos/kobe", "a", "a::tab-1", "a::tab-2"])
+    expect(result.map((r) => r.id)).toEqual(["/repos/rove", "a", "a::tab-1", "a::tab-2"])
   })
 
   test("a dir task groups under its directory as the project header", () => {
@@ -122,7 +122,7 @@ describe("buildTreeRows", () => {
   test("scratch tasks render in one Scratch section above every project (issue #33)", () => {
     const result = rows({
       tasks: [
-        task("m", { kind: "main", repo: "/repos/kobe", branch: "", worktreePath: "/repos/kobe" }),
+        task("m", { kind: "main", repo: "/repos/rove", branch: "", worktreePath: "/repos/rove" }),
         task("s1", { kind: "dir", scratch: true, repo: "/Users/me" }),
         task("s2", { kind: "dir", scratch: true, repo: "/Users/me" }),
       ],
@@ -131,7 +131,7 @@ describe("buildTreeRows", () => {
       ["project", SCRATCH_SECTION_ID],
       ["worktree", "s1"],
       ["worktree", "s2"],
-      ["project", "/repos/kobe"],
+      ["project", "/repos/rove"],
       ["worktree", "m"],
     ])
   })
@@ -142,7 +142,7 @@ describe("buildTreeRows", () => {
     const result = rows({
       tasks: [
         task("s", { kind: "dir", scratch: true, repo: "/Users/me" }),
-        task("m", { kind: "main", repo: "/repos/kobe", branch: "", worktreePath: "/repos/kobe" }),
+        task("m", { kind: "main", repo: "/repos/rove", branch: "", worktreePath: "/repos/rove" }),
       ],
       tabsByTask: new Map([["s", [tab("tab-1"), tab("tab-2")]]]),
     })
@@ -150,7 +150,7 @@ describe("buildTreeRows", () => {
       ["project", SCRATCH_SECTION_ID],
       ["tab", "s::tab-1"],
       ["tab", "s::tab-2"],
-      ["project", "/repos/kobe"],
+      ["project", "/repos/rove"],
       ["worktree", "m"],
     ])
     // Every emitted row is navigable — no unreachable middle level.
@@ -209,8 +209,8 @@ describe("filterTreeRows", () => {
   const tree = () =>
     rows({
       tasks: [
-        task("m", { kind: "main", repo: "/repos/kobe", branch: "main", worktreePath: "/repos/kobe" }),
-        task("wt", { repo: "/repos/kobe", branch: "feat/tree", title: "worktree tree" }),
+        task("m", { kind: "main", repo: "/repos/rove", branch: "main", worktreePath: "/repos/rove" }),
+        task("wt", { repo: "/repos/rove", branch: "feat/tree", title: "worktree tree" }),
         task("fx", { repo: "/repos/foxychat", branch: "feat/chat", title: "chat rewrite" }),
       ],
       tabsByTask: new Map([
@@ -230,11 +230,11 @@ describe("filterTreeRows", () => {
     // The tree's whole increment over the flat sidebar: the query matches
     // nothing but a live tab TITLE, and the ancestors come along so the hit
     // is placed rather than floating.
-    expect(ids("codex")).toEqual(["/repos/kobe", "wt", "wt::tab-2"])
+    expect(ids("codex")).toEqual(["/repos/rove", "wt", "wt::tab-2"])
   })
 
   test("a worktree hit keeps its tabs", () => {
-    expect(ids("feat/tree")).toEqual(["/repos/kobe", "wt", "wt::tab-2"])
+    expect(ids("feat/tree")).toEqual(["/repos/rove", "wt", "wt::tab-2"])
   })
 
   test("a project hit keeps the whole subtree", () => {
@@ -258,26 +258,26 @@ describe("projectKeysOf", () => {
   test("first-seen order, deduped; a dir task contributes its directory", () => {
     expect(
       projectKeysOf([
-        task("a", { repo: "/repos/kobe" }),
+        task("a", { repo: "/repos/rove" }),
         task("b", { repo: "/repos/foxychat" }),
-        task("c", { repo: "/repos/kobe" }),
+        task("c", { repo: "/repos/rove" }),
         task("d", { kind: "dir", repo: "/tmp/scratch" }),
       ]),
-    ).toEqual(["/repos/kobe", "/repos/foxychat", "/tmp/scratch"])
+    ).toEqual(["/repos/rove", "/repos/foxychat", "/tmp/scratch"])
   })
 })
 
 describe("mainTaskIdOfProject", () => {
   const tasks = [
-    task("kobe-wt", { repo: "/repos/kobe" }),
-    task("kobe-main", { kind: "main", repo: "/repos/kobe", branch: "main", worktreePath: "/repos/kobe" }),
+    task("kobe-wt", { repo: "/repos/rove" }),
+    task("kobe-main", { kind: "main", repo: "/repos/rove", branch: "main", worktreePath: "/repos/rove" }),
     task("fox-main", { kind: "main", repo: "/repos/foxychat", branch: "main", worktreePath: "/repos/foxychat" }),
   ]
 
   test("finds the repo's main checkout, not its first task", () => {
     // Project reorder rides on the MAIN row (mains move among mains), so
     // picking the first task of the repo would move nothing.
-    expect(mainTaskIdOfProject(tasks, "/repos/kobe")).toBe("kobe-main")
+    expect(mainTaskIdOfProject(tasks, "/repos/rove")).toBe("kobe-main")
     expect(mainTaskIdOfProject(tasks, "/repos/foxychat")).toBe("fox-main")
   })
 
@@ -319,7 +319,7 @@ describe("worktreeRowLabel (issue #42)", () => {
   })
 
   test("a main row's live HEAD outranks its (empty) stored branch", () => {
-    const main = task("m", { kind: "main", branch: "", worktreePath: "/repos/kobe" })
+    const main = task("m", { kind: "main", branch: "", worktreePath: "/repos/rove" })
     expect(worktreeRowLabel(main, { liveBranch: "main" })).toBe("main")
     // HEAD not resolved yet (poller cold) → title fallback, same as before.
     expect(worktreeRowLabel(main, { home: "/Users/me" })).toBe("m")

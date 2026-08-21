@@ -9,7 +9,7 @@
 import type { Task } from "@/types/task"
 import { toTaskId } from "@/types/task"
 
-export const MOCK_SIDEBAR_REPO = "/mock/repos/kobe"
+export const MOCK_SIDEBAR_REPO = "/mock/repos/rove"
 
 /** A representative task list: project row, running/pinned/backlog/archived. */
 export function seedSidebarTasks(): readonly Task[] {

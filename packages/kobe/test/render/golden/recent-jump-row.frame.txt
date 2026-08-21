@@ -12,7 +12,7 @@
 |                              |
 |  ↩ Recent: bravo             |
 |                              |
-| kobe ─────────────────────── |
+| rove ─────────────────────── |
 |  feat/alpha                  |
 |▌ · build                     |
 |  · review                    |
