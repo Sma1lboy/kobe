@@ -16,6 +16,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..700;1,9..144,300..700&family=DM+Sans:opsz,wght@9..40,300..700&family=JetBrains+Mono:ital,wght@0,400;0,500;0,700;1,400&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/fleet.css">
 <style>
 :root{
   --paper:     oklch(97.8% 0.007 85);
@@ -232,6 +233,53 @@ h1{font-family:var(--font-display);font-optical-sizing:auto;font-size:clamp(44px
   </div>
 </section>
 
+<!-- FLEET · Rove's own layout — Tasks rail, tab strip, dual panes, status bar -->
+<section id="fleet" class="fleet wrap">
+  <p class="fleet-eyebrow">
+    <span data-i18n="fleet.eyebrow">FOUR TASKS RUNNING, NOBODY ATTACHED</span>
+    <span class="cue" data-i18n="fleet.cue">PICK A TASK →</span>
+  </p>
+
+  <div class="fleet-frame">
+    <div class="fleet-cols">
+
+      <!-- Tasks rail -->
+      <div class="fl-rail" id="fleetRail">
+        <p class="fl-brand"><b>ROVE</b> <span class="inbox">INBOX 2</span></p>
+        <p class="fl-newtask"><span><span class="plus">+</span> New task</span><span class="k">n</span></p>
+        <p class="fl-navrow">Kanban</p>
+        <p class="fl-navrow">Routines</p>
+        <div id="fleetTree" role="listbox" aria-label="Tasks"></div>
+        <p class="fl-foot">J/K move · ⏎ open</p>
+      </div>
+
+      <!-- Workspace: tab strip over two panes -->
+      <div class="fl-work">
+        <div class="fl-tabs" id="fleetTabs" aria-hidden="true"></div>
+        <div class="fl-panes">
+          <div class="fl-pane" id="fleetWork"><pre></pre></div>
+          <div class="fl-pane fl-pane-side" id="fleetSide"><pre></pre></div>
+        </div>
+      </div>
+
+      <!-- Files -->
+      <div class="fl-files" id="fleetFiles">
+        <p class="fl-files-head"><span><span class="kb">[~]</span> Zen</span><span><span class="kb">[⌃ A P]</span> Create PR</span></p>
+        <p class="fl-views"><span>All</span><span class="on">Changes</span></p>
+        <p class="fl-scope" id="fleetScope">scope: vs main</p>
+        <div id="fleetFileRows"></div>
+      </div>
+
+    </div>
+    <p class="fleet-status">
+      <span class="quota"><b>CLAUDE</b> 5h <span class="ok">42%</span> → 14:00 · 7d <span class="ok">12%</span></span>
+      <span>⌃ A commands · F1 help · [settings]</span>
+    </p>
+  </div>
+
+  <p class="fleet-note" data-i18n-html="fleet.note">A real session: three repositories, four tasks, each with its own worktree, branch and terminal tabs. <strong>Nothing is attached to any of them right now</strong> — every engine runs in a hosted PTY behind the daemon, so the work continues with the TUI closed. Pick a task on the left; this is a live layout, not a screenshot.</p>
+</section>
+
 <!-- NARRATIVE WORKFLOW · the four primitives of graph engineering -->
 <section id="workflow" class="stages wrap">
 
@@ -343,5 +391,6 @@ c  <span class="ok">+96</span>  <span class="del">−88</span>  · 5 files
 </footer>
 
 <script src="/index.js"></script>
+<script src="/fleet.js"></script>
 </body>
 </html>
