@@ -10,7 +10,8 @@
 // terminal mocks here; only the prose around it is translated.
 (function () {
   var rail = document.getElementById('fleetRail');
-  var tabs = document.getElementById('fleetTabs');
+  var tagA = document.getElementById('fleetTagA');
+  var tagB = document.getElementById('fleetTagB');
   var work = document.getElementById('fleetWork');
   var side = document.getElementById('fleetSide');
   if (!rail || !work || !side) return;
@@ -22,11 +23,11 @@
         { main: true, label: 'main' },
         {
           id: 'streaming-diff', label: 'streaming-diff', add: 142, del: 31,
-          tabs: [{ glyph: '\u2839', cls: 'run', label: 'claude 1' }, { glyph: '\u00b7', label: 'bun dev 2' }],
+          tabs: [{ glyph: '\u2839', cls: 'run', label: 'Stream the diff pane' }, { glyph: '\u00b7', label: 'group 2' }],
         },
         {
           id: 'oauth-refresh', label: 'oauth-refresh', add: 88, del: 54,
-          tabs: [{ glyph: '\u25cf', cls: 'run', label: 'codex 1' }, { glyph: '\u00b7', label: 'pytest 2' }],
+          tabs: [{ glyph: '\u25cf', cls: 'run', label: 'Refresh before 401' }, { glyph: '\u00b7', label: 'pytest' }],
         },
       ],
     },
@@ -34,21 +35,21 @@
       repo: 'ledger-api',
       tasks: [{
         id: 'ledger-migration', label: 'ledger-migration', add: 34, del: 6,
-        tabs: [{ glyph: '?', cls: 'wait', label: 'copilot 1' }, { glyph: '\u00b7', label: 'psql 2' }],
+        tabs: [{ glyph: '?', cls: 'wait', label: 'Backfill the ledger' }, { glyph: '\u00b7', label: 'psql' }],
       }],
     },
     {
       repo: 'storefront',
       tasks: [{
         id: 'flaky-e2e', label: 'flaky-e2e', add: 21, del: 34,
-        tabs: [{ glyph: '\u25cb', label: 'kimi 1' }, { glyph: '\u00b7', label: 'git 2' }],
+        tabs: [{ glyph: '\u25cb', label: 'Why checkout flakes' }, { glyph: '\u00b7', label: 'git' }],
       }],
     },
   ];
 
   var TASKS = {
     'streaming-diff': {
-      tab2: 'bun dev',
+      tagA: 'claude', tab2: 'bun dev',
       work:
         '<span class="d">Claude Code v2.1.220</span>\n\n' +
         '<span class="ps">&gt;</span> <span class="hi">stream the diff pane instead of buffering the whole patch</span>\n\n' +
@@ -74,7 +75,7 @@
       ],
     },
     'oauth-refresh': {
-      tab2: 'pytest',
+      tagA: 'codex', tab2: 'pytest',
       work:
         '<span class="d">Codex CLI 0.9.1</span>\n\n' +
         '<span class="ps">&gt;</span> <span class="hi">refresh tokens before they expire, not after a 401</span>\n\n' +
@@ -101,7 +102,7 @@
       ],
     },
     'ledger-migration': {
-      tab2: 'psql',
+      tagA: 'copilot', tab2: 'psql',
       work:
         '<span class="d">Copilot CLI 1.4.0</span>\n\n' +
         '<span class="ps">&gt;</span> <span class="hi">backfill the ledger table without locking writes</span>\n\n' +
@@ -128,7 +129,7 @@
       ],
     },
     'flaky-e2e': {
-      tab2: 'git',
+      tagA: 'kimi', tab2: 'git',
       work:
         '<span class="d">Kimi CLI 0.6.2</span>\n\n' +
         '<span class="ps">&gt;</span> <span class="hi">find why the checkout e2e flakes ~1 run in 8</span>\n\n' +
@@ -206,25 +207,11 @@
     });
   }
 
-  // the strip's glyph vocabulary is the product's own: ● running, ✓ done,
-  // ! error, ? needs input, ○ idle — separate from the sidebar's set.
-  function renderTabs(id) {
-    var task = GROUPS.reduce(function (found, g) {
-      return found || g.tasks.filter(function (t) { return t.id === id; })[0];
-    }, null);
-    if (!task) return;
-    var engine = task.tabs[0];
-    tabs.innerHTML = [
-      '<span class="tb on"><span class="g">' + (engine.cls === 'wait' ? '?' : '●') + '</span>' + engine.label.replace(/ \d+$/, '') + '</span>',
-      '<span class="tb"><span class="g">○</span>' + TASKS[id].tab2 + '</span>',
-      '<span class="tb">+</span>',
-    ].join('');
-  }
-
   function render(id) {
     var t = TASKS[id];
     if (!t) return;
-    renderTabs(id);
+    tagA.textContent = t.tagA;
+    tagB.textContent = t.tab2;
     work.querySelector('pre').innerHTML = t.work;
     side.querySelector('pre').innerHTML = t.side;
     document.getElementById('fleetScope').textContent = t.scope;
@@ -248,6 +235,7 @@
       b.tabIndex = on ? 0 : -1;
     });
     render(btn.getAttribute('data-task'));
+    showView('split');
   }
 
   buildRail();
@@ -270,5 +258,30 @@
     select(items[next]);
   });
 
+  // The nav rail swaps the whole workspace column for a full-window page,
+  // the way Kanban / Routines / Inbox replace the terminal in the product.
+  function showView(name) {
+    var split = name === 'split' || name === 'inbox';
+    document.querySelector('.fl-work').hidden = !split;
+    document.getElementById('fleetFiles').hidden = !split;
+    document.getElementById('fleetKanban').hidden = name !== 'kanban';
+    document.getElementById('fleetRoutines').hidden = name !== 'routines';
+    // the Inbox is a dialog: it covers the frame instead of replacing a column
+    document.getElementById('fleetInbox').hidden = name !== 'inbox';
+    document.querySelectorAll('.fl-nav').forEach(function (b) {
+      b.setAttribute('aria-pressed', String(b.getAttribute('data-view') === name));
+    });
+    // a page owns the whole column, so the rail's task cursor goes quiet
+    rail.classList.toggle('page-open', name === 'kanban' || name === 'routines');
+  }
+
+  document.querySelectorAll('.fl-nav').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var view = btn.getAttribute('data-view');
+      showView(btn.getAttribute('aria-pressed') === 'true' ? 'split' : view);
+    });
+  });
+
   select(rail.querySelector('.fl-row.task'));
+  showView('split');
 })();

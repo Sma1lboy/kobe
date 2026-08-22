@@ -225,24 +225,64 @@ h1{font-family:var(--font-display);font-optical-sizing:auto;font-size:clamp(44px
 
         <!-- Tasks rail -->
         <div class="fl-rail" id="fleetRail">
-          <p class="fl-brand"><b>ROVE</b> <span class="inbox">INBOX 2</span></p>
+          <p class="fl-brand"><b>ROVE</b> <button type="button" class="fl-nav inbox" data-view="inbox" aria-pressed="false">INBOX 2</button></p>
           <p class="fl-newtask"><span><span class="plus">+</span> New task</span><span class="k">n</span></p>
-          <p class="fl-navrow">Kanban</p>
-          <p class="fl-navrow">Routines</p>
+          <button type="button" class="fl-nav fl-navrow" data-view="kanban" aria-pressed="false">Kanban</button>
+          <button type="button" class="fl-nav fl-navrow" data-view="routines" aria-pressed="false">Routines</button>
           <div id="fleetTree" role="listbox" aria-label="Tasks"></div>
           <p class="fl-foot">J/K move · ⏎ open</p>
         </div>
 
-        <!-- Workspace: tab strip over two panes -->
-        <div class="fl-work">
-          <div class="fl-tabs" id="fleetTabs" aria-hidden="true"></div>
-          <div class="fl-panes">
-            <div class="fl-pane" id="fleetWork"><pre></pre></div>
-            <div class="fl-pane fl-pane-side" id="fleetSide"><pre></pre></div>
+        <!-- Workspace: two split leaves, each with its corner name tag -->
+      <div class="fl-work">
+        <div class="fl-panes">
+          <div class="fl-pane" id="fleetWork"><span class="fl-tag" id="fleetTagA">claude</span><pre></pre></div>
+          <div class="fl-pane" id="fleetSide"><span class="fl-tag" id="fleetTagB">shell</span><pre></pre></div>
+        </div>
+      </div>
+
+      <!-- Kanban — daemon-owned issues as Backlog / In progress / Done -->
+      <div class="fl-page" id="fleetKanban" hidden>
+        <p class="fl-page-head">Kanban<span class="legend">tab project · ←↓↑→ card · enter detail · n new · esc close</span></p>
+        <p class="fl-proj">rove<span class="ct">1/3</span><span class="path">~/i/rove</span></p>
+        <div class="fl-board">
+          <div class="fl-col">
+            <p class="fl-col-head">Backlog <span class="n">(3)</span></p>
+            <p class="fl-card"><span class="t">Stream the diff pane<b>#41</b></span><span class="meta">2026-08-19</span></p>
+            <p class="fl-card"><span class="t">Adopt orphaned worktrees<b>#44</b></span><span class="meta">2026-08-17<b class="hold">hold</b></span></p>
+            <p class="fl-card"><span class="t">Ledger backfill plan<b>#12</b></span><span class="meta">2026-08-14</span></p>
+          </div>
+          <div class="fl-col">
+            <p class="fl-col-head">In progress <span class="n">(2)</span></p>
+            <p class="fl-card"><span class="t">Refresh before 401<b>#38</b></span><span class="meta">2026-08-20</span></p>
+            <p class="fl-card"><span class="t">Why checkout flakes<b>#9</b></span><span class="meta">2026-08-21<b class="turn">turn done</b></span></p>
+          </div>
+          <div class="fl-col">
+            <p class="fl-col-head">Done <span class="n">(6)</span></p>
+            <p class="fl-card"><span class="t">Pin the playwright image<b>#7</b></span><span class="meta">2026-08-12</span></p>
+            <p class="fl-card"><span class="t">Name tabs by conversation<b>#31</b></span><span class="meta">2026-08-11</span></p>
+            <p class="fl-more">+4 more</p>
           </div>
         </div>
+      </div>
 
-        <!-- Files -->
+      <!-- Routines — scheduled prompts that keep the daemon awake -->
+      <div class="fl-page" id="fleetRoutines" hidden>
+        <p class="fl-page-head rt">ROUTINES<span class="rule"></span><span class="hold">keeping the daemon awake</span></p>
+        <div class="fl-rt">
+          <p class="fl-rt-row on"><span class="nm">nightly flake sweep</span><span class="rule"></span><span class="meta">rove · 0 9 * * 1-5</span><span class="when">in 6h</span></p>
+          <p class="fl-rt-row"><span class="nm">dep audit</span><span class="rule"></span><span class="meta">ledger-api · 0 7 * * 1</span><span class="when">in 2d</span></p>
+          <p class="fl-rt-row paused"><span class="nm">weekly changelog</span><span class="rule"></span><span class="meta">storefront · 0 18 * * 5</span><span class="pz">paused ·</span><span class="when">in 3d</span></p>
+        </div>
+        <div class="fl-rt-detail">
+          <p class="fl-rt-prompt">Sweep flaky tests and report.<span class="run">[ run now ]</span></p>
+          <p class="fl-sec">RECENT RUNS</p>
+          <p class="fl-run"><b>#12</b> <span class="ok">dispatched</span>  3h ago</p>
+          <p class="fl-run"><b>#11</b> <span class="wn">skipped_missed</span>  1d ago</p>
+        </div>
+      </div>
+
+      <!-- Files -->
         <div class="fl-files" id="fleetFiles">
           <p class="fl-files-head"><span><span class="kb">[~]</span> Zen</span><span><span class="kb">[⌃ A P]</span> Create PR</span></p>
           <p class="fl-views"><span>All</span><span class="on">Changes</span></p>
@@ -251,7 +291,20 @@ h1{font-family:var(--font-display);font-optical-sizing:auto;font-size:clamp(44px
         </div>
 
       </div>
-      <p class="fleet-status">
+      <!-- Inbox — the one full-window overlay of the three (dialog, z-index) -->
+    <div class="fl-modal" id="fleetInbox" hidden>
+      <div class="fl-dialog">
+        <p class="fl-dlg-head"><span><b>INBOX</b> 2</span><span class="esc">esc</span></p>
+        <p class="fl-sec">ATTENTION</p>
+        <p class="fl-item sel"><span class="cur">▌</span><span class="b"><span class="id">ledger-api › copilot 1<span class="bdg wn">? needs input</span><span class="age">9m</span></span><span class="sub">ledger-migration</span></span></p>
+        <p class="fl-item"><span class="cur">&nbsp;</span><span class="b"><span class="id">storefront › kimi 1<span class="bdg ok">✓ done</span><span class="age">12m</span></span><span class="sub">flaky-e2e</span></span></p>
+        <p class="fl-sec">RECENT</p>
+        <p class="fl-item"><span class="cur">&nbsp;</span><span class="b"><span class="id">rove › Stream the diff pane<span class="bdg">⠹ running</span><span class="age">2m</span></span><span class="sub">streaming-diff</span></span></p>
+        <p class="fl-item"><span class="cur">&nbsp;</span><span class="b"><span class="id">rove › pytest<span class="age">18m</span></span><span class="sub">oauth-refresh</span></span></p>
+        <p class="fl-dlg-foot">enter open&nbsp;&nbsp;d delete</p>
+      </div>
+    </div>
+    <p class="fleet-status">
         <span class="quota"><b>CLAUDE</b> 5h <span class="ok">42%</span> → 14:00 · 7d <span class="ok">12%</span></span>
         <span>⌃ A commands · F1 help · [settings]</span>
       </p>

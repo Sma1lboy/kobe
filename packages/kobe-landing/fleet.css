@@ -14,6 +14,7 @@
 .fleet-eyebrow .cue { color: var(--accent); }
 
 .fleet-frame {
+  position: relative;
   border-radius: var(--radius-lg);
   background: linear-gradient(180deg, oklch(24% 0.021 50), var(--well) 46%);
   border: 1px solid oklch(33% 0.024 50); box-shadow: 0 34px 80px oklch(35% 0.04 60/.3);
@@ -23,7 +24,7 @@
 .fleet-cols { display: grid; grid-template-columns: 28ch minmax(0, 1fr) 29ch; gap: 14px; }
 
 /* ---- Tasks rail ---- */
-.fl-rail { min-width: 0; display: flex; flex-direction: column; }
+.fl-rail { min-width: 0; overflow: hidden; display: flex; flex-direction: column; }
 .fl-brand { display: flex; align-items: baseline; gap: 1ch; letter-spacing: .04em; }
 .fl-brand b { color: var(--accent-2); font-weight: 700; letter-spacing: .12em; }
 .fl-brand .inbox { color: oklch(58% 0.02 65); font-size: 10.5px; letter-spacing: .1em; }
@@ -48,7 +49,7 @@
    The selection cursor is the full-height accent bar on the card's left edge —
    NOT a ▌ glyph, which is only one line tall and floats on a two-line card. */
 .fl-row {
-  display: block; width: 100%; border: 0; background: transparent; font: inherit;
+  display: block; width: 100%; min-width: 0; max-width: 100%; overflow: hidden; border: 0; background: transparent; font: inherit;
   color: inherit; text-align: left; padding: 3px 8px 4px 8px;
   border-left: 2px solid transparent; transition: background 140ms, border-color 140ms;
 }
@@ -60,7 +61,7 @@
 .fl-row.task .lbl { color: oklch(87% 0.015 80); }
 .fl-row.main .lbl { color: oklch(68% 0.018 70); }
 /* line 2 — the task's terminal tabs, each with its own state glyph */
-.fl-tabsline { color: oklch(62% 0.018 70); font-size: 10.5px; }
+.fl-tabsline { display: block; max-width: 100%; color: oklch(62% 0.018 70); font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .fl-tabsline .sep { color: oklch(42% 0.014 65); padding: 0 .75ch; }
 button.fl-row { cursor: pointer; }
 button.fl-row:hover { background: oklch(100% 0 0/.045); }
@@ -78,19 +79,21 @@ button.fl-row:focus-visible { outline: none; background: oklch(62% 0.13 45/.1); 
 
 /* Square by default — this is a terminal, not a web card deck. The only
    rounded thing is the window shell above. */
-/* ---- Workspace: tab strip + two panes ---- */
-.fl-work { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
-.fl-tabs { display: flex; gap: 6px; overflow: hidden; }
-.fl-tabs .tb {
-  padding: 1px 11px; white-space: nowrap;
-  color: oklch(60% 0.02 65); background: oklch(27% 0.02 50);
+/* ---- Workspace: a split tab's two leaves ---- */
+.fl-work { min-width: 0; display: flex; flex-direction: column; }
+/* `hidden` loses to any explicit display, so say it again for the elements
+   the view switcher toggles */
+.fl-work[hidden], .fl-files[hidden], .fl-page[hidden] { display: none; }
+/* Corner name tag: the product tags a leaf only while a split has more than
+   one, top-right, on backgroundElement (TerminalSplit.tsx). */
+.fl-tag {
+  position: absolute; top: 0; right: 0; z-index: 2;
+  padding: 0 1ch; background: oklch(30% 0.022 50); color: oklch(72% 0.06 55);
 }
-.fl-tabs .tb.on { background: var(--accent); color: oklch(20% 0.02 50); font-weight: 600; }
-.fl-tabs .tb .g { padding-right: .6ch; }
 
 .fl-panes { display: grid; grid-template-columns: 1.25fr 1fr; gap: 10px; flex: 1; min-width: 0; }
 .fl-pane {
-  min-width: 0; padding: 10px 12px;
+  position: relative; min-width: 0; padding: 10px 12px;
   border: 1px solid oklch(31% 0.022 50); background: oklch(19.5% 0.017 50);
 }
 .fl-pane pre { font: inherit; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; color: oklch(79% 0.018 70); }
@@ -131,10 +134,91 @@ button.fl-row:focus-visible { outline: none; background: oklch(62% 0.13 45/.1); 
 .fleet-note { margin: 20px auto 0; max-width: 66ch; color: var(--muted); font-size: 14.5px; text-align: center; }
 .fleet-note strong { color: var(--ink); font-weight: 560; }
 
+
+/* ---- Pages: Kanban and Routines replace the workspace column ----
+   (the real ones render inside it too — the rail stays, Files hides). */
+.fl-page { grid-column: 2 / -1; min-width: 0; padding: 2px 4px; }
+.fl-page-head { display: flex; justify-content: space-between; align-items: baseline; gap: 2ch; color: oklch(90% 0.02 78); margin-bottom: 8px; }
+.fl-page-head .legend { color: oklch(50% 0.018 65); font-size: 10.5px; font-weight: 400; }
+/* ROUTINES draws a rule between its title and the daemon-hold state */
+.fl-page-head.rt { color: var(--accent-2); letter-spacing: .12em; }
+.fl-page-head .rule { flex: 1; height: 1px; background: oklch(32% 0.022 50); }
+.fl-page-head .hold { color: oklch(72% 0.13 145); letter-spacing: 0; font-size: 10.5px; }
+.fl-proj { color: var(--accent-2); margin-bottom: 8px; }
+.fl-proj .ct, .fl-proj .path { color: oklch(52% 0.018 65); padding-left: 1.5ch; font-size: 10.5px; }
+
+/* Kanban: three bordered columns, `Label (N)` headers */
+.fl-board { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.fl-col { min-width: 0; border: 1px solid oklch(31% 0.022 50); padding: 4px 8px 8px; }
+.fl-col-head { margin-bottom: 8px; color: oklch(72% 0.02 70); }
+.fl-col:nth-child(2) .fl-col-head { color: var(--accent-2); }
+.fl-col:nth-child(3) .fl-col-head { color: oklch(74% 0.14 145); }
+.fl-card { background: oklch(26% 0.02 50); border: 1px solid oklch(33% 0.023 50); padding: 2px 8px; margin-bottom: 6px; color: oklch(86% 0.015 80); }
+.fl-card .t { display: flex; justify-content: space-between; gap: 1ch; }
+.fl-card .t b { color: oklch(52% 0.018 65); font-weight: 400; }
+.fl-card .meta { display: flex; justify-content: space-between; color: oklch(52% 0.018 65); font-size: 10.5px; }
+.fl-card .hold { color: oklch(80% 0.12 80); font-weight: 400; }
+.fl-card .turn { color: oklch(74% 0.14 145); font-weight: 400; }
+.fl-more { color: oklch(52% 0.018 65); font-size: 10.5px; }
+
+/* Routines: name ── repo · cron, then the detail box */
+.fl-rt-row { display: flex; align-items: baseline; gap: 1ch; border: 1px solid oklch(29% 0.021 50); padding: 0 8px; color: oklch(86% 0.015 80); }
+.fl-rt-row + .fl-rt-row { border-top: 0; }
+.fl-rt-row.on { border-color: oklch(38% 0.03 55); background: oklch(26% 0.02 50); }
+.fl-rt-row .rule { flex: 1; height: 1px; background: oklch(30% 0.021 50); }
+.fl-rt-row .meta, .fl-rt-row .when { color: oklch(54% 0.018 65); font-size: 10.5px; white-space: nowrap; }
+.fl-rt-row .pz { color: oklch(80% 0.12 80); font-size: 10.5px; }
+.fl-rt-row.paused .nm { color: oklch(56% 0.018 65); }
+.fl-rt-detail { border: 1px solid oklch(31% 0.022 50); padding: 6px 8px; margin-top: 10px; }
+.fl-rt-prompt { display: flex; justify-content: space-between; gap: 2ch; color: oklch(86% 0.015 80); }
+.fl-rt-prompt .run { color: var(--accent-2); font-weight: 600; white-space: nowrap; }
+.fl-run { color: oklch(70% 0.018 70); font-size: 10.5px; }
+.fl-run b { color: oklch(54% 0.018 65); font-weight: 400; }
+.fl-run .ok { color: oklch(74% 0.14 145); }
+.fl-run .wn { color: oklch(80% 0.12 80); }
+.fl-sec { color: oklch(74% 0.02 70); letter-spacing: .12em; font-size: 10.5px; margin: 10px 0 4px; }
+
+/* Inbox: the one true overlay — a centred dialog over the whole frame */
+.fl-modal { position: absolute; inset: 0; z-index: 30; display: flex; justify-content: center; align-items: flex-start; padding-top: 8%; background: oklch(14% 0.01 50/.55); }
+.fl-modal[hidden] { display: none; }
+.fl-dialog { width: min(80ch, 92%); background: oklch(21% 0.018 50); border: 1px solid oklch(38% 0.026 50); padding: 8px 12px 10px; }
+.fl-dlg-head { display: flex; justify-content: space-between; color: oklch(56% 0.02 65); margin-bottom: 6px; }
+.fl-dlg-head b { color: var(--accent-2); letter-spacing: .12em; }
+.fl-dlg-head .esc { color: oklch(52% 0.018 65); }
+.fl-dlg-foot { margin-top: 10px; color: oklch(52% 0.018 65); font-size: 10.5px; }
+/* every card is two rows with a ▌ gutter repeated down both */
+.fl-item { display: flex; gap: 1ch; padding: 2px 0; color: oklch(86% 0.015 80); }
+.fl-item .cur { color: var(--accent-2); }
+.fl-item .b { flex: 1; min-width: 0; }
+.fl-item .id { display: flex; align-items: baseline; gap: 1ch; }
+.fl-item .sub { display: block; color: oklch(54% 0.018 65); font-size: 10.5px; }
+.fl-item .age { margin-left: auto; color: oklch(52% 0.018 65); font-size: 10.5px; }
+.fl-item .bdg { color: oklch(56% 0.02 65); font-size: 10.5px; }
+.fl-item .bdg.wn { color: oklch(80% 0.12 80); }
+.fl-item .bdg.ok { color: oklch(74% 0.14 145); }
+.fl-item.sel { background: oklch(62% 0.13 45/.13); }
+
+/* nav rows are real controls; active = solid accent fill (chrome.tsx) */
+.fl-nav { display: block; width: 100%; text-align: left; border: 0; background: transparent; font: inherit; color: oklch(70% 0.018 70); cursor: pointer; padding: 0 10px; }
+.fl-nav.inbox { display: inline; width: auto; padding: 0 .4ch; color: oklch(58% 0.02 65); font-size: 10.5px; letter-spacing: .1em; }
+.fl-nav:hover { color: oklch(88% 0.02 78); }
+.fl-nav:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+.fl-nav[aria-pressed="true"] { background: var(--accent); color: oklch(20% 0.02 50); font-weight: 600; }
+.fl-nav.inbox[aria-pressed="true"] { padding: 0 .6ch; }
+/* while a page owns the column the rail's task selection is not the subject */
+.fl-rail.page-open .fl-row[aria-selected="true"] { background: transparent; border-left-color: oklch(40% 0.02 55); }
+.fl-rail.page-open .fl-row[aria-selected="true"] .lbl { color: oklch(87% 0.015 80); }
+
+/* ---- responsive (last, so it overrides the page rules above) ----- */
 @media (max-width: 1040px) { .fleet-cols { grid-template-columns: 25ch minmax(0, 1fr); } .fl-files { display: none; } }
 @media (max-width: 780px) {
   .fleet-cols { grid-template-columns: minmax(0, 1fr); gap: 12px; }
   .fl-panes { grid-template-columns: 1fr; }
+  /* three kanban columns in 420px is four words per line — stack them */
+  .fl-page { grid-column: 1; }
+  .fl-board { grid-template-columns: minmax(0, 1fr); }
+  .fl-page-head .legend, .fl-rt-row .rule, .fl-page-head .rule { display: none; }
+  .fl-rt-row { flex-wrap: wrap; }
   .fl-rail { border-bottom: 1px solid oklch(31% 0.022 50); padding-bottom: 10px; }
   .fl-rail .fl-foot { display: none; }
 }
