@@ -91,11 +91,15 @@ button.fl-row:focus-visible { outline: none; background: oklch(62% 0.13 45/.1); 
   padding: 0 1ch; background: oklch(30% 0.022 50); color: oklch(72% 0.06 55);
 }
 
-.fl-panes { display: grid; grid-template-columns: 1.25fr 1fr; gap: 10px; flex: 1; min-width: 0; }
+.fl-panes { display: grid; grid-template-columns: 1.35fr 1fr; gap: 4px; flex: 1; min-width: 0; }
+/* the focused leaf wears the accent border, its sibling stays subtle — that
+   contrast is what says "one tab, split" instead of "two panels" */
 .fl-pane {
   position: relative; min-width: 0; padding: 10px 12px;
-  border: 1px solid oklch(31% 0.022 50); background: oklch(19.5% 0.017 50);
+  border: 1px solid oklch(30% 0.021 50); background: oklch(19% 0.016 50);
 }
+.fl-pane:first-child { border-color: oklch(52% 0.075 45); background: oklch(20.5% 0.018 50); }
+.fl-pane:first-child .fl-tag { color: var(--accent-2); }
 .fl-pane pre { font: inherit; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; color: oklch(79% 0.018 70); }
 .fl-pane .ps { color: oklch(75% 0.13 50); }
 .fl-pane .ok { color: oklch(78% 0.13 145); }
