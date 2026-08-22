@@ -15,7 +15,7 @@
 
 .fleet-frame {
   position: relative;
-  border-radius: var(--radius-lg);
+  border-radius: 6px;
   background: linear-gradient(180deg, oklch(24% 0.021 50), var(--well) 46%);
   border: 1px solid oklch(33% 0.024 50); box-shadow: 0 34px 80px oklch(35% 0.04 60/.3);
   font-family: var(--font-mono); font-size: 11.5px; line-height: 1.8;
@@ -142,42 +142,70 @@ button.fl-row:focus-visible { outline: none; background: oklch(62% 0.13 45/.1); 
 /* ---- Pages: Kanban and Routines replace the workspace column ----
    (the real ones render inside it too — the rail stays, Files hides). */
 .fl-page { grid-column: 2 / -1; min-width: 0; padding: 2px 4px; }
+/* the split view sets the frame's height; a page must not collapse it */
+.fl-board, .fl-rt { min-height: 0; }
 .fl-page-head { display: flex; justify-content: space-between; align-items: baseline; gap: 2ch; color: oklch(90% 0.02 78); margin-bottom: 8px; }
 .fl-page-head .legend { color: oklch(50% 0.018 65); font-size: 10.5px; font-weight: 400; }
 /* ROUTINES draws a rule between its title and the daemon-hold state */
 .fl-page-head.rt { color: var(--accent-2); letter-spacing: .12em; }
 .fl-page-head .rule { flex: 1; height: 1px; background: oklch(32% 0.022 50); }
 .fl-page-head .hold { color: oklch(72% 0.13 145); letter-spacing: 0; font-size: 10.5px; }
-.fl-proj { color: var(--accent-2); margin-bottom: 8px; }
-.fl-proj .ct, .fl-proj .path { color: oklch(52% 0.018 65); padding-left: 1.5ch; font-size: 10.5px; }
+.fl-proj { display: flex; align-items: baseline; gap: 1.5ch; color: var(--accent-2); margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid oklch(28% 0.02 50); }
+.fl-proj .ct, .fl-proj .path { color: oklch(52% 0.018 65); font-size: 10.5px; }
+.fl-proj .path { margin-left: auto; }
 
 /* Kanban: three bordered columns, `Label (N)` headers */
-.fl-board { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
-.fl-col { min-width: 0; border: 1px solid oklch(31% 0.022 50); padding: 4px 8px 8px; }
-.fl-col-head { margin-bottom: 8px; color: oklch(72% 0.02 70); }
+.fl-board { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; align-items: stretch; }
+.fl-col { min-width: 0; border: 1px solid oklch(31% 0.022 50); padding: 6px 8px 8px; }
+/* the count is the column's scale, so it stays quiet next to the label */
+.fl-col-head { display: flex; justify-content: space-between; gap: 1ch; margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px solid oklch(28% 0.02 50); color: oklch(78% 0.02 70); }
+.fl-col-head .n { color: oklch(50% 0.018 65); font-size: 10.5px; }
 .fl-col:nth-child(2) .fl-col-head { color: var(--accent-2); }
 .fl-col:nth-child(3) .fl-col-head { color: oklch(74% 0.14 145); }
-.fl-card { background: oklch(26% 0.02 50); border: 1px solid oklch(33% 0.023 50); padding: 2px 8px; margin-bottom: 6px; color: oklch(86% 0.015 80); }
-.fl-card .t { display: flex; justify-content: space-between; gap: 1ch; }
-.fl-card .t b { color: oklch(52% 0.018 65); font-weight: 400; }
-.fl-card .meta { display: flex; justify-content: space-between; color: oklch(52% 0.018 65); font-size: 10.5px; }
+.fl-card {
+  background: oklch(25% 0.019 50); border: 1px solid oklch(32% 0.023 50);
+  padding: 5px 9px 4px; margin-bottom: 6px; color: oklch(88% 0.015 80);
+  transition: border-color 140ms, background 140ms;
+}
+.fl-card:hover { border-color: oklch(44% 0.045 50); background: oklch(27% 0.021 50); }
+.fl-card .t { display: flex; justify-content: space-between; gap: 1ch; align-items: baseline; }
+.fl-card .t b { color: oklch(50% 0.018 65); font-weight: 400; font-size: 10.5px; flex: none; }
+.fl-card .meta { display: flex; justify-content: space-between; align-items: baseline; margin-top: 2px; color: oklch(50% 0.018 65); font-size: 10.5px; }
+/* the done column's cards are history — mute their titles like the product does */
+.fl-col:nth-child(3) .fl-card { color: oklch(66% 0.016 70); }
 .fl-card .hold { color: oklch(80% 0.12 80); font-weight: 400; }
 .fl-card .turn { color: oklch(74% 0.14 145); font-weight: 400; }
-.fl-more { color: oklch(52% 0.018 65); font-size: 10.5px; }
+.fl-more { color: oklch(52% 0.018 65); font-size: 10.5px; padding-top: 2px; }
 
 /* Routines: name ── repo · cron, then the detail box */
-.fl-rt-row { display: flex; align-items: baseline; gap: 1ch; border: 1px solid oklch(29% 0.021 50); padding: 0 8px; color: oklch(86% 0.015 80); }
+.fl-rt-row {
+  display: flex; align-items: baseline; gap: 1.5ch;
+  border: 1px solid oklch(29% 0.021 50); padding: 5px 10px;
+  color: oklch(86% 0.015 80);
+}
 .fl-rt-row + .fl-rt-row { border-top: 0; }
-.fl-rt-row.on { border-color: oklch(38% 0.03 55); background: oklch(26% 0.02 50); }
+/* an enabled routine gets a live dot; the cursor row also gets the fill */
+.fl-rt-row .nm::before { content: "● "; color: oklch(74% 0.14 145); }
+.fl-rt-row.paused .nm::before { content: "○ "; color: oklch(52% 0.018 65); }
+.fl-rt-row.on { border-color: oklch(46% 0.055 50); background: oklch(25% 0.02 50); }
 .fl-rt-row .rule { flex: 1; height: 1px; background: oklch(30% 0.021 50); }
-.fl-rt-row .meta, .fl-rt-row .when { color: oklch(54% 0.018 65); font-size: 10.5px; white-space: nowrap; }
+.fl-rt-row .meta { color: oklch(60% 0.02 65); font-size: 10.5px; white-space: nowrap; }
+/* the cron is the routine's actual subject — let it read as code, not as meta */
+.fl-rt-row .meta b { color: oklch(76% 0.07 55); font-weight: 400; }
+.fl-rt-row .when { color: oklch(54% 0.018 65); font-size: 10.5px; white-space: nowrap; min-width: 6ch; text-align: right; }
 .fl-rt-row .pz { color: oklch(80% 0.12 80); font-size: 10.5px; }
 .fl-rt-row.paused .nm { color: oklch(56% 0.018 65); }
-.fl-rt-detail { border: 1px solid oklch(31% 0.022 50); padding: 6px 8px; margin-top: 10px; }
-.fl-rt-prompt { display: flex; justify-content: space-between; gap: 2ch; color: oklch(86% 0.015 80); }
-.fl-rt-prompt .run { color: var(--accent-2); font-weight: 600; white-space: nowrap; }
-.fl-run { color: oklch(70% 0.018 70); font-size: 10.5px; }
-.fl-run b { color: oklch(54% 0.018 65); font-weight: 400; }
+.fl-rt-detail { border: 1px solid oklch(31% 0.022 50); padding: 8px 10px 10px; margin-top: 12px; }
+.fl-rt-prompt { display: flex; justify-content: space-between; align-items: center; gap: 2ch; color: oklch(88% 0.015 80); }
+.fl-rt-prompt .run {
+  color: var(--accent-2); white-space: nowrap; padding: 1px 8px;
+  border: 1px solid oklch(45% 0.06 50); background: oklch(27% 0.025 50);
+}
+/* run rows: number · status · age, each in its own column so they scan down */
+.fl-run { display: flex; gap: 1.5ch; color: oklch(70% 0.018 70); font-size: 10.5px; }
+.fl-run b { color: oklch(52% 0.018 65); font-weight: 400; min-width: 4ch; }
+.fl-run .st { min-width: 16ch; }
+.fl-run .ago { color: oklch(52% 0.018 65); }
 .fl-run .ok { color: oklch(74% 0.14 145); }
 .fl-run .wn { color: oklch(80% 0.12 80); }
 .fl-sec { color: oklch(74% 0.02 70); letter-spacing: .12em; font-size: 10.5px; margin: 10px 0 4px; }

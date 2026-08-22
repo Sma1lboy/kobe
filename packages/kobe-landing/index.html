@@ -97,8 +97,8 @@ h1{font-family:var(--font-display);font-optical-sizing:auto;font-size:clamp(44px
 @media(max-width:720px){.copy-cmd{font-size:12px;padding:12px 16px;gap:8px}.copy-cmd .hint{display:none}.copy-cmd .scheme{display:none}}
 .btn-primary{display:inline-flex;align-items:center;gap:8px;font-size:14.5px;font-weight:520;padding:13px 26px;background:var(--ink);color:oklch(97% 0.008 85);transition:background 140ms}
 .btn-primary:hover{background:var(--accent)}
-.btn-quiet{display:inline-flex;align-items:center;gap:8px;border-radius:999px;font-size:14.5px;font-weight:480;padding:14px 26px;background:transparent;color:var(--ink);border:1px solid var(--line-2);transition:transform 140ms,background 140ms,border-color 140ms}
-.btn-quiet:hover{transform:translateY(-2px);background:var(--surface);border-color:var(--faint)}
+.btn-quiet{display:inline-flex;align-items:center;gap:8px;font-size:14.5px;font-weight:480;padding:13px 26px;background:transparent;color:var(--ink);border:1px solid var(--line-2);transition:background 140ms,border-color 140ms,color 140ms}
+.btn-quiet:hover{border-color:var(--accent-line);color:var(--accent)}
 .hero-req{font-size:12.5px;color:var(--muted);margin-top:20px}
 .rise{opacity:0;transform:translateY(20px);animation:rise .85s var(--ease-out) forwards}
 @keyframes rise{to{opacity:1;transform:none}}
@@ -106,7 +106,7 @@ h1{font-family:var(--font-display);font-optical-sizing:auto;font-size:clamp(44px
 /* the hero mock — floats over the hero fade. Wider than the video it replaced:
    a three-column TUI needs the room to keep its panes legible. */
 .quicklook{position:relative;z-index:2;max-width:1180px;margin:54px auto 0;padding:0 20px;text-align:left}
-.ql-frame{border-radius:var(--radius-lg);overflow:hidden;background:var(--well);box-shadow:0 40px 90px oklch(35% 0.04 60/.3);border:1px solid oklch(32% 0.024 50)}
+.ql-frame{border-radius:6px;overflow:hidden;background:var(--well);box-shadow:0 40px 90px oklch(35% 0.04 60/.3);border:1px solid oklch(32% 0.024 50)}
 .tbar{display:flex;align-items:center;gap:8px;padding:11px 18px;background:linear-gradient(180deg,oklch(30% 0.022 50),var(--well-2));font-family:var(--font-mono);font-size:11px;color:oklch(68% 0.035 60);border-bottom:1px solid oklch(19% 0.018 50);box-shadow:inset 0 1px 0 oklch(90% 0.04 70/.08)}
 .tbar i{width:9px;height:9px;border-radius:50%;background:oklch(42% 0.02 55)}
 .tbar i.r{background:oklch(65% 0.16 25)}
@@ -135,10 +135,10 @@ h1{font-family:var(--font-display);font-optical-sizing:auto;font-size:clamp(44px
 .stage p{font-size:15px;color:var(--muted);max-width:54ch}
 .stage p+p{margin-top:12px}
 .engine-pills{display:flex;gap:8px;flex-wrap:wrap;margin-top:22px}
-.engine-pill{font-family:var(--font-mono);font-size:12px;padding:8px 16px;border-radius:999px;border:1px solid var(--line-2);background:transparent;color:var(--muted);transition:all 140ms}
-.engine-pill:hover{color:var(--ink);border-color:var(--faint);transform:translateY(-1px)}
-.engine-pill[data-active="true"]{background:var(--accent-wash);border-color:var(--accent-line);color:var(--accent);font-weight:500}
-.term-frame{border-radius:var(--radius-lg);overflow:hidden;background:linear-gradient(180deg,oklch(24% 0.021 50),var(--well) 60%);border:1px solid oklch(32% 0.024 50);box-shadow:0 22px 52px oklch(42% 0.06 50/.2)}
+.engine-pill{font-family:var(--font-mono);font-size:12px;padding:7px 15px;border:1px solid var(--line-2);background:transparent;color:var(--muted);transition:border-color 140ms,color 140ms,background 140ms}
+.engine-pill:hover{color:var(--ink);border-color:var(--faint)}
+.engine-pill[data-active="true"]{background:var(--accent);border-color:var(--accent);color:oklch(99% 0.005 85);font-weight:500}
+.term-frame{border-radius:6px;overflow:hidden;background:linear-gradient(180deg,oklch(24% 0.021 50),var(--well) 60%);border:1px solid oklch(32% 0.024 50);box-shadow:0 22px 52px oklch(42% 0.06 50/.2)}
 .term-out{color:var(--well-ink);padding:20px 24px;font-family:var(--font-mono);font-size:12.5px;line-height:1.95;overflow-x:auto;white-space:pre}
 .term-out .ps{color:oklch(75% 0.13 50)}
 .term-out .a{color:oklch(85% 0.07 60)}
@@ -152,7 +152,7 @@ h1{font-family:var(--font-display);font-optical-sizing:auto;font-size:clamp(44px
 .install-final h2{font-family:var(--font-display);font-size:clamp(30px,4.2vw,50px);font-weight:400;letter-spacing:-.02em;line-height:1.08;color:var(--ink);margin-bottom:16px}
 .install-final>p{color:var(--muted);font-size:16px;max-width:58ch;margin:0 auto 40px}
 .install-term{text-align:left}
-.install-actions{display:flex;gap:14px;justify-content:center;margin-top:34px;flex-wrap:wrap}
+.install-actions{display:flex;gap:12px;justify-content:center;margin-top:34px;flex-wrap:wrap;align-items:stretch}
 
 /* final band with image */
 .final-band{position:relative;overflow:hidden;margin-top:clamp(70px,9vw,110px);padding:clamp(90px,11vw,140px) 0}
@@ -272,15 +272,15 @@ h1{font-family:var(--font-display);font-optical-sizing:auto;font-size:clamp(44px
       <div class="fl-page" id="fleetRoutines" hidden>
         <p class="fl-page-head rt">ROUTINES<span class="rule"></span><span class="hold">keeping the daemon awake</span></p>
         <div class="fl-rt">
-          <p class="fl-rt-row on"><span class="nm">nightly flake sweep</span><span class="rule"></span><span class="meta">rove · 0 9 * * 1-5</span><span class="when">in 6h</span></p>
-          <p class="fl-rt-row"><span class="nm">dep audit</span><span class="rule"></span><span class="meta">ledger-api · 0 7 * * 1</span><span class="when">in 2d</span></p>
-          <p class="fl-rt-row paused"><span class="nm">weekly changelog</span><span class="rule"></span><span class="meta">storefront · 0 18 * * 5</span><span class="pz">paused ·</span><span class="when">in 3d</span></p>
+          <p class="fl-rt-row on"><span class="nm">nightly flake sweep</span><span class="rule"></span><span class="meta">rove · <b>0 9 * * 1-5</b></span><span class="when">in 6h</span></p>
+          <p class="fl-rt-row"><span class="nm">dep audit</span><span class="rule"></span><span class="meta">ledger-api · <b>0 7 * * 1</b></span><span class="when">in 2d</span></p>
+          <p class="fl-rt-row paused"><span class="nm">weekly changelog</span><span class="rule"></span><span class="meta">storefront · <b>0 18 * * 5</b></span><span class="pz">paused ·</span><span class="when">in 3d</span></p>
         </div>
         <div class="fl-rt-detail">
           <p class="fl-rt-prompt">Sweep flaky tests and report.<span class="run">[ run now ]</span></p>
           <p class="fl-sec">RECENT RUNS</p>
-          <p class="fl-run"><b>#12</b> <span class="ok">dispatched</span>  3h ago</p>
-          <p class="fl-run"><b>#11</b> <span class="wn">skipped_missed</span>  1d ago</p>
+          <p class="fl-run"><b>#12</b><span class="st ok">dispatched</span><span class="ago">3h ago</span></p>
+          <p class="fl-run"><b>#11</b><span class="st wn">skipped_missed</span><span class="ago">1d ago</span></p>
         </div>
       </div>
 
