@@ -305,6 +305,19 @@
     rail.classList.toggle('page-open', name === 'kanban' || name === 'routines');
   }
 
+  // The Inbox is a dialog, so it closes the three ways a dialog does: the esc
+  // chip, the Escape key, and a click on the backdrop outside the card.
+  var inbox = document.getElementById('fleetInbox');
+  document.getElementById('fleetInboxEsc').addEventListener('click', function () {
+    showView('split');
+  });
+  inbox.addEventListener('click', function (e) {
+    if (e.target === inbox) showView('split'); // backdrop only, never the card
+  });
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !inbox.hidden) showView('split');
+  });
+
   document.querySelectorAll('.fl-nav').forEach(function (btn) {
     btn.addEventListener('click', function () {
       var view = btn.getAttribute('data-view');

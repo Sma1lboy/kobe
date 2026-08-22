@@ -225,7 +225,12 @@ button.fl-row:focus-visible { outline: none; background: oklch(62% 0.13 45/.1); 
 .fl-dialog { width: min(80ch, 92%); background: oklch(21% 0.018 50); border: 1px solid oklch(38% 0.026 50); padding: 8px 12px 10px; }
 .fl-dlg-head { display: flex; justify-content: space-between; color: oklch(56% 0.02 65); margin-bottom: 6px; }
 .fl-dlg-head b { color: var(--accent-2); letter-spacing: .12em; }
-.fl-dlg-head .esc { color: oklch(52% 0.018 65); }
+.fl-dlg-head .esc {
+  border: 0; background: transparent; font: inherit; cursor: pointer;
+  color: oklch(52% 0.018 65); padding: 0 4px; transition: color 140ms;
+}
+.fl-dlg-head .esc:hover { color: var(--accent-2); }
+.fl-dlg-head .esc:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
 .fl-dlg-foot { margin-top: 10px; color: oklch(52% 0.018 65); font-size: 11.5px; }
 /* every card is two rows with a ▌ gutter repeated down both */
 .fl-item { display: flex; gap: 1ch; padding: 2px 0; color: oklch(86% 0.015 80); }
