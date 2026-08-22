@@ -43,7 +43,7 @@ import { useCreatePR } from "./use-create-pr"
 import { useFileOpenActions } from "./use-file-open-actions"
 import { useInboxHost } from "./use-inbox-host"
 import { useIssueChat } from "./use-issue-chat"
-import { useOptimisticEngineState } from "./use-optimistic-engine-state"
+import { useAnsweredTabStates, useOptimisticEngineState } from "./use-optimistic-engine-state"
 import { useScratchShell } from "./use-scratch-shell"
 import { useWorkspaceSelection } from "./use-workspace-selection"
 import { useZenMode } from "./use-zen-mode"
@@ -68,7 +68,9 @@ function WorkspaceRoot(props: { orchestrator: RemoteOrchestrator }) {
   // last-event-wins rollup, so a task whose live tab is not the one the
   // rollup last described reads as idle. The sidebar tree needs the tab
   // level to light the right row.
-  const engineTabState = useAccessor(orch.engineTabStatesSignal())
+  // Answered-question overlay: a tab the user answered stops rendering its
+  // sticky `permission_needed` even though the engine emits no event for it.
+  const engineTabState = useAnsweredTabStates(useAccessor(orch.engineTabStatesSignal()))
   // Sidebar-only optimistic overlay — see use-optimistic-engine-state.ts.
   const sidebarEngineState = useOptimisticEngineState(engineState)
   const inboxItems = useAccessor(orch.attentionInboxSignal())
