@@ -232,6 +232,7 @@ h1{font-family:var(--font-display);font-optical-sizing:auto;font-size:clamp(44px
           <button type="button" class="fl-nav fl-navrow" data-view="kanban" aria-pressed="false">Kanban</button>
           <button type="button" class="fl-nav fl-navrow" data-view="routines" aria-pressed="false">Routines</button>
           <div id="fleetTree" role="listbox" aria-label="Tasks"></div>
+          <button type="button" class="fl-zenchip" id="fleetZenOff" hidden>☯ ZEN</button>
           <p class="fl-foot">J/K move · ⏎ open</p>
         </div>
 
@@ -286,7 +287,7 @@ h1{font-family:var(--font-display);font-optical-sizing:auto;font-size:clamp(44px
 
       <!-- Files -->
         <div class="fl-files" id="fleetFiles">
-          <p class="fl-files-head"><span><span class="kb">[~]</span> Zen</span><span><span class="kb">[⌃ A P]</span> Create PR</span></p>
+          <p class="fl-files-head"><button type="button" class="fl-zen" id="fleetZenOn" aria-pressed="false"><span class="kb">[~]</span> Zen</button><span><span class="kb">[⌃ A P]</span> Create PR</span></p>
           <p class="fl-views"><span>All</span><span class="on">Changes</span></p>
           <p class="fl-scope" id="fleetScope">scope: vs main</p>
           <div id="fleetFileRows"></div>
@@ -312,7 +313,11 @@ h1{font-family:var(--font-display);font-optical-sizing:auto;font-size:clamp(44px
       </p>
     </div>
 
-    <p class="fleet-note" data-i18n-html="fleet.note">A real session: three repositories, four tasks, each with its own worktree, branch and terminal tabs. <strong>Nothing is attached to any of them right now</strong> — every engine runs in a hosted PTY behind the daemon, so the work continues with the TUI closed. Pick a task on the left; this is a live layout, not a screenshot.</p>
+    <p class="fleet-note">
+    <span data-i18n-html="fleet.note">A real session: three repositories, four tasks, each with its own worktree, branch and terminal tabs. <strong>Nothing is attached to any of them right now</strong> — every engine runs in a hosted PTY behind the daemon, so the work continues with the TUI closed.</span>
+    <span data-zen-only data-i18n-html="fleet.noteZen">This is zen mode: Files is collapsed and the workspace takes the freed width. Hit <b>☯ ZEN</b> at the bottom of the rail to bring it back, or pick a task on the left — this is a live layout, not a screenshot.</span>
+    <span data-full-only hidden data-i18n-html="fleet.noteFull">The full layout: Tasks on the left, the split workspace, Changes on the right. Pick a task, or use <b>[~] Zen</b> to collapse Files — this is a live layout, not a screenshot.</span>
+  </p>
     <div class="equation">
       <div class="equation-inner">
         <span class="lhs" data-i18n="workspace.equation">one node =</span>

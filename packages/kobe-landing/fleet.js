@@ -258,11 +258,41 @@
     select(items[next]);
   });
 
+  var frame = document.querySelector('.fleet-frame');
+  var zenOn = document.getElementById('fleetZenOn');
+  var zenOff = document.getElementById('fleetZenOff');
+  var zen = true; // the mock opens in zen — the engine pane is the subject
+
+  function applyZen() {
+    frame.classList.toggle('zen', zen);
+    // zen drops Files from the grid entirely (host.tsx:448 hides the pane, it
+    // does not merely dim it) — the `.zen` column rule is what frees the width
+    var files = document.getElementById('fleetFiles');
+    if (!frame.querySelector('.fl-page:not([hidden])')) files.hidden = false;
+    zenOff.hidden = !zen;
+    zenOn.setAttribute('aria-pressed', String(zen));
+    // the note says "pick a task on the left" either way — the rail survives
+    // zen — but the Files/Changes half of the sentence only applies outside it
+    document.querySelectorAll('[data-zen-only]').forEach(function (el) { el.hidden = !zen; });
+    document.querySelectorAll('[data-full-only]').forEach(function (el) { el.hidden = zen; });
+  }
+
+  function setZen(next) {
+    zen = next;
+    applyZen();
+    // leaving zen restores the split view; a rail page would hide Files anyway
+    if (!zen && frame.querySelector('.fl-page:not([hidden])')) showView('split');
+  }
+
+  zenOn.addEventListener('click', function () { setZen(!zen); });
+  zenOff.addEventListener('click', function () { setZen(false); });
+
   // The nav rail swaps the whole workspace column for a full-window page,
   // the way Kanban / Routines / Inbox replace the terminal in the product.
   function showView(name) {
     var split = name === 'split' || name === 'inbox';
     document.querySelector('.fl-work').hidden = !split;
+    // zen hides Files regardless of view (host.tsx:448 — `!zen && !openPage`)
     document.getElementById('fleetFiles').hidden = !split;
     document.getElementById('fleetKanban').hidden = name !== 'kanban';
     document.getElementById('fleetRoutines').hidden = name !== 'routines';
@@ -284,4 +314,5 @@
 
   select(rail.querySelector('.fl-row.task'));
   showView('split');
+  applyZen();
 })();

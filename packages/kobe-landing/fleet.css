@@ -255,3 +255,33 @@ button.fl-row:focus-visible { outline: none; background: oklch(62% 0.13 45/.1); 
   .fl-rail .fl-foot { display: none; }
 }
 @media (max-width: 560px) { .fleet-frame { font-size: 10.5px; } .fleet-eyebrow { flex-direction: column; gap: 4px; } }
+
+/* ---- Zen mode ----------------------------------------------------------
+   Zen hides the Files pane and lets the workspace use the freed width
+   (docs/TUI.md:28, host.tsx:448). The Tasks rail deliberately STAYS —
+   `zen.keepTasks` defaults true so the ☯ ZEN chip remains reachable as the
+   way back out (state/zen.ts). Width animates so the change is legible. */
+.fleet-cols { transition: grid-template-columns 320ms var(--ease-out); }
+.fleet-frame.zen .fleet-cols { grid-template-columns: 28ch minmax(0, 1fr); }
+.fl-files { transition: opacity 220ms var(--ease-out); }
+.fleet-frame.zen .fl-files { opacity: 0; pointer-events: none; }
+
+/* the [~] chip in the Files header — an action, styled like the product's */
+.fl-zen {
+  border: 0; background: transparent; font: inherit; cursor: pointer;
+  color: oklch(56% 0.02 65); padding: 0; transition: color 140ms;
+}
+.fl-zen:hover { color: oklch(88% 0.02 78); }
+.fl-zen:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
+.fl-zen .kb { color: oklch(72% 0.07 55); }
+
+/* the rail's ☯ ZEN chip — visible only in zen, and the exit affordance */
+.fl-zenchip {
+  align-self: flex-start; margin-top: 12px; padding: 1px 8px;
+  border: 1px solid oklch(45% 0.06 50); background: oklch(27% 0.025 50);
+  color: var(--accent-2); font: inherit; font-weight: 600; cursor: pointer;
+  transition: background 140ms, border-color 140ms;
+}
+.fl-zenchip[hidden] { display: none; }
+.fl-zenchip:hover { background: oklch(32% 0.035 50); border-color: oklch(55% 0.08 48); }
+.fl-zenchip:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
