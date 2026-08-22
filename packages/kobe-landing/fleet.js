@@ -292,8 +292,9 @@
   function showView(name) {
     var split = name === 'split' || name === 'inbox';
     document.querySelector('.fl-work').hidden = !split;
-    // zen hides Files regardless of view (host.tsx:448 — `!zen && !openPage`)
-    document.getElementById('fleetFiles').hidden = !split;
+    // zen hides Files regardless of view (host.tsx:448 — `!zen && !openPage`),
+    // and zen only fades it: an un-hidden pane still holds its 26ch grid track
+    document.getElementById('fleetFiles').hidden = !split || zen;
     document.getElementById('fleetKanban').hidden = name !== 'kanban';
     document.getElementById('fleetRoutines').hidden = name !== 'routines';
     // the Inbox is a dialog: it covers the frame instead of replacing a column
