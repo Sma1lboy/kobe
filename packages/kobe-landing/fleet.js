@@ -176,7 +176,6 @@
     btn.setAttribute('aria-selected', 'false');
     btn.tabIndex = -1;
     var head = el('span', 'fl-head');
-    head.appendChild(el('span', 'cur', '&nbsp;'));
     head.appendChild(el('span', 'lbl', task.label));
     head.appendChild(el('span', 'rhs',
       '<span class="add">+' + task.add + '</span> <span class="del">−' + task.del + '</span>'));
@@ -196,7 +195,6 @@
         if (task.main) {
           var row = el('div', 'fl-row main');
           var head = el('span', 'fl-head');
-          head.appendChild(el('span', 'cur', '&nbsp;'));
           head.appendChild(el('span', 'lbl', task.label));
           head.appendChild(el('span', 'rhs'));
           row.appendChild(head);
@@ -234,7 +232,6 @@
     list.innerHTML = '';
     t.files.forEach(function (f) {
       var row = el('div', 'fl-file');
-      row.appendChild(el('span', 'cur', '&nbsp;'));
       row.appendChild(el('span', 'p',
         '<span class="' + (STATUS[f[0]] || '') + '">' + f[0] + '</span> ' + f[1]));
       row.appendChild(el('span', 'st',
@@ -249,7 +246,6 @@
       var on = b === btn;
       b.setAttribute('aria-selected', String(on));
       b.tabIndex = on ? 0 : -1;
-      b.querySelector('.fl-head .cur').innerHTML = on ? '▌' : '&nbsp;';
     });
     render(btn.getAttribute('data-task'));
   }

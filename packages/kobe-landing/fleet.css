@@ -3,8 +3,8 @@
    cards · workspace tab strip · two panes · status bar); the finish — spacing,
    weight, hover, glow — is deliberately a notch above the real TUI. */
 
-/* scroll-margin keeps the fixed nav pill off the frame when #fleet is anchored */
-.fleet { padding: clamp(60px, 8vw, 96px) 0 clamp(20px, 3vw, 40px); scroll-margin-top: 96px; }
+/* the mock now lives inside the hero; .quicklook owns its outer spacing */
+.fleet { scroll-margin-top: 96px; }
 
 .fleet-eyebrow {
   display: flex; justify-content: space-between; align-items: baseline; gap: 16px;
@@ -20,7 +20,7 @@
   font-family: var(--font-mono); font-size: 11.5px; line-height: 1.8;
   color: var(--well-ink); padding: 16px 16px 8px; overflow: hidden;
 }
-.fleet-cols { display: grid; grid-template-columns: 26ch minmax(0, 1fr) 29ch; gap: 14px; }
+.fleet-cols { display: grid; grid-template-columns: 28ch minmax(0, 1fr) 29ch; gap: 14px; }
 
 /* ---- Tasks rail ---- */
 .fl-rail { min-width: 0; display: flex; flex-direction: column; }
@@ -30,7 +30,7 @@
 /* the New-task chip is one of the few genuinely tinted surfaces in the TUI */
 .fl-newtask {
   display: flex; justify-content: space-between; color: oklch(89% 0.02 78);
-  background: oklch(30% 0.022 50); border-radius: 5px;
+  background: oklch(30% 0.022 50);
   padding: 2px 10px; margin: 10px 0 8px;
 }
 .fl-newtask .plus { color: var(--accent-2); font-weight: 700; }
@@ -44,28 +44,30 @@
 }
 .fl-group::after { content: ""; flex: 1; height: 1px; background: oklch(34% 0.022 50); }
 
-/* two-line card: line 1 = cursor + title + diffstat, line 2 = tabs */
+/* two-line card: line 1 = title + diffstat, line 2 = tabs.
+   The selection cursor is the full-height accent bar on the card's left edge —
+   NOT a ▌ glyph, which is only one line tall and floats on a two-line card. */
 .fl-row {
   display: block; width: 100%; border: 0; background: transparent; font: inherit;
-  color: inherit; text-align: left; padding: 3px 8px 4px 0; border-radius: 5px;
+  color: inherit; text-align: left; padding: 3px 8px 4px 8px;
   border-left: 2px solid transparent; transition: background 140ms, border-color 140ms;
 }
-.fl-head { display: grid; grid-template-columns: 2ch 1fr auto; align-items: baseline; }
-.fl-head .cur { color: var(--accent-2); }
-.fl-head .lbl { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fl-head .rhs { padding-left: 1ch; white-space: nowrap; }
+/* the title claims the row and only ellipses once the diffstat's real width is
+   spoken for — a grid track would truncate while space still sits unused */
+.fl-head { display: flex; align-items: baseline; gap: 1ch; }
+.fl-head .lbl { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fl-head .rhs { flex: 0 0 auto; white-space: nowrap; }
 .fl-row.task .lbl { color: oklch(87% 0.015 80); }
 .fl-row.main .lbl { color: oklch(68% 0.018 70); }
 /* line 2 — the task's terminal tabs, each with its own state glyph */
-.fl-tabsline { padding-left: 2ch; color: oklch(62% 0.018 70); font-size: 10.5px; }
+.fl-tabsline { color: oklch(62% 0.018 70); font-size: 10.5px; }
 .fl-tabsline .sep { color: oklch(42% 0.014 65); padding: 0 .75ch; }
 button.fl-row { cursor: pointer; }
 button.fl-row:hover { background: oklch(100% 0 0/.045); }
 /* flat + square: the page's global rounded focus ring would read as a web card */
 button.fl-row:focus-visible { outline: none; background: oklch(62% 0.13 45/.1); border-left-color: var(--accent); }
 .fl-row[aria-selected="true"] {
-  background: oklch(62% 0.13 45/.14); border-left-color: var(--accent-2);
-  box-shadow: inset 0 0 24px oklch(62% 0.13 45/.08);
+  background: oklch(62% 0.13 45/.14); border-left-color: var(--accent);
 }
 .fl-row[aria-selected="true"] .lbl { color: oklch(92% 0.04 60); }
 .fl-row[aria-selected="true"] .fl-tabsline { color: oklch(72% 0.02 70); }
@@ -74,11 +76,13 @@ button.fl-row:focus-visible { outline: none; background: oklch(62% 0.13 45/.1); 
 .fl-glyph.wait { color: oklch(80% 0.13 80); }
 .fl-foot { margin-top: auto; padding-top: 14px; color: oklch(50% 0.018 65); font-size: 10.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
+/* Square by default — this is a terminal, not a web card deck. The only
+   rounded thing is the window shell above. */
 /* ---- Workspace: tab strip + two panes ---- */
 .fl-work { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
 .fl-tabs { display: flex; gap: 6px; overflow: hidden; }
 .fl-tabs .tb {
-  padding: 1px 11px; border-radius: 5px; white-space: nowrap;
+  padding: 1px 11px; white-space: nowrap;
   color: oklch(60% 0.02 65); background: oklch(27% 0.02 50);
 }
 .fl-tabs .tb.on { background: var(--accent); color: oklch(20% 0.02 50); font-weight: 600; }
@@ -86,7 +90,7 @@ button.fl-row:focus-visible { outline: none; background: oklch(62% 0.13 45/.1); 
 
 .fl-panes { display: grid; grid-template-columns: 1.25fr 1fr; gap: 10px; flex: 1; min-width: 0; }
 .fl-pane {
-  min-width: 0; padding: 10px 12px; border-radius: 7px;
+  min-width: 0; padding: 10px 12px;
   border: 1px solid oklch(31% 0.022 50); background: oklch(19.5% 0.017 50);
 }
 .fl-pane pre { font: inherit; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; color: oklch(79% 0.018 70); }
@@ -105,9 +109,9 @@ button.fl-row:focus-visible { outline: none; background: oklch(62% 0.13 45/.1); 
 .fl-views { display: flex; gap: 2ch; margin-top: 8px; color: oklch(58% 0.02 65); }
 .fl-views .on { color: var(--accent-2); font-weight: 600; }
 .fl-scope { color: oklch(54% 0.02 65); font-size: 10.5px; padding-bottom: 4px; }
-.fl-file { display: grid; grid-template-columns: 2ch 1fr auto; color: oklch(75% 0.018 70); }
+.fl-file { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1ch; color: oklch(75% 0.018 70); }
 .fl-file .p { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.fl-file .st { padding-left: 1ch; white-space: nowrap; }
+.fl-file .st { white-space: nowrap; }
 .st-m { color: oklch(80% 0.12 80); }
 .st-a { color: oklch(74% 0.14 145); }
 .st-d { color: oklch(72% 0.13 25); }
@@ -124,7 +128,7 @@ button.fl-row:focus-visible { outline: none; background: oklch(62% 0.13 45/.1); 
 .fleet-status b { color: oklch(66% 0.02 65); font-weight: 400; letter-spacing: .08em; }
 .fleet-status .ok { color: oklch(72% 0.13 145); }
 
-.fleet-note { margin-top: 22px; max-width: 62ch; color: var(--muted); font-size: 14.5px; }
+.fleet-note { margin: 20px auto 0; max-width: 66ch; color: var(--muted); font-size: 14.5px; text-align: center; }
 .fleet-note strong { color: var(--ink); font-weight: 560; }
 
 @media (max-width: 1040px) { .fleet-cols { grid-template-columns: 25ch minmax(0, 1fr); } .fl-files { display: none; } }

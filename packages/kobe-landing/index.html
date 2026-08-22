@@ -101,8 +101,9 @@ h1{font-family:var(--font-display);font-optical-sizing:auto;font-size:clamp(44px
 .rise{opacity:0;transform:translateY(20px);animation:rise .85s var(--ease-out) forwards}
 @keyframes rise{to{opacity:1;transform:none}}
 
-/* quicklook video — floats over the hero fade */
-.quicklook{position:relative;z-index:2;max-width:980px;margin:54px auto 0;padding:0 20px}
+/* the hero mock — floats over the hero fade. Wider than the video it replaced:
+   a three-column TUI needs the room to keep its panes legible. */
+.quicklook{position:relative;z-index:2;max-width:1180px;margin:54px auto 0;padding:0 20px;text-align:left}
 .ql-frame{border-radius:var(--radius-lg);overflow:hidden;background:var(--well);box-shadow:0 40px 90px oklch(35% 0.04 60/.3);border:1px solid oklch(32% 0.024 50)}
 .tbar{display:flex;align-items:center;gap:8px;padding:11px 18px;background:linear-gradient(180deg,oklch(30% 0.022 50),var(--well-2));font-family:var(--font-mono);font-size:11px;color:oklch(68% 0.035 60);border-bottom:1px solid oklch(19% 0.018 50);box-shadow:inset 0 1px 0 oklch(90% 0.04 70/.08)}
 .tbar i{width:9px;height:9px;border-radius:50%;background:oklch(42% 0.02 55)}
@@ -213,13 +214,50 @@ h1{font-family:var(--font-display);font-optical-sizing:auto;font-size:clamp(44px
     <p class="hero-req rise" style="animation-delay:.58s" data-i18n="hero.requirements">Runs on macOS &amp; Linux (Windows via WSL). npm, bun, npx, or one curl line — Rove brings its own Bun runtime. Needs git and one engine CLI on your PATH.</p>
   </div>
 
-  <div class="quicklook rise" style="animation-delay:.7s">
-    <figure class="ql-frame">
-      <div class="tbar" aria-hidden="true"><i class="r"></i><i class="y"></i><i class="g"></i><span>Rove — quick look</span></div>
-      <video src="assets/demo.mp4" poster="assets/demo-poster.png" autoplay muted loop playsinline preload="metadata" fetchpriority="high" aria-label="Rove quick look — two coding tasks running at once, each on its own worktree and branch, reviewed and landed from the terminal">
-        <img src="assets/demo-poster.png" alt="Rove quick look — two coding tasks running at once, each on its own worktree and branch">
-      </video>
-    </figure>
+  <div class="quicklook fleet rise" id="fleet" style="animation-delay:.7s">
+  <p class="fleet-eyebrow">
+      <span data-i18n="fleet.eyebrow">FOUR TASKS RUNNING, NOBODY ATTACHED</span>
+      <span class="cue" data-i18n="fleet.cue">PICK A TASK →</span>
+    </p>
+
+    <div class="fleet-frame">
+      <div class="fleet-cols">
+
+        <!-- Tasks rail -->
+        <div class="fl-rail" id="fleetRail">
+          <p class="fl-brand"><b>ROVE</b> <span class="inbox">INBOX 2</span></p>
+          <p class="fl-newtask"><span><span class="plus">+</span> New task</span><span class="k">n</span></p>
+          <p class="fl-navrow">Kanban</p>
+          <p class="fl-navrow">Routines</p>
+          <div id="fleetTree" role="listbox" aria-label="Tasks"></div>
+          <p class="fl-foot">J/K move · ⏎ open</p>
+        </div>
+
+        <!-- Workspace: tab strip over two panes -->
+        <div class="fl-work">
+          <div class="fl-tabs" id="fleetTabs" aria-hidden="true"></div>
+          <div class="fl-panes">
+            <div class="fl-pane" id="fleetWork"><pre></pre></div>
+            <div class="fl-pane fl-pane-side" id="fleetSide"><pre></pre></div>
+          </div>
+        </div>
+
+        <!-- Files -->
+        <div class="fl-files" id="fleetFiles">
+          <p class="fl-files-head"><span><span class="kb">[~]</span> Zen</span><span><span class="kb">[⌃ A P]</span> Create PR</span></p>
+          <p class="fl-views"><span>All</span><span class="on">Changes</span></p>
+          <p class="fl-scope" id="fleetScope">scope: vs main</p>
+          <div id="fleetFileRows"></div>
+        </div>
+
+      </div>
+      <p class="fleet-status">
+        <span class="quota"><b>CLAUDE</b> 5h <span class="ok">42%</span> → 14:00 · 7d <span class="ok">12%</span></span>
+        <span>⌃ A commands · F1 help · [settings]</span>
+      </p>
+    </div>
+
+    <p class="fleet-note" data-i18n-html="fleet.note">A real session: three repositories, four tasks, each with its own worktree, branch and terminal tabs. <strong>Nothing is attached to any of them right now</strong> — every engine runs in a hosted PTY behind the daemon, so the work continues with the TUI closed. Pick a task on the left; this is a live layout, not a screenshot.</p>
     <div class="equation">
       <div class="equation-inner">
         <span class="lhs" data-i18n="workspace.equation">one node =</span>
@@ -231,53 +269,7 @@ h1{font-family:var(--font-display);font-optical-sizing:auto;font-size:clamp(44px
       </div>
     </div>
   </div>
-</section>
-
-<!-- FLEET · Rove's own layout — Tasks rail, tab strip, dual panes, status bar -->
-<section id="fleet" class="fleet wrap">
-  <p class="fleet-eyebrow">
-    <span data-i18n="fleet.eyebrow">FOUR TASKS RUNNING, NOBODY ATTACHED</span>
-    <span class="cue" data-i18n="fleet.cue">PICK A TASK →</span>
-  </p>
-
-  <div class="fleet-frame">
-    <div class="fleet-cols">
-
-      <!-- Tasks rail -->
-      <div class="fl-rail" id="fleetRail">
-        <p class="fl-brand"><b>ROVE</b> <span class="inbox">INBOX 2</span></p>
-        <p class="fl-newtask"><span><span class="plus">+</span> New task</span><span class="k">n</span></p>
-        <p class="fl-navrow">Kanban</p>
-        <p class="fl-navrow">Routines</p>
-        <div id="fleetTree" role="listbox" aria-label="Tasks"></div>
-        <p class="fl-foot">J/K move · ⏎ open</p>
-      </div>
-
-      <!-- Workspace: tab strip over two panes -->
-      <div class="fl-work">
-        <div class="fl-tabs" id="fleetTabs" aria-hidden="true"></div>
-        <div class="fl-panes">
-          <div class="fl-pane" id="fleetWork"><pre></pre></div>
-          <div class="fl-pane fl-pane-side" id="fleetSide"><pre></pre></div>
-        </div>
-      </div>
-
-      <!-- Files -->
-      <div class="fl-files" id="fleetFiles">
-        <p class="fl-files-head"><span><span class="kb">[~]</span> Zen</span><span><span class="kb">[⌃ A P]</span> Create PR</span></p>
-        <p class="fl-views"><span>All</span><span class="on">Changes</span></p>
-        <p class="fl-scope" id="fleetScope">scope: vs main</p>
-        <div id="fleetFileRows"></div>
-      </div>
-
-    </div>
-    <p class="fleet-status">
-      <span class="quota"><b>CLAUDE</b> 5h <span class="ok">42%</span> → 14:00 · 7d <span class="ok">12%</span></span>
-      <span>⌃ A commands · F1 help · [settings]</span>
-    </p>
   </div>
-
-  <p class="fleet-note" data-i18n-html="fleet.note">A real session: three repositories, four tasks, each with its own worktree, branch and terminal tabs. <strong>Nothing is attached to any of them right now</strong> — every engine runs in a hosted PTY behind the daemon, so the work continues with the TUI closed. Pick a task on the left; this is a live layout, not a screenshot.</p>
 </section>
 
 <!-- NARRATIVE WORKFLOW · the four primitives of graph engineering -->
@@ -309,7 +301,7 @@ h1{font-family:var(--font-display);font-optical-sizing:auto;font-size:clamp(44px
     <div class="stage-txt">
       <span class="stage-no" data-i18n="s2.no">2.0 · SUPERVISE</span>
       <h2 data-i18n="s2.title">Silence is not a status. Attempts report.</h2>
-      <p data-i18n="s2.body">In a fleet of terminals, a quiet agent could be thinking or could be dead. So in Rove every attempt ends by reporting an explicit outcome — succeeded or failed — and an orchestrating agent can block until the whole fleet resolves. Agents orchestrating agents, with real completion semantics.</p>
+      <p data-i18n="s2.body">A quiet agent could be thinking or could be dead. So every attempt ends by reporting an explicit outcome — succeeded or failed — and an orchestrating agent can block until the whole fleet resolves. Agents orchestrating agents, with real completion semantics.</p>
     </div>
     <div class="stage-vis">
       <figure class="term-frame"><div class="tbar" aria-hidden="true"><i class="r"></i><i class="y"></i><i class="g"></i><span>report · await</span></div>
@@ -325,7 +317,7 @@ h1{font-family:var(--font-display);font-optical-sizing:auto;font-size:clamp(44px
     <div class="stage-txt">
       <span class="stage-no" data-i18n="s3.no">3.0 · OBSERVE</span>
       <h2 data-i18n="s3.title">Read the session, never scrape the screen.</h2>
-      <p data-i18n="s3.body">Rove reads each engine's own session data — history, tokens, context — instead of scraping terminal text. And every session lives in a hosted PTY behind the daemon, on the machine where your code lives: quit the TUI, drop SSH, the graph keeps running. Reattach from anywhere.</p>
+      <p data-i18n="s3.body">Rove reads each engine's own session data — history, tokens, context — instead of scraping terminal text. Progress is a fact the engine reported, not a guess scraped off a screen.</p>
       <p data-i18n="s3.body2">And it's your real machine: real dependencies, services, credentials, build cache. What passes for the agent passes for you.</p>
     </div>
     <div class="stage-vis">
