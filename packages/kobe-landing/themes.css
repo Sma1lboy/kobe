@@ -119,8 +119,20 @@ h2{font-family:var(--font-display);font-weight:360;font-size:clamp(24px,3vw,34px
 .copy-cmd .ps{color:var(--accent-2)}
 .copy-cmd .hint{color:oklch(62% 0.02 60);font-size:11px;margin-left:4px}
 
-.foot-dense{border-top:1px solid var(--line);background:var(--surface);padding:32px 0;margin-top:clamp(70px,9vw,110px);font-size:13px;color:var(--faint)}
-.foot-dense p{max-width:1160px;margin:0 auto;padding:0 clamp(20px,4vw,52px);line-height:1.8}
+/* ============ FOOTER ============
+   Two blocks, not one paragraph: identity on the left, navigation on the
+   right. The links were prose-colored and underlined, so they read as part
+   of the colophon sentence — they get the navbar's mono treatment instead,
+   which is the vocabulary the rest of the page already uses for controls. */
+.foot-dense{border-top:1px solid var(--line);background:var(--surface);padding:40px 0;margin-top:clamp(70px,9vw,110px);font-size:13px;color:var(--faint)}
+.foot-inner{max-width:1160px;margin:0 auto;padding:0 clamp(20px,4vw,52px);display:flex;flex-wrap:wrap;justify-content:space-between;gap:22px 44px}
+.foot-id{max-width:56ch;line-height:1.7}
 .foot-dense .mark{font-family:var(--font-mono);color:var(--accent)}
-.foot-dense a{border-bottom:1px solid var(--line-2);transition:color 140ms,border-color 140ms}
-.foot-dense a:hover{color:var(--ink);border-color:var(--accent-line)}
+.foot-dense .tagline{color:var(--ink-soft)}
+/* the colophon is credits, not a claim — its own line, one step quieter */
+.foot-colophon{display:block;margin-top:7px;font-size:12px;color:var(--faint)}
+/* no margin-left:auto — space-between already right-aligns it on one line,
+   and once it wraps to its own row the auto margin would strand it right */
+.foot-links{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px;font-family:var(--font-mono);font-size:12.5px}
+.foot-links a{color:var(--muted);padding:5px 11px;transition:color 140ms,background 140ms}
+.foot-links a:hover{color:var(--accent);background:var(--accent-wash)}
