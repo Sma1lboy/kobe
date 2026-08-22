@@ -1,0 +1,306 @@
+/* Fleet mock — Rove's own layout, refined for a marketing page.
+   Block structure comes from the product (Tasks rail with grouped two-line
+   cards · workspace tab strip · two panes · status bar); the finish — spacing,
+   weight, hover, glow — is deliberately a notch above the real TUI. */
+
+/* the mock now lives inside the hero; .quicklook owns its outer spacing */
+.fleet { scroll-margin-top: 96px; }
+
+.fleet-eyebrow {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 16px;
+  font-family: var(--font-mono); font-size: 11px; letter-spacing: .14em; text-transform: uppercase;
+  color: var(--faint); margin-bottom: 14px;
+}
+.fleet-eyebrow .cue { color: var(--accent); }
+
+.fleet-frame {
+  position: relative;
+  border-radius: 6px;
+  background: linear-gradient(180deg, oklch(24% 0.021 50), var(--well) 46%);
+  border: 1px solid oklch(33% 0.024 50); box-shadow: 0 34px 80px oklch(35% 0.04 60/.3);
+  font-family: var(--font-mono); font-size: 13px; line-height: 1.75;
+  color: var(--well-ink); padding: 20px 20px 12px; overflow: hidden;
+}
+/* min-height gives the columns something to stretch INTO — without it the
+   frame is only as tall as its tallest column and the panes collapse to
+   their text (the real leaves are flexGrow=1 inside a sized frame). */
+.fleet-cols {
+  display: grid; grid-template-columns: 27ch minmax(0, 1fr) 26ch; gap: 14px;
+  align-items: stretch; min-height: clamp(30rem, 58vh, 44rem);
+}
+/* all columns share row 1 — a hidden page otherwise claims a second row and
+   leaves a dead band under the panes */
+.fl-rail, .fl-work, .fl-files, .fl-page { grid-row: 1; }
+
+/* ---- Tasks rail ---- */
+.fl-rail { min-width: 0; overflow: hidden; display: flex; flex-direction: column; }
+.fl-brand { display: flex; align-items: baseline; gap: 1ch; letter-spacing: .04em; }
+.fl-brand b { color: var(--accent-2); font-weight: 700; letter-spacing: .12em; }
+.fl-brand .inbox { color: oklch(58% 0.02 65); font-size: 11.5px; letter-spacing: .1em; }
+/* the New-task chip is one of the few genuinely tinted surfaces in the TUI */
+.fl-newtask {
+  display: flex; justify-content: space-between; color: oklch(89% 0.02 78);
+  background: oklch(30% 0.022 50);
+  padding: 2px 10px; margin: 10px 0 8px;
+}
+.fl-newtask .plus { color: var(--accent-2); font-weight: 700; }
+.fl-newtask .k { color: oklch(56% 0.02 65); }
+.fl-navrow { color: oklch(70% 0.018 70); padding-left: 10px; }
+
+/* `repo ─────` group header */
+.fl-group {
+  display: flex; align-items: center; gap: 1ch; margin: 14px 0 4px;
+  color: oklch(84% 0.03 70); font-size: 11.5px; letter-spacing: .1em; text-transform: uppercase;
+}
+.fl-group::after { content: ""; flex: 1; height: 1px; background: oklch(34% 0.022 50); }
+
+/* two-line card: line 1 = title + diffstat, line 2 = tabs.
+   The selection cursor is the full-height accent bar on the card's left edge —
+   NOT a ▌ glyph, which is only one line tall and floats on a two-line card. */
+.fl-row {
+  display: block; width: 100%; min-width: 0; max-width: 100%; overflow: hidden; border: 0; background: transparent; font: inherit;
+  color: inherit; text-align: left; padding: 3px 8px 4px 8px;
+  border-left: 2px solid transparent; transition: background 140ms, border-color 140ms;
+}
+/* the title claims the row and only ellipses once the diffstat's real width is
+   spoken for — a grid track would truncate while space still sits unused */
+.fl-head { display: flex; align-items: baseline; gap: 1ch; }
+.fl-head .lbl { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fl-head .rhs { flex: 0 0 auto; white-space: nowrap; }
+.fl-row.task .lbl { color: oklch(87% 0.015 80); }
+.fl-row.main .lbl { color: oklch(68% 0.018 70); }
+/* line 2 — the task's terminal tabs, each with its own state glyph */
+.fl-tabsline { display: block; max-width: 100%; color: oklch(62% 0.018 70); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.fl-tabsline .sep { color: oklch(42% 0.014 65); padding: 0 .75ch; }
+button.fl-row { cursor: pointer; }
+button.fl-row:hover { background: oklch(100% 0 0/.045); }
+/* flat + square: the page's global rounded focus ring would read as a web card */
+button.fl-row:focus-visible { outline: none; background: oklch(62% 0.13 45/.1); border-left-color: var(--accent); }
+.fl-row[aria-selected="true"] {
+  background: oklch(62% 0.13 45/.14); border-left-color: var(--accent);
+}
+.fl-row[aria-selected="true"] .lbl { color: oklch(92% 0.04 60); }
+.fl-row[aria-selected="true"] .fl-tabsline { color: oklch(72% 0.02 70); }
+.fl-glyph { color: oklch(60% 0.02 65); }
+.fl-glyph.run { color: oklch(74% 0.14 145); }
+.fl-glyph.wait { color: oklch(80% 0.13 80); }
+.fl-foot { margin-top: auto; padding-top: 14px; color: oklch(50% 0.018 65); font-size: 11.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* Square by default — this is a terminal, not a web card deck. The only
+   rounded thing is the window shell above. */
+/* ---- Workspace: a split tab's two leaves ---- */
+.fl-work { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+/* `hidden` loses to any explicit display, so say it again for the elements
+   the view switcher toggles */
+.fl-work[hidden], .fl-files[hidden], .fl-page[hidden] { display: none; }
+/* Corner name tag: the product tags a leaf only while a split has more than
+   one, top-right, on backgroundElement (TerminalSplit.tsx). */
+.fl-tag {
+  position: absolute; top: 0; right: 0; z-index: 2;
+  padding: 0 1ch; background: oklch(30% 0.022 50); color: oklch(72% 0.06 55);
+}
+
+.fl-panes { display: grid; grid-template-columns: 1.55fr 1fr; gap: 4px; flex: 1; min-width: 0; }
+/* the focused leaf wears the accent border, its sibling stays subtle — that
+   contrast is what says "one tab, split" instead of "two panels" */
+.fl-pane {
+  position: relative; min-width: 0; min-height: 0; overflow: hidden; padding: 10px 12px;
+  border: 1px solid oklch(30% 0.021 50); background: oklch(19% 0.016 50);
+}
+.fl-pane:first-child { border-color: oklch(52% 0.075 45); background: oklch(20.5% 0.018 50); }
+.fl-pane:first-child .fl-tag { color: var(--accent-2); }
+.fl-pane pre { font: inherit; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; color: oklch(79% 0.018 70); }
+.fl-pane .ps { color: oklch(75% 0.13 50); }
+.fl-pane .ok { color: oklch(78% 0.13 145); }
+.fl-pane .wn { color: oklch(80% 0.12 80); }
+.fl-pane .er { color: oklch(72% 0.13 25); }
+.fl-pane .d  { color: oklch(56% 0.02 65); }
+.fl-pane .hi { color: oklch(91% 0.02 80); }
+.fl-cursor { display: inline-block; width: 6px; height: 12px; background: var(--accent-2); vertical-align: -2px; animation: blink 1.1s steps(1) infinite; }
+
+/* ---- Files ---- */
+.fl-files { min-width: 0; }
+.fl-files-head { display: flex; justify-content: flex-end; gap: 2ch; color: oklch(56% 0.02 65); font-size: 11.5px; }
+.fl-files-head .kb { color: oklch(72% 0.07 55); }
+.fl-views { display: flex; gap: 2ch; margin-top: 8px; color: oklch(58% 0.02 65); }
+.fl-views .on { color: var(--accent-2); font-weight: 600; }
+.fl-scope { color: oklch(54% 0.02 65); font-size: 11.5px; padding-bottom: 4px; }
+.fl-file { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 1ch; color: oklch(75% 0.018 70); }
+.fl-file .p { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fl-file .st { white-space: nowrap; }
+.st-m { color: oklch(80% 0.12 80); }
+.st-a { color: oklch(74% 0.14 145); }
+.st-d { color: oklch(72% 0.13 25); }
+.st-q { color: oklch(58% 0.02 65); }
+.add { color: oklch(74% 0.14 145); }
+.del { color: oklch(72% 0.13 25); }
+
+/* ---- status bar: quota left, key hints right (the product's split) ---- */
+.fleet-status {
+  display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap;
+  margin-top: 12px; padding-top: 10px; border-top: 1px solid oklch(28% 0.02 50);
+  color: oklch(52% 0.018 65); font-size: 11.5px;
+}
+.fleet-status b { color: oklch(66% 0.02 65); font-weight: 400; letter-spacing: .08em; }
+.fleet-status .ok { color: oklch(72% 0.13 145); }
+
+.fleet-note { margin: 20px auto 0; max-width: 66ch; color: var(--muted); font-size: 14.5px; text-align: center; }
+.fleet-note strong { color: var(--ink); font-weight: 560; }
+
+
+/* ---- Pages: Kanban and Routines replace the workspace column ----
+   (the real ones render inside it too — the rail stays, Files hides). */
+.fl-page { grid-column: 2 / -1; min-width: 0; min-height: 0; padding: 2px 4px; display: flex; flex-direction: column; }
+/* the split view sets the frame's height; a page must not collapse it */
+.fl-board, .fl-rt { min-height: 0; }
+.fl-page-head { display: flex; justify-content: space-between; align-items: baseline; gap: 2ch; color: oklch(90% 0.02 78); margin-bottom: 8px; }
+.fl-page-head .legend { color: oklch(50% 0.018 65); font-size: 11.5px; font-weight: 400; }
+/* ROUTINES draws a rule between its title and the daemon-hold state */
+.fl-page-head.rt { color: var(--accent-2); letter-spacing: .12em; }
+.fl-page-head .rule { flex: 1; height: 1px; background: oklch(32% 0.022 50); }
+.fl-page-head .hold { color: oklch(72% 0.13 145); letter-spacing: 0; font-size: 11.5px; }
+.fl-proj { display: flex; align-items: baseline; gap: 1.5ch; color: var(--accent-2); margin-bottom: 10px; padding-bottom: 6px; border-bottom: 1px solid oklch(28% 0.02 50); }
+.fl-proj .ct, .fl-proj .path { color: oklch(52% 0.018 65); font-size: 11.5px; }
+.fl-proj .path { margin-left: auto; }
+
+/* Kanban: three bordered columns, `Label (N)` headers */
+.fl-board { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; align-items: stretch; }
+.fl-col { min-width: 0; border: 1px solid oklch(31% 0.022 50); padding: 6px 8px 8px; }
+/* the count is the column's scale, so it stays quiet next to the label */
+.fl-col-head { display: flex; justify-content: space-between; gap: 1ch; margin-bottom: 8px; padding-bottom: 4px; border-bottom: 1px solid oklch(28% 0.02 50); color: oklch(78% 0.02 70); }
+.fl-col-head .n { color: oklch(50% 0.018 65); font-size: 11.5px; }
+.fl-col:nth-child(2) .fl-col-head { color: var(--accent-2); }
+.fl-col:nth-child(3) .fl-col-head { color: oklch(74% 0.14 145); }
+.fl-card {
+  background: oklch(25% 0.019 50); border: 1px solid oklch(32% 0.023 50);
+  padding: 5px 9px 4px; margin-bottom: 6px; color: oklch(88% 0.015 80);
+  transition: border-color 140ms, background 140ms;
+}
+.fl-card:hover { border-color: oklch(44% 0.045 50); background: oklch(27% 0.021 50); }
+.fl-card .t { display: flex; justify-content: space-between; gap: 1ch; align-items: baseline; }
+.fl-card .t b { color: oklch(50% 0.018 65); font-weight: 400; font-size: 11.5px; flex: none; }
+.fl-card .meta { display: flex; justify-content: space-between; align-items: baseline; margin-top: 2px; color: oklch(50% 0.018 65); font-size: 11.5px; }
+/* the done column's cards are history — mute their titles like the product does */
+.fl-col:nth-child(3) .fl-card { color: oklch(66% 0.016 70); }
+.fl-card .hold { color: oklch(80% 0.12 80); font-weight: 400; }
+.fl-card .turn { color: oklch(74% 0.14 145); font-weight: 400; }
+.fl-more { color: oklch(52% 0.018 65); font-size: 11.5px; padding-top: 2px; }
+
+/* Routines: name ── repo · cron, then the detail box */
+.fl-rt-row {
+  display: flex; align-items: baseline; gap: 1.5ch;
+  border: 1px solid oklch(29% 0.021 50); padding: 5px 10px;
+  color: oklch(86% 0.015 80);
+}
+.fl-rt-row + .fl-rt-row { border-top: 0; }
+/* an enabled routine gets a live dot; the cursor row also gets the fill */
+.fl-rt-row .nm::before { content: "● "; color: oklch(74% 0.14 145); }
+.fl-rt-row.paused .nm::before { content: "○ "; color: oklch(52% 0.018 65); }
+.fl-rt-row.on { border-color: oklch(46% 0.055 50); background: oklch(25% 0.02 50); }
+.fl-rt-row .rule { flex: 1; height: 1px; background: oklch(30% 0.021 50); }
+.fl-rt-row .meta { color: oklch(60% 0.02 65); font-size: 11.5px; white-space: nowrap; }
+/* the cron is the routine's actual subject — let it read as code, not as meta */
+.fl-rt-row .meta b { color: oklch(76% 0.07 55); font-weight: 400; }
+.fl-rt-row .when { color: oklch(54% 0.018 65); font-size: 11.5px; white-space: nowrap; min-width: 6ch; text-align: right; }
+.fl-rt-row .pz { color: oklch(80% 0.12 80); font-size: 11.5px; }
+.fl-rt-row.paused .nm { color: oklch(56% 0.018 65); }
+.fl-rt-detail { border: 1px solid oklch(31% 0.022 50); padding: 8px 10px 10px; margin-top: 12px; }
+.fl-rt-prompt { display: flex; justify-content: space-between; align-items: center; gap: 2ch; color: oklch(88% 0.015 80); }
+.fl-rt-prompt .run {
+  color: var(--accent-2); white-space: nowrap; padding: 1px 8px;
+  border: 1px solid oklch(45% 0.06 50); background: oklch(27% 0.025 50);
+}
+/* run rows: number · status · age, each in its own column so they scan down */
+.fl-run { display: flex; gap: 1.5ch; color: oklch(70% 0.018 70); font-size: 11.5px; }
+.fl-run b { color: oklch(52% 0.018 65); font-weight: 400; min-width: 4ch; }
+.fl-run .st { min-width: 16ch; }
+.fl-run .ago { color: oklch(52% 0.018 65); }
+.fl-run .ok { color: oklch(74% 0.14 145); }
+.fl-run .wn { color: oklch(80% 0.12 80); }
+.fl-sec { color: oklch(74% 0.02 70); letter-spacing: .12em; font-size: 11.5px; margin: 10px 0 4px; }
+
+/* Inbox: the one true overlay — a centred dialog over the whole frame */
+.fl-modal { position: absolute; inset: 0; z-index: 30; display: flex; justify-content: center; align-items: flex-start; padding-top: 8%; background: oklch(14% 0.01 50/.55); }
+.fl-modal[hidden] { display: none; }
+.fl-dialog { width: min(80ch, 92%); background: oklch(21% 0.018 50); border: 1px solid oklch(38% 0.026 50); padding: 8px 12px 10px; }
+.fl-dlg-head { display: flex; justify-content: space-between; color: oklch(56% 0.02 65); margin-bottom: 6px; }
+.fl-dlg-head b { color: var(--accent-2); letter-spacing: .12em; }
+.fl-dlg-head .esc {
+  border: 0; background: transparent; font: inherit; cursor: pointer;
+  color: oklch(52% 0.018 65); padding: 0 4px; transition: color 140ms;
+}
+.fl-dlg-head .esc:hover { color: var(--accent-2); }
+.fl-dlg-head .esc:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
+.fl-dlg-foot { margin-top: 10px; color: oklch(52% 0.018 65); font-size: 11.5px; }
+/* every card is two rows with a ▌ gutter repeated down both */
+.fl-item { display: flex; gap: 1ch; padding: 2px 0; color: oklch(86% 0.015 80); }
+.fl-item .cur { color: var(--accent-2); }
+.fl-item .b { flex: 1; min-width: 0; }
+.fl-item .id { display: flex; align-items: baseline; gap: 1ch; }
+.fl-item .sub { display: block; color: oklch(54% 0.018 65); font-size: 11.5px; }
+.fl-item .age { margin-left: auto; color: oklch(52% 0.018 65); font-size: 11.5px; }
+.fl-item .bdg { color: oklch(56% 0.02 65); font-size: 11.5px; }
+.fl-item .bdg.wn { color: oklch(80% 0.12 80); }
+.fl-item .bdg.ok { color: oklch(74% 0.14 145); }
+.fl-item.sel { background: oklch(62% 0.13 45/.13); }
+
+/* nav rows are real controls; active = solid accent fill (chrome.tsx) */
+.fl-nav { display: block; width: 100%; text-align: left; border: 0; background: transparent; font: inherit; color: oklch(70% 0.018 70); cursor: pointer; padding: 0 10px; }
+.fl-nav.inbox { display: inline; width: auto; padding: 0 .4ch; color: oklch(58% 0.02 65); font-size: 11.5px; letter-spacing: .1em; }
+.fl-nav:hover { color: oklch(88% 0.02 78); }
+.fl-nav:focus-visible { outline: 1px solid var(--accent); outline-offset: -1px; }
+.fl-nav[aria-pressed="true"] { background: var(--accent); color: oklch(20% 0.02 50); font-weight: 600; }
+.fl-nav.inbox[aria-pressed="true"] { padding: 0 .6ch; }
+/* while a page owns the column the rail's task selection is not the subject */
+.fl-rail.page-open .fl-row[aria-selected="true"] { background: transparent; border-left-color: oklch(40% 0.02 55); }
+.fl-rail.page-open .fl-row[aria-selected="true"] .lbl { color: oklch(87% 0.015 80); }
+
+/* ---- responsive (last, so it overrides the page rules above) ----- */
+
+/* ---- Zen mode ----------------------------------------------------------
+   Zen hides the Files pane and lets the workspace use the freed width
+   (docs/TUI.md:28, host.tsx:448). The Tasks rail deliberately STAYS —
+   `zen.keepTasks` defaults true so the ☯ ZEN chip remains reachable as the
+   way back out (state/zen.ts). Width animates so the change is legible. */
+.fleet-cols { transition: grid-template-columns 320ms var(--ease-out); }
+.fleet-frame.zen .fleet-cols { grid-template-columns: 27ch minmax(0, 1fr); }
+.fl-files { transition: opacity 220ms var(--ease-out); }
+.fleet-frame.zen .fl-files { opacity: 0; pointer-events: none; }
+
+/* the [~] chip in the Files header — an action, styled like the product's */
+.fl-zen {
+  border: 0; background: transparent; font: inherit; cursor: pointer;
+  color: oklch(56% 0.02 65); padding: 0; transition: color 140ms;
+}
+.fl-zen:hover { color: oklch(88% 0.02 78); }
+.fl-zen:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
+.fl-zen .kb { color: oklch(72% 0.07 55); }
+
+/* the rail's ☯ ZEN chip — visible only in zen, and the exit affordance */
+.fl-zenchip {
+  align-self: flex-start; margin-top: 12px; padding: 1px 8px;
+  border: 1px solid oklch(45% 0.06 50); background: oklch(27% 0.025 50);
+  color: var(--accent-2); font: inherit; font-weight: 600; cursor: pointer;
+  transition: background 140ms, border-color 140ms;
+}
+.fl-zenchip[hidden] { display: none; }
+.fl-zenchip:hover { background: oklch(32% 0.035 50); border-color: oklch(55% 0.08 48); }
+.fl-zenchip:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
+
+/* ---- responsive: LAST, so it overrides the zen/page rules above ---- */
+@media (max-width: 1040px) { .fleet-cols { grid-template-columns: 25ch minmax(0, 1fr); } .fl-files { display: none; } }
+@media (max-width: 780px) {
+  .fleet-cols, .fleet-frame.zen .fleet-cols { grid-template-columns: minmax(0, 1fr); gap: 12px; min-height: 0; }
+  /* stacked: one column, each pane on its own row */
+  .fl-rail, .fl-work, .fl-files, .fl-page { grid-row: auto; grid-column: 1; }
+  .fl-pane { min-height: 12rem; }
+  .fl-panes { grid-template-columns: 1fr; }
+  /* three kanban columns in 420px is four words per line — stack them */
+  .fl-page { grid-column: 1; }
+  .fl-board { grid-template-columns: minmax(0, 1fr); }
+  .fl-page-head .legend, .fl-rt-row .rule, .fl-page-head .rule { display: none; }
+  .fl-rt-row { flex-wrap: wrap; }
+  .fl-rail { border-bottom: 1px solid oklch(31% 0.022 50); padding-bottom: 10px; }
+  .fl-rail .fl-foot { display: none; }
+}
+@media (max-width: 560px) { .fleet-frame { font-size: 11.5px; } .fleet-eyebrow { flex-direction: column; gap: 4px; } }
