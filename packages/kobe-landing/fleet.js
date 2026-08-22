@@ -266,9 +266,9 @@
   function applyZen() {
     frame.classList.toggle('zen', zen);
     // zen drops Files from the grid entirely (host.tsx:448 hides the pane, it
-    // does not merely dim it) — the `.zen` column rule is what frees the width
+    // does not merely dim it) — leaving it in would keep its column track
     var files = document.getElementById('fleetFiles');
-    if (!frame.querySelector('.fl-page:not([hidden])')) files.hidden = false;
+    files.hidden = zen || !!frame.querySelector('.fl-page:not([hidden])');
     zenOff.hidden = !zen;
     zenOn.setAttribute('aria-pressed', String(zen));
     // the note says "pick a task on the left" either way — the rail survives
