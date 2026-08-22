@@ -1,6 +1,6 @@
 /**
  * `kanban.*` messages — the TUI kanban page (daemon-owned issues as a
- * Backlog / In progress / Done board) and its issue-detail drawer.
+ * Backlog / In progress / Parked / Done board) and its issue-detail drawer.
  */
 
 export const en = {
@@ -15,12 +15,15 @@ export const en = {
   column: {
     backlog: "Backlog",
     inProgress: "In progress",
+    /** `hold` (and unknown-status) stories — work stopped on purpose. */
+    parked: "Parked",
     done: "Done",
   },
-  /** Done-column overflow note. `{count}` = hidden issue count. */
+  /** Parked/Done column overflow note. `{count}` = hidden issue count. */
   more: "+{count} more",
-  /** Badge on a Backlog card whose stored status is `hold`. */
-  hold: "hold",
+  /** In-progress column header suffix when linked engines are blocked on the
+   *  user (permission / rate limit / error). `{count}` = blocked card count. */
+  attention: "{count} need you",
   /** In-progress card badge: the linked task's engine finished a turn
    *  (waiting on review/input) but the story isn't `done` yet. */
   turnComplete: "turn done",
@@ -87,10 +90,11 @@ export const zh: typeof en = {
   column: {
     backlog: "待办",
     inProgress: "进行中",
+    parked: "搁置",
     done: "已完成",
   },
   more: "还有 {count} 条",
-  hold: "搁置",
+  attention: "{count} 张等你处理",
   turnComplete: "回合完成",
   detail: {
     status: {

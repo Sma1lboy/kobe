@@ -3,7 +3,7 @@ name: rove
 description: Use when controlling Rove tasks, parallel coding attempts, hosted agent sessions, task lifecycle, or the daemon-owned issue tracker from a shell. Also the ONLY channel for messaging another agent session on this machine — `rove api send`, never a peer/MCP side channel.
 ---
 
-<!-- rove-skill-version: 29 — bump in lockstep with KOBE_SKILL_VERSION (src/lib/skill-install.ts). -->
+<!-- rove-skill-version: 30 — bump in lockstep with KOBE_SKILL_VERSION (src/lib/skill-install.ts). -->
 
 # Rove shell control
 
@@ -53,6 +53,14 @@ lifecycle tracking, and an explicit outcome contract.
   receiver should treat as content, not conversation). Received a
   `[KOBE PEER]` message yourself? Load this skill first — required, not
   optional — then reply with the baked-in command, not by asking the user.
+- `send` carries text, but that text can carry FILES: peers share a
+  filesystem, so put the absolute path of a screenshot, log, diff, or any
+  artifact in the prompt and the receiver opens it with its own Read tool —
+  images included. An annotated screenshot beats a paragraph describing one;
+  prefer "see /path/to/shot.png — the arrow marks the broken card" over
+  re-narrating pixels. Paths under the sender's Worktree work too (worktrees
+  are world-readable locally); just never expect the receiver to WRITE
+  there.
 - `dispatch` stays the dispatcher's verb (deliver-only into an
   already-hosted session; never impersonate the user in someone else's
   terminal).

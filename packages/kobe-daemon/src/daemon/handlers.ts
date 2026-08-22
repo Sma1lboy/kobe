@@ -139,6 +139,10 @@ export interface DaemonHandlerContext {
     readonly pid: number
     /** Attached-GUI refcount (reported as `attachedClients`). */
     guiCount(): number
+    /** Every attached client, GUI or pane. `session.deliver` is performed by
+     *  whichever client hosts the session, so this — not the GUI refcount —
+     *  is what says a dispatch could reach anyone. */
+    clientCount(): number
     /** Graceful self-stop (`daemon.stop`). */
     stopSoon(): Promise<void>
     /** Re-check idle shutdown after a keep-alive hold may have been released
@@ -343,6 +347,13 @@ export function createDaemonHandlerRegistry(): ReadonlyMap<DaemonRequestName, Da
           startedAt: ctx.daemon.startedAt.toISOString(),
           activity: ctx.activity.debugSnapshot(),
           attachedClients: ctx.daemon.guiCount(),
+          // Total connections, GUI and pane. `session.deliver` (what `api
+          // dispatch` publishes) is only ever PERFORMED by an attached
+          // client, so 0 here proves a dispatch reached nobody while still
+          // answering `ok: true` — the shape that makes "I answered it and
+          // the badge never cleared" unreadable from every other field.
+          // Non-zero is not proof of the converse: a calling CLI counts.
+          connectedClients: ctx.daemon.clientCount(),
         }
       },
     },

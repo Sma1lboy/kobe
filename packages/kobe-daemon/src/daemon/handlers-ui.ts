@@ -40,7 +40,17 @@ export const UI_HANDLERS: readonly DaemonRequestHandler[] = [
         at: Date.now(),
         source: source ?? "dispatcher",
       })
-      return { ok: true }
+      // Report reach, don't just claim success. `session.deliver` is
+      // broadcast-only — an attached client performs the paste — so with
+      // nothing listening the text goes into the void while the caller still
+      // reads `ok: true`. That is how a dispatched answer goes missing and
+      // leaves a `permission_needed` badge stranded.
+      //
+      // `clients` counts CONNECTIONS, which is a weak proxy: the calling CLI
+      // is itself one, so 1 does not prove a session host is listening. It
+      // still distinguishes the unambiguous 0 case, and the caller can
+      // confirm a real host with `api pty-list`.
+      return { ok: true, clients: ctx.daemon.clientCount() }
     },
   },
   {

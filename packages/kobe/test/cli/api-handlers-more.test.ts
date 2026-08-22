@@ -317,6 +317,30 @@ describe("dispatch / note delivery verbs", () => {
     expect(result).toEqual({ ok: true, taskId: "t1", routed: "session.deliver" })
   })
 
+  // A dispatch that reached nobody must SAY so. session.deliver is
+  // broadcast-only (an attached client performs the paste), so a bare
+  // `ok: true` reads identically whether the engine saw the text or it went
+  // into the void — which is how an answer dispatched at a permission prompt
+  // goes missing and strands the badge. An older daemon omits `clients`;
+  // absent must stay absent rather than being guessed as delivered.
+  it("dispatch reports the daemon's reach, and omits it when the daemon is old", async () => {
+    const reached = new FakeClient({ "session.deliver": () => ({ clients: 0 }) })
+    expect(
+      await invokeVerb("dispatch", ["--task-id", "t1", "--prompt", "red"], {
+        client: reached,
+        runtime: stubRuntime(),
+      }),
+    ).toEqual({ ok: true, taskId: "t1", routed: "session.deliver", clients: 0 })
+
+    const old = new FakeClient({ "session.deliver": () => ({}) })
+    expect(
+      await invokeVerb("dispatch", ["--task-id", "t1", "--prompt", "red"], {
+        client: old,
+        runtime: stubRuntime(),
+      }),
+    ).toEqual({ ok: true, taskId: "t1", routed: "session.deliver" })
+  })
+
   it("dispatch --tab carries the exact tab through the payload and the result", async () => {
     const client = new FakeClient({ "session.deliver": () => ({}) })
     const result = await invokeVerb("dispatch", ["--task-id", "t1", "--tab", "tab-3", "--prompt", "status?"], {

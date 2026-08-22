@@ -58,6 +58,7 @@
     "./daemon/quota-usage-cache": "./src/daemon/quota-usage-cache.ts",
     "./daemon/runtime": "./src/daemon/runtime.ts",
     "./daemon/server": "./src/daemon/server.ts",
+    "./daemon/status-disposition": "./src/daemon/status-disposition.ts",
     "./daemon/transcript-activity-collector": "./src/daemon/transcript-activity-collector.ts",
     "./daemon/ui-prefs-watcher": "./src/daemon/ui-prefs-watcher.ts",
     "./daemon/web-rpc-allowlist": "./src/daemon/web-rpc-allowlist.ts",

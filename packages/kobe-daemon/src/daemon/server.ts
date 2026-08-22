@@ -379,6 +379,7 @@ export async function startDaemonServer(orch: DaemonOrchestrator, options: Daemo
         webError,
         pid: process.pid,
         guiCount: () => lifetime.guiCount(),
+        clientCount: () => clients.size + webClients.size,
         stopSoon,
         reevaluateIdle: () => lifetime.reevaluateIdle(),
       },

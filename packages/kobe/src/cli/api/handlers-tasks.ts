@@ -165,13 +165,24 @@ export async function dispatch(ctx: VerbContext): Promise<unknown> {
   const taskId = ctx.args.require("task-id")
   const text = ctx.args.require("prompt")
   const tabId = ctx.args.str("tab")
-  await daemon.request("session.deliver", {
+  const reply = (await daemon.request("session.deliver", {
     taskId,
     text,
     ...(tabId !== undefined ? { tabId } : {}),
     source: "dispatcher",
-  })
-  return { ok: true, taskId, ...(tabId !== undefined ? { tabId } : {}), routed: "session.deliver" }
+  })) as { clients?: number } | undefined
+  // Surface the daemon's reach verdict. `session.deliver` is broadcast-only
+  // (an attached client performs the paste), so `clients: 0` means the text
+  // reached nobody — the caller must not read `ok` as "the engine saw it".
+  // An older daemon omits the field; absent stays absent rather than being
+  // guessed either way.
+  return {
+    ok: true,
+    taskId,
+    ...(tabId !== undefined ? { tabId } : {}),
+    routed: "session.deliver",
+    ...(reply?.clients !== undefined ? { clients: reply.clients } : {}),
+  }
 }
 
 /** The verb spec lives beside its handler (PANE_VERB pattern) so verbs.ts

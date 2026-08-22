@@ -210,6 +210,50 @@ or the shared `.dev-sandbox/home`. Local Terminal screenshots, native
 approve visual changes; `test:e2e` (dev:mock) stays a PTY-transport smoke only.
 Failure artifacts land in `packages/kobe-web/test-results/` (actual/diff/trace).
 
+### Driving a live engine to observe STATE
+
+The journey above proves what the TUI renders. A different class of bug —
+"the badge never cleared after I answered" — needs a real vendor engine
+running, answered by a real keypress, while the daemon's state is sampled
+across the moment. The same harness carries it; the trap is that almost every
+shortcut around it silently measures nothing.
+
+What actually works:
+
+- **Drive keys through the browser.** Chrome MCP over HTTP works even when a
+  tool session has expired — `initialize`, keep the `mcp-session-id` header,
+  then `tools/call`. Read the screen from `.xterm-rows`, and send keys by
+  clicking `.xterm-screen` first, then targeting `.xterm-helper-textarea`.
+  A page-level keypress does not reach the terminal.
+- **Sample state from the daemon, not the screen.** `rove api inspect` reports
+  both levels; a tab badge and its task rollup can disagree, and that
+  disagreement is usually the bug.
+
+What silently produces a false result:
+
+- **`api read-output` for a vendor TUI.** Claude and Codex run on the alternate
+  screen, so the text tail is escape-code noise (`">0q"`) no matter how healthy
+  the session is. Absence of output is not absence of a dialog.
+- **`api dispatch` as a stand-in for typing.** It publishes on
+  `session.deliver`, which an attached client performs — with nobody attached
+  the text goes nowhere and the call still answers `ok`. It also pastes text,
+  which cannot select an option in a permission dialog. Check the reported
+  `clients` count.
+- **A non-TTY engine.** Claude exposes no AskUserQuestion tool unless stdin is
+  a terminal; piped, it answers in prose and the dialog never exists.
+- **Answering too fast.** The vendor notification that produces
+  `permission_needed` fires only after ~6s of user idle
+  (`DEFAULT_INTERACTION_THRESHOLD_MS`), so an instant reply reproduces a state
+  the user never sees. Let the dialog sit.
+
+Isolation for this mode is stricter than `KOBE_HOME_DIR` alone: the engine's
+hook commands invoke whichever `kobe`/`rove` is on PATH, which resolves its own
+socket, so a sandbox daemon never sees the events. Inline the socket path and
+the source CLI into the hook command itself. A fresh HOME also needs
+`hasCompletedOnboarding` seeded and its folder-trust gate answered, and
+`KOBE_PTY_DEV_COMMAND` must be a script path — nested quotes are lost when the
+dev server re-spawns the sidecar.
+
 ## Terminal endurance probe
 
 `perf:golden` stays the fast release doctor. For multi-tab retention and

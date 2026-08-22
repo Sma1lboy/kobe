@@ -10,9 +10,13 @@ import { useEffect, useMemo } from "react"
 import type { TaskEngineState } from "../../client/remote-orchestrator-payloads"
 import { useAccessor } from "../lib/use-accessor"
 import {
+  answeredTabsStore,
+  clearAnsweredTabs,
   clearOptimisticMark,
+  mergeAnsweredTabs,
   mergeOptimisticActivity,
   optimisticActivityStore,
+  supersededAnswers,
   supersededMarks,
 } from "./optimistic-activity"
 
@@ -24,5 +28,22 @@ export function useOptimisticEngineState(
   useEffect(() => {
     for (const taskId of supersededMarks(engineState, optimisticMarks)) clearOptimisticMark(taskId)
   }, [engineState, optimisticMarks])
+  return merged
+}
+
+/**
+ * The per-TAB sibling: hide `permission_needed` on a tab the user has already
+ * answered. Needed separately because the task entry is a last-event-wins
+ * rollup — a sibling tab's activity moves it, so the badge that strands is the
+ * tab's, which {@link useOptimisticEngineState} cannot reach.
+ */
+export function useAnsweredTabStates(
+  tabStates: ReadonlyMap<string, ReadonlyMap<string, TaskEngineState>>,
+): ReadonlyMap<string, ReadonlyMap<string, TaskEngineState>> {
+  const answers = useAccessor(answeredTabsStore)
+  const merged = useMemo(() => mergeAnsweredTabs(tabStates, answers), [tabStates, answers])
+  useEffect(() => {
+    clearAnsweredTabs(supersededAnswers(tabStates, answers))
+  }, [tabStates, answers])
   return merged
 }
