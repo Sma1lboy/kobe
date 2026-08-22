@@ -142,6 +142,7 @@ export function fakeCtx(orch: Record<string, unknown> = {}): {
       socketPath: "/tmp/fake/daemon.sock",
       pid: 4242,
       guiCount: () => 1,
+      clientCount: () => 1,
       stopSoon: async () => {
         rec.stopped++
       },
