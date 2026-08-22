@@ -13,6 +13,12 @@
 
 /** Cell width of a single Unicode code point: 0 (zero-width), 2 (wide), or 1. */
 export function charWidth(cp: number): number {
+  // Non-printing controls: C0 (U+0000–U+001F), DEL (U+007F), C1 (U+0080–U+009F).
+  // wcwidth treats these as non-printing (width 0), not one cell — a stray
+  // control byte in a task title or exported cell must not shove every column
+  // to its right one over. The embedded-terminal grid guards each call with
+  // `charWidth(...) || 1`, so its cursor mapping keeps a one-cell floor here.
+  if (cp < 0x20 || (cp >= 0x7f && cp <= 0x9f)) return 0
   // Zero-width: combining marks + bidi/format controls + variation selectors.
   if (
     (cp >= 0x0300 && cp <= 0x036f) || // combining diacritical marks

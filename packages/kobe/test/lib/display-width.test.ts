@@ -27,6 +27,21 @@ describe("charWidth", () => {
     expect(charWidth("😀".codePointAt(0) as number)).toBe(2) // U+1F600
   })
 
+  it("counts C0 / DEL / C1 control characters as zero (non-printing)", () => {
+    // wcwidth treats controls as non-printing, not one cell. A stray control
+    // byte in a task title or exported cell must not advance the column count.
+    expect(charWidth(0x00)).toBe(0) // NUL
+    expect(charWidth(0x09)).toBe(0) // TAB (C0)
+    expect(charWidth(0x1b)).toBe(0) // ESC (C0)
+    expect(charWidth(0x1f)).toBe(0) // C0 ceiling
+    expect(charWidth(0x7f)).toBe(0) // DEL
+    expect(charWidth(0x80)).toBe(0) // C1 floor
+    expect(charWidth(0x85)).toBe(0) // NEL (C1)
+    expect(charWidth(0x9f)).toBe(0) // C1 ceiling
+    expect(charWidth(0x20)).toBe(1) // space — first printable just past C0
+    expect(charWidth(0xa0)).toBe(1) // no-break space — first printable past C1
+  })
+
   it("counts combining diacritical / bidi / variation-selector marks as zero", () => {
     expect(charWidth(0x0301)).toBe(0) // combining acute accent
     expect(charWidth(0x200b)).toBe(0) // zero-width space
@@ -114,6 +129,15 @@ describe("displayWidth", () => {
 
   it("does not count a combining half mark as an extra cell", () => {
     expect(displayWidth("a︦")).toBe(1) // base glyph + zero-width mark
+  })
+
+  it("does not count control characters toward a string's cell width", () => {
+    // A stray control byte occupies no columns; only the visible glyphs do.
+    // (This zeroes the control code point itself, not a full ANSI sequence —
+    // the printable `[0m` tail of an escape still measures normally.)
+    expect(displayWidth("a\x1bb")).toBe(2) // ESC between two glyphs adds nothing
+    expect(displayWidth("a\x00b")).toBe(2) // NUL between two glyphs adds nothing
+    expect(displayWidth("\x07中")).toBe(2) // BEL is free; the wide glyph is 2
   })
 
   it("counts an astral character once, not as two UTF-16 units", () => {
