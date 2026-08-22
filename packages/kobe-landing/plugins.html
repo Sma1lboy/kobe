@@ -191,11 +191,23 @@ h1{font-family:var(--font-display);font-optical-sizing:auto;font-size:clamp(38px
 code{font-family:var(--font-mono);font-size:12.5px;background:var(--accent-wash);border:1px solid oklch(62% 0.13 45/.18);border-radius:5px;padding:1px 6px;color:oklch(46% 0.11 45);overflow-wrap:anywhere}
 
 /* ============ FOOTER ============ */
-.foot-dense{border-top:1px solid var(--line);background:var(--surface);padding:32px 0;margin-top:clamp(70px,9vw,110px);font-size:13px;color:var(--faint)}
-.foot-dense p{max-width:1160px;margin:0 auto;padding:0 clamp(20px,4vw,52px);line-height:1.8}
+/* ============ FOOTER ============
+   Two blocks, not one paragraph: identity on the left, navigation on the
+   right. The links were prose-colored and underlined, so they read as part
+   of the colophon sentence — they get the navbar's mono treatment instead,
+   which is the vocabulary the rest of the page already uses for controls. */
+.foot-dense{border-top:1px solid var(--line);background:var(--surface);padding:40px 0;margin-top:clamp(70px,9vw,110px);font-size:13px;color:var(--faint)}
+.foot-inner{max-width:1160px;margin:0 auto;padding:0 clamp(20px,4vw,52px);display:flex;flex-wrap:wrap;justify-content:space-between;gap:22px 44px}
+.foot-id{max-width:56ch;line-height:1.7}
 .foot-dense .mark{font-family:var(--font-mono);color:var(--accent)}
-.foot-dense a{border-bottom:1px solid var(--line-2);transition:color 140ms,border-color 140ms}
-.foot-dense a:hover{color:var(--ink);border-color:var(--accent-line)}
+.foot-dense .tagline{color:var(--ink-soft)}
+/* the colophon is credits, not a claim — its own line, one step quieter */
+.foot-colophon{display:block;margin-top:7px;font-size:12px;color:var(--faint)}
+/* no margin-left:auto — space-between already right-aligns it on one line,
+   and once it wraps to its own row the auto margin would strand it right */
+.foot-links{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px;font-family:var(--font-mono);font-size:12.5px}
+.foot-links a{color:var(--muted);padding:5px 11px;transition:color 140ms,background 140ms}
+.foot-links a:hover{color:var(--accent);background:var(--accent-wash)}
 
 @media (prefers-reduced-motion: reduce){
   *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
@@ -305,7 +317,19 @@ code{font-family:var(--font-mono);font-size:12.5px;background:var(--accent-wash)
 
 <!-- FOOTER · dense colophon -->
 <footer class="foot-dense">
-  <p><span class="mark">[Rove]</span> — <span data-i18n="footer.tagline">graph engineering for coding agents, terminal-native.</span> <span data-i18n="footer.colophon">Built with Bun, OpenTUI and React. Set in Fraunces, DM Sans and JetBrains Mono. MIT licensed.</span> <a href="https://github.com/Sma1lboy/rove">GitHub</a> · <a href="https://www.npmjs.com/package/@sma1lboy/rove">npm</a> · <a href="/changelog" data-i18n="footer.changelog">changelog</a> · <a href="https://github.com/Sma1lboy/rove/blob/main/docs/KEYBINDINGS.md" data-i18n="footer.keybindings">keybindings</a></p>
+  <div class="foot-inner">
+    <p class="foot-id">
+      <span class="mark">[Rove]</span> <span class="tagline" data-i18n="footer.tagline">graph engineering for coding agents, terminal-native.</span>
+      <span class="foot-colophon" data-i18n="footer.colophon">Built with Bun, OpenTUI and React. Set in Fraunces, DM Sans and JetBrains Mono. MIT licensed.</span>
+    </p>
+    <nav class="foot-links" aria-label="Footer">
+      <a href="https://github.com/Sma1lboy/rove" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://www.npmjs.com/package/@sma1lboy/rove" target="_blank" rel="noopener">npm</a>
+      <a href="/themes" data-i18n="footer.themesLink">themes</a>
+      <a href="/changelog" data-i18n="footer.changelog">changelog</a>
+      <a href="https://github.com/Sma1lboy/rove/blob/main/docs/KEYBINDINGS.md" target="_blank" rel="noopener" data-i18n="footer.keybindings">keybindings</a>
+    </nav>
+  </div>
 </footer>
 
 <script>
@@ -341,7 +365,7 @@ code{font-family:var(--font-mono);font-size:12.5px;background:var(--accent-wash)
       'pub.s3': '<b>就这样。</b>下次有人打开这个页面时它就出现了，任何人都能跑 <code>rove plugin install you/your-repo</code>。',
       'footer.tagline': '终端原生的编码代理图工程。',
       'footer.colophon': '用 Bun、OpenTUI 和 React 构建。字体为 Fraunces、DM Sans 与 JetBrains Mono。MIT 许可。',
-      'footer.changelog': '更新日志', 'footer.keybindings': '快捷键',
+      'footer.themesLink': '主题', 'footer.changelog': '更新日志', 'footer.keybindings': '快捷键',
     };
     var en = {
       'meta.title': 'Rove — plugins',
@@ -373,7 +397,7 @@ code{font-family:var(--font-mono);font-size:12.5px;background:var(--accent-wash)
       'pub.s3': '<b>Done.</b> It shows up on this page on the next load, and anyone can run <code>rove plugin install you/your-repo</code>.',
       'footer.tagline': 'graph engineering for coding agents, terminal-native.',
       'footer.colophon': 'Built with Bun, OpenTUI and React. Set in Fraunces, DM Sans and JetBrains Mono. MIT licensed.',
-      'footer.changelog': 'changelog', 'footer.keybindings': 'keybindings',
+      'footer.themesLink': 'themes', 'footer.changelog': 'changelog', 'footer.keybindings': 'keybindings',
     };
     var dicts = { en: en, zh: zh };
     var lang = 'en';

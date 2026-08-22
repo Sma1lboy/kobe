@@ -43,7 +43,7 @@ var KOBE_I18N = (function () {
     'copy.hint': '点击复制', 'copy.done': '已复制',
     'footer.tagline': '终端原生的编码代理图工程。',
     'footer.themes': '预览由每个主题真实的配色文件渲染，不是截图。',
-    'footer.changelog': '更新日志', 'footer.themedocs': '主题文档', 'footer.keybindings': '快捷键',
+    'footer.plugins': '插件', 'footer.changelog': '更新日志', 'footer.themedocs': '主题文档', 'footer.keybindings': '快捷键',
   };
   var en = {
     'meta.title': 'Rove — themes',
@@ -87,7 +87,7 @@ var KOBE_I18N = (function () {
     'copy.hint': 'click to copy', 'copy.done': 'copied',
     'footer.tagline': 'graph engineering for coding agents, terminal-native.',
     'footer.themes': "Previews are rendered from each theme's real color file, not screenshots.",
-    'footer.changelog': 'changelog', 'footer.themedocs': 'theme docs', 'footer.keybindings': 'keybindings',
+    'footer.plugins': 'plugins', 'footer.changelog': 'changelog', 'footer.themedocs': 'theme docs', 'footer.keybindings': 'keybindings',
   };
   var dicts = { en: en, zh: zh };
   var lang = 'en';
