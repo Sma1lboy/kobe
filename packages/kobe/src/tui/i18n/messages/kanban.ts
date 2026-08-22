@@ -19,6 +19,9 @@ export const en = {
   },
   /** Done-column overflow note. `{count}` = hidden issue count. */
   more: "+{count} more",
+  /** In-progress column header suffix when linked engines are blocked on the
+   *  user (permission / rate limit / error). `{count}` = blocked card count. */
+  attention: "{count} need you",
   /** Badge on a Backlog card whose stored status is `hold`. */
   hold: "hold",
   /** In-progress card badge: the linked task's engine finished a turn
@@ -90,6 +93,7 @@ export const zh: typeof en = {
     done: "已完成",
   },
   more: "还有 {count} 条",
+  attention: "{count} 张等你处理",
   hold: "搁置",
   turnComplete: "回合完成",
   detail: {

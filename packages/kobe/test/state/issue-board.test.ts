@@ -12,6 +12,7 @@ import type { Issue } from "@sma1lboy/kobe-daemon/daemon/issues-store"
 import { describe, expect, test } from "vitest"
 import {
   DONE_COLUMN_CAP,
+  applyBoardAttention,
   buildIssueBoard,
   compareIssues,
   issueColumnKey,
@@ -67,6 +68,65 @@ describe("buildIssueBoard", () => {
     const bl = board.find((col) => col.key === "backlog")
     expect(bl?.issues.length).toBe(DONE_COLUMN_CAP + 5)
     expect(bl?.hiddenCount).toBe(0)
+  })
+})
+
+describe("applyBoardAttention", () => {
+  // in_progress (newest-first post-build): 3, 2, 1 · backlog: 10 · done: 20.
+  const base = buildIssueBoard([
+    issue({ id: 1, created: "2026-07-01", taskId: "T1" }),
+    issue({ id: 2, created: "2026-07-02", taskId: "T2" }),
+    issue({ id: 3, created: "2026-07-03", taskId: "T3" }),
+    issue({ id: 10 }),
+    issue({ id: 20, status: "done", taskId: "T20" }),
+  ])
+  const inProgress = (cols: readonly ReturnType<typeof buildIssueBoard>[number][]) =>
+    cols.find((c) => c.key === "in_progress")?.issues.map((i) => i.id)
+
+  test("floats blocked cards to the column head, stable within both groups", () => {
+    const states = new Map([
+      ["T1", "permission_needed"],
+      ["T2", "running"],
+    ])
+    const { columns, attentionCount } = applyBoardAttention(base, (id) => states.get(id))
+    expect(inProgress(columns)).toEqual([1, 3, 2])
+    expect(attentionCount).toBe(1)
+  })
+
+  test("all attention states float; running/turn_complete/idle do not", () => {
+    const states = new Map([
+      ["T1", "error"],
+      ["T2", "rate_limited"],
+      ["T3", "turn_complete"],
+    ])
+    const { columns, attentionCount } = applyBoardAttention(base, (id) => states.get(id))
+    expect(inProgress(columns)).toEqual([2, 1, 3])
+    expect(attentionCount).toBe(2)
+  })
+
+  test("no attention → columns unchanged (same references), count 0", () => {
+    const { columns, attentionCount } = applyBoardAttention(base, () => "running")
+    expect(columns).toEqual(base)
+    expect(columns[1]).toBe(base[1])
+    expect(attentionCount).toBe(0)
+  })
+
+  test("a vanished task (undefined state) stays in place", () => {
+    const { columns, attentionCount } = applyBoardAttention(base, () => undefined)
+    expect(inProgress(columns)).toEqual([3, 2, 1])
+    expect(attentionCount).toBe(0)
+  })
+
+  test("done and backlog columns are never partitioned, even with blocked links", () => {
+    const { columns } = applyBoardAttention(base, () => "permission_needed")
+    expect(columns.find((c) => c.key === "done")?.issues.map((i) => i.id)).toEqual([20])
+    expect(columns.find((c) => c.key === "backlog")?.issues.map((i) => i.id)).toEqual([10])
+  })
+
+  test("empty board is a no-op", () => {
+    const { columns, attentionCount } = applyBoardAttention(buildIssueBoard([]), () => "error")
+    expect(columns.every((c) => c.issues.length === 0)).toBe(true)
+    expect(attentionCount).toBe(0)
   })
 })
 

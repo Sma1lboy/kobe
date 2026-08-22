@@ -25,7 +25,13 @@ import type { RemoteOrchestrator, TaskEngineState } from "../../client/remote-or
 import { availableEngineIds } from "../../engine/account-detect"
 import type { TaskActivityState } from "../../engine/hook-events"
 import { engineDisplayName } from "../../engine/interactive-command"
-import { type BoardColumnKey, buildIssueBoard, moveBoardSelection } from "../../state/issue-board"
+import {
+  type BoardColumnKey,
+  applyBoardAttention,
+  buildIssueBoard,
+  isBoardAttentionState,
+  moveBoardSelection,
+} from "../../state/issue-board"
 import { sidebarProjectLabel } from "../../tui/panes/sidebar/groups"
 import type { VendorId } from "../../types/task"
 import { useTheme } from "../context/theme"
@@ -143,7 +149,11 @@ export function KanbanPage(props: {
   )
   const activeBoard: RepoIssues | undefined = boardList[activeIndex]
   const repoRoots = boardList.map((board) => board.repoRoot)
-  const columns = activeBoard ? buildIssueBoard(activeBoard.issues) : []
+  // Rendering-only attention float: blocked-on-you cards lead In progress.
+  const { columns, attentionCount } = applyBoardAttention(
+    activeBoard ? buildIssueBoard(activeBoard.issues) : [],
+    (taskId) => props.engineStates?.get(taskId)?.state,
+  )
 
   // Card cursor — an issue id (not an index) so a poll refetch that reorders
   // a column keeps the selection on the same story.
@@ -326,6 +336,10 @@ export function KanbanPage(props: {
     // the stay-on-the-board half of the background-start trigger.
     const activity = column === "in_progress" && issue.taskId ? props.engineStates?.get(issue.taskId)?.state : undefined
     const badge = activity ? ACTIVITY_BADGE[activity] : undefined
+    // Attention cards (blocked on the user — floated to the column head by
+    // applyBoardAttention) carry a warning border so the group reads as one
+    // block; the selection highlight still wins.
+    const needsAttention = isBoardAttentionState(activity)
     // backgroundElement survives transparent mode on purpose (see
     // applyDisplayOverlay): cards are content, not chrome — they keep a
     // tinted surface so the board reads against any host wallpaper.
@@ -333,7 +347,7 @@ export function KanbanPage(props: {
       <box
         key={issue.id}
         border={true}
-        borderColor={isSelected ? theme.primary : columnBorder}
+        borderColor={isSelected ? theme.primary : needsAttention ? theme.warning : columnBorder}
         backgroundColor={theme.backgroundElement}
         paddingLeft={1}
         paddingRight={1}
@@ -418,9 +432,16 @@ export function KanbanPage(props: {
             paddingLeft={1}
             paddingRight={1}
           >
-            <text fg={columnAccent[col.key]} attributes={TextAttributes.BOLD} wrapMode="none">
-              {t(COLUMN_LABEL_KEY[col.key])} ({col.issues.length + col.hiddenCount})
-            </text>
+            <box flexDirection="row" justifyContent="space-between">
+              <text fg={columnAccent[col.key]} attributes={TextAttributes.BOLD} wrapMode="none">
+                {t(COLUMN_LABEL_KEY[col.key])} ({col.issues.length + col.hiddenCount})
+              </text>
+              {col.key === "in_progress" && attentionCount > 0 ? (
+                <text fg={theme.warning} attributes={TextAttributes.BOLD} wrapMode="none">
+                  {t("kanban.attention", { count: String(attentionCount) })}
+                </text>
+              ) : null}
+            </box>
             <scrollbox
               flexGrow={1}
               gap={1}

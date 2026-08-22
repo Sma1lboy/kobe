@@ -12,6 +12,7 @@
  */
 
 import type { Issue } from "@sma1lboy/kobe-daemon/daemon/issues-store"
+import { statusDisposition } from "@sma1lboy/kobe-daemon/daemon/status-disposition"
 
 export type BoardColumnKey = "backlog" | "in_progress" | "done"
 
@@ -71,9 +72,53 @@ export function moveBoardSelection(
 }
 
 export function issueColumnKey(issue: Issue): BoardColumnKey {
-  if (issue.status === "done") return "done"
+  // Terminal disposition (today: `done`) wins over a stale task link; an
+  // UNKNOWN status parks — it must never render as finished.
+  if (statusDisposition(issue.status) === "terminal") return "done"
   if (issue.taskId !== undefined && issue.taskId !== "") return "in_progress"
   return "backlog"
+}
+
+/** Activity states where the linked engine is BLOCKED and won't progress on
+ *  its own — a permission prompt, a dead turn, or a quota wall. These float
+ *  to the head of In progress as the "needs you" group. `turn_complete` is
+ *  deliberately excluded: a finished turn is the normal end state, and
+ *  floating every finished card would drown the actually-blocked ones.
+ *  String-typed (like notify-state's `attentionKindFor`) so this module
+ *  stays free of the engine import. */
+export const BOARD_ATTENTION_STATES: readonly string[] = ["permission_needed", "rate_limited", "error"]
+
+export function isBoardAttentionState(state: string | undefined): boolean {
+  return state !== undefined && BOARD_ATTENTION_STATES.includes(state)
+}
+
+/**
+ * Rendering-only attention partition: float In-progress cards whose linked
+ * task is blocked on the user to the head of their column (order stable
+ * within both groups) and report the group size. Nothing persisted changes —
+ * the card stays In progress semantically; only the view order does.
+ * Unlinked issues and vanished tasks (`stateOf` → undefined) stay in place.
+ * Attention can only exist in In progress: activity needs a task link, and
+ * a `done` issue outranks its link in {@link issueColumnKey}.
+ */
+export function applyBoardAttention(
+  columns: readonly IssueBoardColumn[],
+  stateOf: (taskId: string) => string | undefined,
+): { columns: readonly IssueBoardColumn[]; attentionCount: number } {
+  let attentionCount = 0
+  const next = columns.map((col) => {
+    if (col.key !== "in_progress") return col
+    const attention: Issue[] = []
+    const rest: Issue[] = []
+    for (const issue of col.issues) {
+      const linked = issue.taskId !== undefined && issue.taskId !== ""
+      if (linked && isBoardAttentionState(stateOf(issue.taskId as string))) attention.push(issue)
+      else rest.push(issue)
+    }
+    attentionCount = attention.length
+    return attention.length === 0 ? col : { ...col, issues: [...attention, ...rest] }
+  })
+  return { columns: next, attentionCount }
 }
 
 /** Newest-created first; id desc as the tiebreak (`created` is day-granular). */
